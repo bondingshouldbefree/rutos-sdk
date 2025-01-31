@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# Find the Huawei modem by its vendor, product, and revision.
+if [ "${PRODUCT}" = "12d1/1506/102" ] && [ "${ACTION}" = "add" ]; then
+	set_up_huawei_modem
+fi
