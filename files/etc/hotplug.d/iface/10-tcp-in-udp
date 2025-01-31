@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# Available environment variables:
+# $ACTION - ifup or ifdown
+# $INTERFACE - network connection name
+# $DEVICE - network interface name
+
+case "$ACTION" in
+	ifup)
+		case "$INTERFACE" in
+			wan)
+				tcp-in-udp "$DEVICE"
+				;;
+			mob*)
+				tcp-in-udp "$DEVICE"
+				;;
+			pluggable_modem)
+				tcp-in-udp "$DEVICE"
+				;;
+		esac
+		;;
+esac
