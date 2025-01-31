@@ -1,0 +1,34 @@
+# This file is interpreted as shell script.
+# Put your custom iptables rules here, they will
+# be executed with each firewall (re-)start.
+
+# Internal uci firewall chains are flushed and recreated on reload, so
+# put custom rules into the root chains e.g. INPUT or FORWARD or into the
+# special user chains, e.g. input_wan_rule or postrouting_lan_rule.
+
+# Create new chain
+iptables -t mangle -N PROXY
+
+# Set local IPv4 address destinations to bypass the proxy
+iptables -t mangle -A PROXY -d 0.0.0.0/8 -j RETURN
+iptables -t mangle -A PROXY -d 10.0.0.0/8 -j RETURN
+iptables -t mangle -A PROXY -d 100.64.0.0/10 -j RETURN
+iptables -t mangle -A PROXY -d 127.0.0.0/8 -j RETURN
+iptables -t mangle -A PROXY -d 169.254.0.0/16 -j RETURN
+iptables -t mangle -A PROXY -d 172.16.0.0/12 -j RETURN
+iptables -t mangle -A PROXY -d 192.0.0.0/24 -j RETURN
+iptables -t mangle -A PROXY -d 192.0.2.0/24 -j RETURN
+iptables -t mangle -A PROXY -d 192.88.99.0/24 -j RETURN
+iptables -t mangle -A PROXY -d 192.168.0.0/16 -j RETURN
+iptables -t mangle -A PROXY -d 198.18.0.0/15 -j RETURN
+iptables -t mangle -A PROXY -d 198.51.100.0/24 -j RETURN
+iptables -t mangle -A PROXY -d 203.0.113.0/24 -j RETURN
+iptables -t mangle -A PROXY -d 224.0.0.0/4 -j RETURN
+iptables -t mangle -A PROXY -d 240.0.0.0/4 -j RETURN
+
+# Anything else should be redirected to the port dokodemo-door listens on
+iptables -t mangle -A PROXY -p tcp -m addrtype ! --dst-type LOCAL -j TPROXY --on-port 12345 --on-ip 127.0.0.1 --tproxy-mark 1
+iptables -t mangle -A PROXY -p udp -m addrtype ! --dst-type LOCAL -j TPROXY --on-port 12345 --on-ip 127.0.0.1 --tproxy-mark 1
+
+# Jump to transparent proxy
+iptables -t mangle -A PREROUTING -j PROXY
