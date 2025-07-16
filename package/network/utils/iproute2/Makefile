@@ -52,7 +52,7 @@ $(call Package/iproute2/Default)
   VARIANT:=ipfull
   PROVIDES:=ip
   ALTERNATIVES:=300:/sbin/ip:/usr/libexec/ip-full
-  DEPENDS:=+libnl-tiny +(PACKAGE_devlink||PACKAGE_rdma):libmnl
+  DEPENDS:=+libnl-tiny +(PACKAGE_devlink||PACKAGE_rdma):libmnl +libbpf
   FATTRS:=/usr/libexec/ip-full::::cap_net_admin+ei
 endef
 
@@ -84,7 +84,7 @@ $(call Package/iproute2/Default)
   PROVIDES:=tc
   $(eval CUSTOM_PATH:=$(if $(findstring m,$(CONFIG_PACKAGE_tc-full)),/usr/local,))
   ALTERNATIVES:=400:/sbin/tc:$(CUSTOM_PATH)/usr/libexec/tc-full
-  DEPENDS:=+kmod-sched-core +(PACKAGE_devlink||PACKAGE_rdma):libmnl +libxtables +tc-mod-iptables
+  DEPENDS:=+kmod-sched-core +(PACKAGE_devlink||PACKAGE_rdma):libmnl +libbpf +libxtables +tc-mod-iptables
   FATTRS:=/usr/libexec/tc-full::::cap_net_admin+ei
 endef
 
@@ -138,8 +138,8 @@ ifeq ($(BUILD_VARIANT),iptiny)
 endif
 
 ifeq ($(BUILD_VARIANT),ipfull)
-  HAVE_ELF:=n
-  LIBBPF_FORCE:=off
+  HAVE_ELF:=y
+  LIBBPF_FORCE:=on
 endif
 
 ifeq ($(BUILD_VARIANT),tctiny)
@@ -158,8 +158,8 @@ ifeq ($(BUILD_VARIANT),tcfull)
   TC_CONFIG_XT_OLD:=y
   TC_CONFIG_XT_OLD_H:=y
   TC_CONFIG_IPSET:=y
-  HAVE_ELF:=n
-  LIBBPF_FORCE:=off
+  HAVE_ELF:=y
+  LIBBPF_FORCE:=on
   SHARED_LIBS:=y
 else
   #disable iptables requirement by default
