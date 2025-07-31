@@ -1,0 +1,6 @@
+[ "${DEVNAME}" = "${DEVNAME#sd*}" ] && \
+	[ "${DEVNAME}" = "${DEVNAME#mmcblk*}" ] && exit 0
+[ -e '/tmp/.fmt-usb-msd_blockdev_hotplug_paused' ] && exit 0
+[ "$ACTION" = "add" -o "$ACTION" = "remove" ] && /sbin/block hotplug
+[ "$ACTION" = "add" ] && mount_point=$(mount | awk -v dev="/dev/$DEVNAME" '$1 == dev {print $3}') && \
+    [ -n "$mount_point" ] && chmod 775 "$mount_point"

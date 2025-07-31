@@ -1,0 +1,1 @@
+{"status/network/network_usage":{"description":"network usage configuration","read":{"api":{"/network_usage/*":["*"],"/topology/status/*":["*"],"/topology/scan/status/*":["*"]}},"write":{"api":["/network_usage/*"]}}}

@@ -1,0 +1,18 @@
+Calling any `ubus call iwinfo xxx "{'device': 'radioX'}"` method fails.
+Iwinfo rpcd plugin uses libiwinfo library, which calls "uci_lookup_ptr"
+on uci wireless config and it fails with UCI_ERR_IO.
+Add temp? workaround which adds "cap_dac_override=ep"
+to rpc_plugin ".capabilities", like in uci rpcd plugin
+---
+Index: rpcd/iwinfo.c
+===================================================================
+--- rpcd/iwinfo.c
++++ rpcd/iwinfo.c
+@@ -1066,5 +1066,5 @@
+ 
+ struct rpc_plugin rpc_plugin = {
+ 	.init = rpc_iwinfo_api_init,
+-	.capabilities = "cap_net_admin=ep"
++	.capabilities = "cap_net_admin=ep, cap_dac_override=ep"
+ };
+

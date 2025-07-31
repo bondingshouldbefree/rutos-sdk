@@ -1,0 +1,17 @@
+{
+  "services/sd_usb_tools": {
+    "title": "SD & USB Tools",
+    "index": 70,
+    "depends": {
+      "board": {
+        "anyOf": ["has_sd", "has_usb"]
+      }
+    }
+  },
+  "services/sd_usb_tools/general": {
+    "title": "General",
+    "index": 10,
+    "view": "services/UsbGeneral",
+    "acls": ["services/sd_usb_tools/general"]
+  }
+}

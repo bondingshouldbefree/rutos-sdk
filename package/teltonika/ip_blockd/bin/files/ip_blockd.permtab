@@ -1,0 +1,2 @@
+/etc/config/ip_blockd            ip_blockd:ip_blockd       666       -
+/usr/local/share/ip_block        ip_blockd:ip_blockd       -         r

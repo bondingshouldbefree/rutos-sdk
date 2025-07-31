@@ -1,0 +1,1 @@
+{"status/system":{"description":"system status","read":{"api":{"/wireless/devices/basic/status/*":["macaddr","band"],"/modems/status/*":["id","name","index","builtin","operator_state","operator","provider","cell_info","model","imei","version","temperature"]}}}}

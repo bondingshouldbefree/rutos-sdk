@@ -1,0 +1,312 @@
+--- a/file.c
++++ b/file.c
+@@ -730,8 +730,149 @@ static char *uci_config_path(struct uci_context *ctx, const char *name)
+ 	return filename;
+ }
+
++static void uci_clone_option(struct uci_section *section, struct uci_option *option)
++{
++	if (option->type == UCI_TYPE_STRING) {
++		uci_alloc_option(section, option->e.name, option->v.string);
++	} else if (option->type == UCI_TYPE_LIST) {
++		struct uci_option *cloned = uci_alloc_list(section, option->e.name);
++
++		struct uci_context *ctx = section->package->ctx;
++		struct uci_element *e = NULL;
++		uci_foreach_element(&option->v.list, e) {
++			struct uci_option *list_item = uci_to_option(e);
++
++			struct uci_element *cloned_list_item = uci_alloc_generic(ctx, UCI_TYPE_ITEM, list_item->e.name, sizeof(struct uci_option));
++			uci_list_add(&cloned->v.list, &cloned_list_item->list);
++		}
++	}
++}
++
++static void uci_clone_section(struct uci_package *pkg, struct uci_section *section)
++{
++	struct uci_section *cloned = uci_alloc_section(pkg, section->type, section->e.name);
++
++	struct uci_element *e = NULL;
++	uci_foreach_element(&section->options, e) {
++		uci_clone_option(cloned, uci_to_option(e));
++	}
++}
++
++static void uci_clone_sections(struct uci_package *pkg, struct uci_list *sections)
++{
++	struct uci_element *e = NULL;
++	uci_foreach_element(sections, e) {
++		uci_clone_section(pkg, uci_to_section(e));
++	}
++}
++
++static size_t uci_list_length(struct uci_list *list)
++{
++	size_t length = 0;
++	struct uci_element *e = NULL;
++	uci_foreach_element(list, e) {
++		length++;
++	}
++	return length;
++}
++
++static bool uci_compare_options(struct uci_option *option_a, struct uci_option *option_b)
++{
++	if (option_a->type != option_b->type) {
++		return true;
++	}
++
++	if (strcmp(option_a->e.name, option_b->e.name)) {
++		return true;
++	}
++
++	if (option_a->type == UCI_TYPE_STRING) {
++		if (strcmp(option_a->v.string, option_b->v.string)) {
++			return true;
++		}
++	} else if (option_a->type == UCI_TYPE_LIST) {
++		if (uci_list_length(&option_a->v.list) != uci_list_length(&option_b->v.list)) {
++			// Option in list was added or removed
++			return true;
++		}
++
++		struct uci_element *element_a = list_to_element(option_a->v.list.next);
++		struct uci_element *element_b = list_to_element(option_b->v.list.next);
++		while (&element_a->list != &option_a->v.list && &element_b->list != &option_b->v.list) {
++			if (strcmp(element_a->name, element_b->name)) {
++				return true;
++			}
++
++			element_a = list_to_element(element_a->list.next);
++			element_b = list_to_element(element_b->list.next);
++		}
++	}
++
++	return false;
++}
++
++static bool uci_compare_sections(struct uci_section *section_a, struct uci_section *section_b)
++{
++	if (strcmp(section_a->e.name, section_b->e.name)) {
++		// Section name or ordering changed
++		return true;
++	}
++
++	if (strcmp(section_a->type, section_b->type)) {
++		// Section type changed
++		return true;
++	}
++
++	if (uci_list_length(&section_a->options) != uci_list_length(&section_b->options)) {
++		// Option was added or removed
++		return true;
++	}
++
++	struct uci_element *element_a = NULL;
++	uci_foreach_element(&section_a->options, element_a) {
++		struct uci_option *option_a = uci_to_option(element_a);
++
++		struct uci_element *element_b = uci_lookup_list(&section_b->options, option_a->e.name);
++		if (!element_b) {
++			return true;
++		}
++		struct uci_option *option_b = uci_to_option(element_b);
++
++		if (uci_compare_options(option_a, option_b)) {
++			return true;
++		}
++	}
++
++	return false;
++}
++
++static bool uci_compare_section_lists(struct uci_list *sections_a, struct uci_list *sections_b)
++{
++	if (uci_list_length(sections_a) != uci_list_length(sections_b)) {
++		// A section was added or removed
++		return true;
++	}
++
++	struct uci_element *element_a = list_to_element(sections_a->next);
++	struct uci_element *element_b = list_to_element(sections_b->next);
++	while (&element_a->list != sections_a && &element_b->list != sections_b) {
++		struct uci_section *section_a = uci_to_section(element_a);
++		struct uci_section *section_b = uci_to_section(element_b);
++
++		if (uci_compare_sections(section_a, section_b)) {
++			return true;
++		}
++
++		element_a = list_to_element(element_a->list.next);
++		element_b = list_to_element(element_b->list.next);
++	}
++
++	return false;
++}
++
+ static void uci_file_commit(struct uci_context *ctx, struct uci_package **package, bool overwrite)
+ {
++	struct uci_package *cloned_package = NULL;
+ 	struct uci_package *p = *package;
+ 	FILE *f1, *f2 = NULL;
+ 	char *volatile name = NULL;
+@@ -781,9 +922,16 @@ static void uci_file_commit(struct uci_context *ctx, struct uci_package **packag
+ 			path = NULL;
+ 		}
+
++		cloned_package = uci_alloc_package(ctx, p->e.name);
++		uci_clone_sections(cloned_package, &p->sections);
++
+ 		/* flush delta */
+ 		if (!uci_load_delta(ctx, p, true))
+ 			goto done;
++
++		ctx->was_empty_commit = !uci_compare_section_lists(&cloned_package->sections, &p->sections);
++	} else {
++		ctx->was_empty_commit = false;
+ 	}
+
+ 	fd = mkstemp(filename);
+@@ -811,6 +959,7 @@ static void uci_file_commit(struct uci_context *ctx, struct uci_package **packag
+ 	UCI_TRAP_RESTORE(ctx);
+
+ done:
++	uci_free_package(&cloned_package);
+ 	free(name);
+ 	free(path);
+ 	if (do_rename) {
+--- a/libuci.c
++++ b/libuci.c
+@@ -234,6 +234,7 @@ int uci_commit(struct uci_context *ctx, struct uci_package **package, bool overw
+ 	p = *package;
+ 	UCI_ASSERT(ctx, p != NULL);
+ 	UCI_ASSERT(ctx, p->backend && p->backend->commit);
++	ctx->was_empty_commit = true;
+ 	p->backend->commit(ctx, package, overwrite);
+ 	return 0;
+ }
+@@ -251,10 +252,13 @@ int uci_logged_commit_user(struct uci_context *ctx, struct uci_package **package
+ 	p = *package;
+ 	UCI_ASSERT(ctx, p != NULL);
+ 	UCI_ASSERT(ctx, p->backend && p->backend->commit);
++	ctx->was_empty_commit = true;
+ 	p->backend->commit(ctx, package, overwrite);
+
+ #ifdef ENABLE_UCI_LOGGING
+-	tlt_log_event((*package)->e.name, user);
++	if (!ctx->was_empty_commit) {
++		tlt_log_event((*package)->e.name, user);
++	}
+ #endif // ENABLE_UCI_LOGGING
+
+ 	return 0;
+--- a/list.c
++++ b/list.c
+@@ -75,7 +75,7 @@ uci_free_element(struct uci_element *e)
+ 	free(e);
+ }
+
+-static struct uci_option *
++__private struct uci_option *
+ uci_alloc_option(struct uci_section *s, const char *name, const char *value)
+ {
+ 	struct uci_package *p = s->package;
+@@ -114,7 +114,7 @@ uci_free_option(struct uci_option *o)
+ 	uci_free_element(&o->e);
+ }
+
+-static struct uci_option *
++__private struct uci_option *
+ uci_alloc_list(struct uci_section *s, const char *name)
+ {
+ 	struct uci_package *p = s->package;
+@@ -208,7 +208,7 @@ static void uci_section_fixup_options(struct uci_section *s, bool no_options)
+ 	}
+ }
+
+-static struct uci_section *
++__private struct uci_section *
+ uci_alloc_section(struct uci_package *p, const char *type, const char *name)
+ {
+ 	struct uci_context *ctx = p->ctx;
+@@ -231,7 +231,7 @@ uci_alloc_section(struct uci_package *p, const char *type, const char *name)
+ 	return s;
+ }
+
+-static void
++__private void
+ uci_free_section(struct uci_section *s)
+ {
+ 	struct uci_element *o, *tmp;
+@@ -725,16 +725,12 @@ int uci_set(struct uci_context *ctx, struct uci_ptr *ptr)
+ 		ptr->s = uci_alloc_section(ptr->p, ptr->value, ptr->section);
+ 		ptr->last = &ptr->s->e;
+ 	} else if (ptr->o && ptr->option) { /* update option */
+-		struct uci_option *o;
+-
+-		if ((ptr->o->type == UCI_TYPE_STRING) &&
+-			!strcmp(ptr->o->v.string, ptr->value))
+-			return 0;
+-
+-		o = ptr->o;
+-		ptr->o = uci_alloc_option(ptr->s, ptr->option, ptr->value);
+-		uci_free_option(o);
+-		ptr->last = &ptr->o->e;
++		if (ptr->o->type != UCI_TYPE_STRING || strcmp(ptr->o->v.string, ptr->value)) {
++			struct uci_option *o = ptr->o;
++			ptr->o = uci_alloc_option(ptr->s, ptr->option, ptr->value);
++			uci_free_option(o);
++			ptr->last = &ptr->o->e;
++		}
+ 	} else if (ptr->s && ptr->section) { /* update section */
+ 		char *s = uci_strdup(ctx, ptr->value);
+
+--- a/lua/uci.c
++++ b/lua/uci.c
+@@ -938,6 +938,14 @@ uci_lua_add_delta(lua_State *L)
+ 	return uci_push_status(L, ctx, false);
+ }
+
++static int
++uci_was_empty_commit(lua_State *L)
++{
++	struct uci_context *ctx = find_context(L, NULL);
++	lua_pushboolean(L, ctx->was_empty_commit);
++	return 1;
++}
++
+ static int
+ uci_lua_set_savedir(lua_State *L)
+ {
+@@ -1044,6 +1052,7 @@ static const luaL_Reg uci[] = {
+ 	{ "get_savedir", uci_lua_get_savedir },
+ 	{ "set_savedir", uci_lua_set_savedir },
+ 	{ "list_configs", uci_lua_list_configs },
++	{ "was_empty_commit", uci_was_empty_commit },
+ 	{ NULL, NULL },
+ };
+
+--- a/uci.h
++++ b/uci.h
+@@ -419,6 +419,8 @@ struct uci_context
+ 	/* search path for delta files */
+ 	struct uci_list delta_path;
+
++	bool was_empty_commit;
++
+ 	/* private: */
+ 	int err;
+ 	const char *func;
+--- a/uci_internal.h
++++ b/uci_internal.h
+@@ -52,6 +52,10 @@ __private bool uci_validate_str(const char *str, bool name, bool package);
+ __private void uci_add_delta(struct uci_context *ctx, struct uci_list *list, int cmd, const char *section, const char *option, const char *value);
+ __private void uci_free_delta(struct uci_delta *h);
+ __private struct uci_package *uci_alloc_package(struct uci_context *ctx, const char *name);
++__private void uci_free_section(struct uci_section *s);
++__private struct uci_section * uci_alloc_section(struct uci_package *p, const char *type, const char *name);
++__private struct uci_option * uci_alloc_option(struct uci_section *s, const char *name, const char *value);
++__private struct uci_option * uci_alloc_list(struct uci_section *s, const char *name);
+
+ __private FILE *uci_open_stream(struct uci_context *ctx, const char *filename, const char *origfilename, int pos, bool write, bool create);
+ __private void uci_close_stream(FILE *stream);

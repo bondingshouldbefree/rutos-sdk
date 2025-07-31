@@ -1,0 +1,156 @@
+# Copyright (C) 2006-2012 OpenWrt.org
+# Copyright (C) 2010 Vertical Communications
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
+menuconfig INITOPT
+	bool "Init configuration options" if IMAGEOPT
+	default n
+	help
+		These option choose the command that will run as the 'init' command
+		(that is which is responsible for controlling the system once preinit
+		transfers control to it) as well as some options controlling its
+		behaviour.  Normally init is /sbin/init.
+
+	config TARGET_INIT_PATH
+		string
+		prompt "PATH for regular boot" if INITOPT
+		default "/usr/local/usr/sbin:/usr/local/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+		help
+			Default PATH used during normal operation
+
+
+menuconfig VERSIONOPT
+	bool "Version configuration options" if IMAGEOPT
+	default n
+	help
+		These options allow to override the version information embedded in
+		the /etc/openwrt_version, /etc/openwrt_release, /etc/banner,
+		/etc/opkg.conf, and /etc/os-release files. Usually there is no need
+		to set these, but they're useful for release builds or custom OpenWrt
+		redistributions that should carry custom version tags.
+
+if VERSIONOPT
+
+	config VERSION_DIST
+		string
+		prompt "Release distribution"
+		default "OpenWrt"
+		help
+			This is the name of the release distribution.
+			If unspecified, it defaults to OpenWrt.
+
+	config VERSION_NUMBER
+		string
+		prompt "Release version number"
+		help
+			This is the release version number embedded in the image.
+			If unspecified, it defaults to SNAPSHOT for the master branch
+			or to ##.##-SNAPSHOT on release branches.
+
+	config VERSION_CODE
+		string
+		prompt "Release version code"
+		help
+			This is the release version code embedded in the image.
+			If unspecified, it defaults to a revision number describing the
+			repository version of the source, e.g. the number of commits
+			since a branch point or a short Git commit ID.
+
+	config VERSION_REPO
+		string
+		prompt "Release repository"
+		default "https://downloads.openwrt.org/releases/21.02.0"
+		help
+			This is the repository address embedded in the image, it defaults
+			to the trunk snapshot repo; the url may contain the following placeholders:
+			 %R .. Repository revision ID
+			 %V .. Configured release version number or "SNAPSHOT", uppercase
+			 %v .. Configured release version number or "snapshot", lowercase
+			 %C .. Configured release revision code or value of %R, uppercase
+			 %c .. Configured release revision code or value of %R, lowercase
+			 %D .. Distribution name or "OpenWrt", uppercase
+			 %d .. Distribution name or "openwrt", lowercase
+			 %T .. Target name
+			 %S .. Target/Subtarget name
+			 %A .. Package architecture
+			 %t .. Build taint flags, e.g. "no-all busybox"
+			 %M .. Manufacturer name or "OpenWrt"
+			 %P .. Product name or "Generic"
+			 %h .. Hardware revision or "v0"
+
+	config VERSION_HOME_URL
+		string
+		prompt "Release Homepage"
+		help
+			This is the release version homepage
+
+	config VERSION_MANUFACTURER
+		string
+		prompt "Manufacturer name"
+		help
+			This is the manufacturer name embedded in /etc/device_info
+			Useful for OEMs building OpenWrt based firmware
+
+	config VERSION_MANUFACTURER_URL
+		string
+		prompt "Manufacturer URL"
+		help
+			This is an URL to the manufacturer's website embedded in /etc/device_info
+			Useful for OEMs building OpenWrt based firmware
+
+	config VERSION_BUG_URL
+		string
+		prompt "Bug reporting URL"
+		help
+			This is an URL to provide users for providing bug reports
+
+	config VERSION_SUPPORT_URL
+		string
+		prompt "Support URL"
+		help
+			This an URL to provide users seeking support
+
+	config VERSION_PRODUCT
+		string
+		prompt "Product name"
+		help
+			This is the product name embedded in /etc/device_info
+			Useful for OEMs building OpenWrt based firmware
+
+	config VERSION_HWREV
+		string
+		prompt "Hardware revision"
+		help
+			This is the hardware revision string embedded in /etc/device_info
+			Useful for OEMs building OpenWrt based firmware
+
+	config VERSION_FILENAMES
+		bool
+		prompt "Version number in filenames"
+		default y
+		help
+			Enable this to include the version number in firmware image, SDK-
+			and Image Builder archive file names
+
+	config VERSION_CODE_FILENAMES
+		bool
+		prompt "Revision code in filenames"
+		default n
+		help
+			Enable this to include the revision identifier or the configured
+			version code into the firmware image, SDK- and Image Builder archive
+			file names
+endif
+
+
+menuconfig PER_FEED_REPO
+	bool "Separate feed repositories" if IMAGEOPT
+	default y
+	help
+		If set, a separate repository is generated within bin/*/packages/
+		for the core packages and each enabled feed.
+
+source "tmp/.config-feeds.in"

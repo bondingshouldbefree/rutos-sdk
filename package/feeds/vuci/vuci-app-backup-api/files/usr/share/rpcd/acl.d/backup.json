@@ -1,0 +1,1 @@
+{"system/maintenance/backup":{"description":"backup configuration","read":{"api":{"/backup/*":["*"]}},"write":{"api":["/backup/*"]}}}

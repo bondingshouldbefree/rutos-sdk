@@ -1,0 +1,39 @@
+net: netfiler: flowtables: XFRM output TC offload stub
+
+Add TC offload stub for XFRM output bundle. Right now this is mainly
+here to make sure we don't offload flows to HW that are tied to an
+XFRM tunnel.
+
+--- a/include/net/netfilter/nf_flow_table_xfrm.h
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -147,6 +147,18 @@ static inline int flow_offload_xfrm_deca
+ 	return 0;
+ }
+ 
++static inline int flow_offload_xfrm_encap(struct net *net,
++					  const struct flow_offload *flow,
++					  enum flow_offload_tuple_dir dir,
++					  struct nf_flow_rule *flow_rule)
++{
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	if (flow->tuplehash[dir].tuple.xfrm_route.bundle)
++		return -ENOTSUPP;
++#endif
++	return 0;
++}
++
+ #ifdef CONFIG_XFRM
+ int nf_flow_xfrm_it_harder(struct sk_buff *skb, const struct nf_conn *ct,
+ 			   enum ip_conntrack_dir dir,
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -631,7 +631,8 @@ nf_flow_rule_route_common(struct net *ne
+ 	flow_offload_decap_tunnel(flow, dir, flow_rule);
+ 	flow_offload_encap_tunnel(flow, dir, flow_rule);
+ 
+-	if (flow_offload_xfrm_decap(net, flow, dir, flow_rule))
++	if (flow_offload_xfrm_decap(net, flow, dir, flow_rule) ||
++	    flow_offload_xfrm_encap(net, flow, dir, flow_rule))
+ 		return -1;
+ 
+ 	if (flow_offload_eth_src(net, flow, dir, flow_rule) < 0 ||

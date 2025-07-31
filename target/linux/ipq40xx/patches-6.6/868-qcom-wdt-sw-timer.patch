@@ -1,0 +1,75 @@
+--- a/drivers/watchdog/qcom-wdt.c
++++ b/drivers/watchdog/qcom-wdt.c
+@@ -11,6 +11,8 @@
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+ #include <linux/watchdog.h>
++#include <linux/hrtimer.h>
++#include <linux/reboot.h>
+ 
+ enum wdt_reg {
+ 	WDT_RST,
+@@ -50,6 +52,16 @@ struct qcom_wdt {
+ 	const u32		*layout;
+ };
+ 
++static struct hrtimer sw_timer;
++
++static enum hrtimer_restart wdt_sw_reset(struct hrtimer *timer)
++{
++	pr_crit("Initiating system reboot\n");
++	emergency_restart();
++
++	return HRTIMER_NORESTART;
++}
++
+ static void __iomem *wdt_addr(struct qcom_wdt *wdt, enum wdt_reg reg)
+ {
+ 	return wdt->base + wdt->layout[reg];
+@@ -80,6 +92,7 @@ static int qcom_wdt_start(struct watchdo
+ 	writel(bark * wdt->rate, wdt_addr(wdt, WDT_BARK_TIME));
+ 	writel(wdd->timeout * wdt->rate, wdt_addr(wdt, WDT_BITE_TIME));
+ 	writel(QCOM_WDT_ENABLE, wdt_addr(wdt, WDT_EN));
++
+ 	return 0;
+ }
+ 
+@@ -88,6 +101,9 @@ static int qcom_wdt_stop(struct watchdog
+ 	struct qcom_wdt *wdt = to_qcom_wdt(wdd);
+ 
+ 	writel(0, wdt_addr(wdt, WDT_EN));
++
++	hrtimer_cancel(&sw_timer);
++
+ 	return 0;
+ }
+ 
+@@ -96,6 +112,9 @@ static int qcom_wdt_ping(struct watchdog
+ 	struct qcom_wdt *wdt = to_qcom_wdt(wdd);
+ 
+ 	writel(1, wdt_addr(wdt, WDT_RST));
++
++	hrtimer_start(&sw_timer, ktime_set(wdd->timeout, 0), HRTIMER_MODE_REL);
++
+ 	return 0;
+ }
+ 
+@@ -136,6 +155,8 @@ static int qcom_wdt_restart(struct watch
+ 	 */
+ 	wmb();
+ 
++	hrtimer_start(&sw_timer, ktime_set(timeout, 0), HRTIMER_MODE_REL);
++
+ 	mdelay(150);
+ 	return 0;
+ }
+@@ -286,6 +307,9 @@ static int qcom_wdt_probe(struct platfor
+ 		set_bit(WDOG_HW_RUNNING, &wdt->wdd.status);
+ 	}
+ 
++	hrtimer_init(&sw_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++	sw_timer.function = wdt_sw_reset;
++
+ 	ret = devm_watchdog_register_device(dev, &wdt->wdd);
+ 	if (ret)
+ 		return ret;

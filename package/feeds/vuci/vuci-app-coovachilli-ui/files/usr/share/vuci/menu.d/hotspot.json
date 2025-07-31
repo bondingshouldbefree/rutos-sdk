@@ -1,0 +1,47 @@
+{
+	"services/hotspot": {
+		"title": "Hotspot",
+		"index": 190
+	},
+		"services/hotspot/general": {
+			"title": "General",
+			"index": 10,
+			"view": "services/HotspotOverview",
+			"acls": [ "services/hotspot/general" ],
+			"main_page": true
+		},
+		"services/hotspot/users": {
+			"title": "Local Users",
+			"index": 20,
+			"view": "services/HotspotUsers",
+			"acls": [ "services/hotspot/users" ]
+		},
+		"services/hotspot/groups": {
+			"title": "User Groups",
+			"index": 40,
+			"view": "services/HotspotGroups",
+			"acls": [ "services/hotspot/groups" ]
+		},
+		"services/hotspot/user_management": {
+			"title": "User Management",
+			"index": 50
+		},
+			"services/hotspot/user_management/current": {
+				"title": "User sessions",
+				"index": 10,
+				"view": "services/HotspotCurrentUsers",
+				"acls": [ "services/hotspot/user_management" ]
+			},
+			"services/hotspot/user_management/registered": {
+				"title": "Registered Users",
+				"index": 20,
+				"view": "services/HotspotRegisteredUsers",
+				"acls": [ "services/hotspot/user_management" ]
+			},
+		"system/maintenance/hotspot": {
+			"title": "Hotspot Log",
+			"acls": [ "system/maintenance/hotspot" ],
+			"view": "status/HotspotLog",
+			"index": 60
+		}
+	}

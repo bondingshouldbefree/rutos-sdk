@@ -1,0 +1,150 @@
+Index: rpcd-2021-03-11-ccb75178/sys.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/sys.c
++++ rpcd-2021-03-11-ccb75178/sys.c
+@@ -22,6 +22,7 @@
+ #include <rpcd/plugin.h>
+ #include <rpcd/session.h>
+ #include <sys/reboot.h>
++#include <unistd.h>
+ 
+ static const struct rpc_daemon_ops *ops;
+ 
+@@ -54,6 +55,17 @@ static const struct blobmsg_policy rpc_p
+ 	[RPC_PACKAGELIST_ALL] = { .name = "all",    .type = BLOBMSG_TYPE_BOOL },
+ };
+ 
++enum {
++	RPC_R_SAFE,
++	RPC_R_ARGS,
++	RPC_R_MAX
++};
++
++static const struct blobmsg_policy rpc_reboot_policy[RPC_R_MAX] = {
++    [RPC_R_SAFE] = { .name = "safe", .type = BLOBMSG_TYPE_BOOL },
++    [RPC_R_ARGS] = { .name = "args", .type = BLOBMSG_TYPE_ARRAY },
++};
++
+ static int
+ rpc_errno_status(void)
+ {
+@@ -308,33 +320,90 @@ rpc_sys_upgrade_clean(struct ubus_contex
+ 	return 0;
+ }
+ 
++static void rpc_reboot() {
++	reboot(RB_AUTOBOOT);
++	while (1);
++}
++
+ static int
+ rpc_sys_factory(struct ubus_context *ctx, struct ubus_object *obj,
+                  struct ubus_request_data *req, const char *method,
+                  struct blob_attr *msg)
+ {
+-	char * const cmd[4] = { "/sbin/jffs2reset", "-y", "-r", NULL };
++        char * const cmd[4] = { "/sbin/jffs2reset", "-y", "-r", NULL };
+ 
+-	if (!fork()) {
+-		/* wait for the RPC call to complete */
+-		sleep(2);
+-		return execv(cmd[0], cmd);
+-	}
++        if (!fork()) {
++                /* wait for the RPC call to complete */
++                sleep(2);
++                return execv(cmd[0], cmd);
++        }
+ 
++        return 0;
++}
++
++static int rpc_sys_reboot(struct ubus_context *ctx, struct ubus_object *obj,
++    struct ubus_request_data *req, const char *method,
++    struct blob_attr *msg)
++{
++	struct blob_buf b = { 0 };
++	struct blob_attr *tb[RPC_R_MAX];
++	blobmsg_parse(rpc_reboot_policy, RPC_R_MAX, tb, blob_data(msg), blob_len(msg));
++	pid_t pid = fork();
++	if (pid == 0) {
++		if (!tb[RPC_R_SAFE] || !blobmsg_get_bool(tb[RPC_R_SAFE])) {
++			rpc_reboot();
++		} else if (tb[RPC_R_SAFE] && !tb[RPC_R_ARGS]) {
++			char *args[] = { "/sbin/reboot", NULL };
++			execv(args[0], args);
++			exit(1);
++		} else if (tb[RPC_R_SAFE] && tb[RPC_R_ARGS]) {
++			if (blobmsg_type(tb[RPC_R_ARGS]) == BLOBMSG_TYPE_ARRAY) {
++				struct blob_attr *cur;
++				int rem, argc = 1;
++
++				blobmsg_for_each_attr(cur, tb[RPC_R_ARGS], rem)
++					argc++;
++
++				char **args = malloc((argc + 1) * sizeof(char *));
++				if (!args)
++					exit(1);
++
++				args[0] = "/sbin/reboot";
++
++				int i = 1;
++				blobmsg_for_each_attr(cur, tb[RPC_R_ARGS], rem) {
++					if (blobmsg_type(cur) == BLOBMSG_TYPE_STRING)
++						args[i++] = blobmsg_get_string(cur);
++				}
++				args[i] = NULL;
++
++				execv(args[0], args);
++				free(args);
++			}
++		}
++		exit(1);
++	} else if (pid < 0) {
++		blobmsg_add_string(&b, "res", "1");
++	}
++	blob_buf_init(&b, 0);
++	blobmsg_add_string(&b, "res", "0");
++	ubus_send_reply(ctx, req, b.head);
++	waitpid(pid, NULL, 0);
+ 	return 0;
+ }
+ 
+ static int
+-rpc_sys_reboot(struct ubus_context *ctx, struct ubus_object *obj,
++rpc_sys_poweroff(struct ubus_context *ctx, struct ubus_object *obj,
+                  struct ubus_request_data *req, const char *method,
+                  struct blob_attr *msg)
+ {
+ 	if (!fork()) {
+-		sync();
+ 		sleep(2);
+-		reboot(RB_AUTOBOOT);
+-		while (1)
+-			;
++		int result = system("/sbin/poweroff");
++		if (result == -1) {
++			return rpc_errno_status();
++		}
++		exit(result);
+ 	}
+ 
+ 	return 0;
+@@ -351,7 +420,8 @@ static struct ubus_object
+ 		                                  rpc_upgrade_policy),
+ 		UBUS_METHOD_NOARG("upgrade_clean", rpc_sys_upgrade_clean),
+ 		UBUS_METHOD_NOARG("factory", rpc_sys_factory),
+-		UBUS_METHOD_NOARG("reboot", rpc_sys_reboot),
++		UBUS_METHOD("reboot", rpc_sys_reboot, rpc_reboot_policy),
++		UBUS_METHOD_NOARG("poweroff", rpc_sys_poweroff),
+ 	};
+ 
+ 	static struct ubus_object_type sys_type =
+@@ -373,5 +443,6 @@ static struct ubus_object
+ }
+ 
+ struct rpc_plugin rpc_plugin = {
+-	.init = rpc_sys_api_init
++	.init = rpc_sys_api_init,
++	.capabilities = "cap_sys_boot,cap_sys_admin=ep"
+ };

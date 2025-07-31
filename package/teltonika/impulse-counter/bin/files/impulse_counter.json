@@ -1,0 +1,8 @@
+{
+	"user": "icounter",
+	"access": {
+                "ioman.gpio.*": {
+                        "methods": [ "counter", "update" ]
+                }
+        }
+}

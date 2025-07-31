@@ -1,0 +1,273 @@
+#include "qcom-ipq4018-rutx-shiftreg.dtsi"
+
+/ {
+	model = "RUTX50";
+
+	soc {
+
+		gpio-export {
+			compatible = "gpio-export";
+			#size-cells = <0>;
+
+			gpio_modem_reset@1 {
+				tlt-mnf,hwver = <0 99 400 9999>;
+				gpio-export,name = "modem_reset";
+				gpio-export,output = <0>;
+				gpios = <&shift_io 16 GPIO_ACTIVE_HIGH>;
+			};
+
+			gpio_modem_reset {
+				tlt-mnf,hwver = <100 399>;
+				gpio-export,name = "modem_reset";
+				gpio-export,output = <0>;
+				gpios = <&shift_io 8 GPIO_ACTIVE_HIGH>;
+			};
+
+			gpio_modem_power@1 {
+				tlt-mnf,hwver = <0 99 400 9999>;
+				gpio-export,name = "modem_power";
+				gpio-export,output = <0>;
+				gpios = <&shift_io 17 GPIO_ACTIVE_HIGH>;
+			};
+
+			gpio_modem_power {
+				tlt-mnf,hwver = <100 399>;
+				gpio-export,name = "modem_power";
+				gpio-export,output = <0>;
+				gpios = <&shift_io 9 GPIO_ACTIVE_HIGH>;
+			};
+
+			gpio_shift_oe {
+				tlt-mnf,hwver = <400 9999>;
+				gpio-export,name = "shift_oe";
+				gpio-export,output = <0>;
+				gpios = <&tlmm 5 GPIO_ACTIVE_LOW>;
+			};
+
+			gpio_sim_select {
+				tlt-mnf,hwver = <400 9999>;
+				gpio-export,name = "sim_sel";
+				gpio-export,output = <0>;
+				gpios = <&shift_io 20 GPIO_ACTIVE_HIGH>;
+			};
+
+			gpio_tpm_reset {
+				tlt-mnf,hwver = <400 9999>;
+				gpio-export,name = "tpm_reset";
+				gpio-export,output = <1>;
+				gpios = <&shift_io 4 GPIO_ACTIVE_HIGH>;
+			};
+		};
+
+		leds {
+			compatible = "gpio-leds";
+
+			led_power {
+				tlt-mnf,hwver = <400 9999>;
+				label = "power";
+				default-state = "on";
+				gpios = <&shift_io 1 GPIO_ACTIVE_LOW>;
+			};
+
+			led_wan_sim1@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "wan_sim_1";
+				gpios = <&shift_io 18 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_sim1 {
+				label = "wan_sim_1";
+				gpios = <&shift_io 14 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_sim2@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "wan_sim_2";
+				gpios = <&shift_io 19 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_sim2 {
+				label = "wan_sim_2";
+				gpios = <&shift_io 15 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_eth@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "wan_eth_3";
+				gpios = <&shift_io 14 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_eth {
+				label = "wan_eth_3";
+				gpios = <&shift_io 6 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_wifi@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "wan_wifi_4";
+				gpios = <&shift_io 15 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_wifi {
+				label = "wan_wifi_4";
+				gpios = <&shift_io 7 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_3@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "mob_gen_3";
+				gpios = <&shift_io 13 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_3 {
+				label = "mob_gen_3";
+				gpios = <&shift_io 5 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_4@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "mob_gen_4";
+				gpios = <&shift_io 12 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_4 {
+				label = "mob_gen_4";
+				gpios = <&shift_io 4 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_5@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "mob_gen_5";
+				gpios = <&shift_io 11 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_5 {
+				label = "mob_gen_5";
+				gpios = <&shift_io 3 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_ssid_1@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "mob_ssid_1";
+				gpios = <&shift_io 8 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_ssid_1 {
+				label = "mob_ssid_1";
+				gpios = <&shift_io 0 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_ssid_3@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "mob_ssid_3";
+				gpios = <&shift_io 9 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_ssid_3 {
+				label = "mob_ssid_3";
+				gpios = <&shift_io 1 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_ssid_5@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "mob_ssid_5";
+				gpios = <&shift_io 10 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_ssid_5 {
+				label = "mob_ssid_5";
+				gpios = <&shift_io 2 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_wifi_24@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "wifi_gen_2";
+				gpios = <&shift_io 2 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wifi_24 {
+				label = "wifi_gen_2";
+				gpios = <&shift_io 12 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wifi_50@1 {
+				tlt-mnf,hwver = <400 9999>;
+				label = "wifi_gen_5";
+				gpios = <&shift_io 3 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wifi_50 {
+				label = "wifi_gen_5";
+				gpios = <&shift_io 13 GPIO_ACTIVE_HIGH>;
+			};
+		};
+	};
+
+	tlt_gpios { // Modify according to wiki page "DTS syntax with Libgpiod changes"
+		gpiochip_info {
+			hw_0 {
+				hwver = <0>;
+				gpiochip_count = <2>;
+
+				gpiochip_0 = <100>; // Built-in
+				gpiochip_1 = <24>;  // Shift Register
+			};
+		};
+
+		ioman {
+			GPIO_0 {
+				compatible_versions = <0 99>;
+				line_name = "GPIO_IN_1";
+				active_low;
+			};
+			GPIO_100 {
+				compatible_versions = <4 99>;
+				line_name = "GPIO_OUT_1";
+			};
+			GPIO_110 {
+				compatible_versions = <0 3>;
+				line_name = "GPIO_OUT_1";
+			};
+		};
+
+		misc {
+			GPIO_105 {
+				compatible_versions = <4 99>;
+				line_name = "GPIO_SHIFT_OE";
+				active_low;
+			};
+			GPIO_108 {
+				compatible_versions = <0 3>;
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_116 {
+				compatible_versions = <4 99>;
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_109 {
+				compatible_versions = <0 3>;
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_117 {
+				compatible_versions = <4 99>;
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_120 {
+				compatible_versions = <4 99>;
+				line_name = "GPIO_SIM_SELECT";
+			};
+		};
+	};
+};
+
+&mnfinfo {
+	sim_cfg {
+		default = "1111020_1112020";
+	};
+};

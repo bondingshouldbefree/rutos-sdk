@@ -1,0 +1,16 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+add_device_name() {
+	local section="$1" username ifname_hash device_name
+	config_get "username" "$section" "username"
+	config_get "device_name" "$section" "device_name"
+	[ -z "$username" ] || [ -n "$device_name" ] && return
+	ifname_hash="$(printf '%s' "${username}" | md5sum | cut -c1-8)"
+	uci_set "xl2tpd" "$section" "device_name" "xl2tp-${ifname_hash}"
+}
+
+config_load "xl2tpd"
+config_foreach "add_device_name" "login"
+uci_commit "xl2tpd"

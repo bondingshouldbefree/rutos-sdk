@@ -1,0 +1,34 @@
+{
+  "network/ports": {
+    "title": "Ports",
+    "index": 100
+  },
+  "network/ports/port_security_server_only": {
+    "title": "802.1X Server",
+    "index": 20,
+    "view": "network/PortSecurity",
+    "acls": ["network/ports/port_security"],
+    "depends": {
+      "packages": {
+        "anyOf": ["dot1x_server", "dsa_dot1x_server"],
+        "notAnyOf": ["dot1x_client"]
+      },
+      "board": {
+        "allOf": ["has_ethernet"],
+        "notAllOf": ["is_ap", "is_industrial_ap"]
+      }
+    }
+  },
+  "network/ports/port_security_server_only/general": {
+    "title": "General",
+    "index": 10,
+    "view": "network/PortSecurity",
+    "acls": ["network/ports/port_security"]
+  },
+  "network/ports/port_security_server_only/radius": {
+    "title": "Radius",
+    "index": 20,
+    "view": "network/Radius",
+    "acls": ["network/ports/port_security/radius"]
+  }
+}

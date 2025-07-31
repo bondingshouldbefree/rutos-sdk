@@ -1,0 +1,322 @@
+new file mode 100644
+index 0000000..9497d54
+--- /dev/null
++++ b/development/include/dlms_log.h
+@@ -0,0 +1,12 @@
++#ifndef DLMS_LOG_H_
++#define DLMS_LOG_H_
++
++#include <stdbool.h>
++
++#define LOG(...) dlms_log(__VA_ARGS__)
++
++void dlms_log(const char *format, ...);
++
++void dlms_log_set_enabled(bool enabled);
++
++#endif //DLMS_LOG_H_
+index 9543925..dfc6f84 100644
+--- a/development/include/variant.h
++++ b/development/include/variant.h
+@@ -49,6 +49,8 @@ extern "C" {
+ #include <assert.h>
+ #endif
+ 
++#include "../include/dlms_log.h"
++
+ #define GX_SWAP_UINT16(a)(((a & 0xFF) << 8) | ((a & 0xFF00) >> 8))
+ #define GX_SWAP_UINT32(a)(GX_SWAP_UINT16(a & 0xFFFF) << 16) | (GX_SWAP_UINT16(a >> 16) )
+ 
+index df0cf26..387a5df 100644
+--- a/development/src/bytebuffer.c
++++ b/development/src/bytebuffer.c
+@@ -1181,7 +1181,7 @@ int bb_print(gxByteBuffer* bb)
+     {
+         hexChars[0] = hexArray[bb->data[pos] >> 4];
+         hexChars[1] = hexArray[bb->data[pos] & 0x0F];
+-        printf("%s", hexChars);
++        LOG("%s", hexChars);
+     }
+     return 0;
+ }
+index 98c6f53..ffe93ee 100644
+--- a/development/src/converters.c
++++ b/development/src/converters.c
+@@ -35,7 +35,6 @@
+ #endif
+ #if defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+ #include <assert.h>
+-#include <stdio.h> //printf needs this or error is generated.
+ #endif
+ #if _MSC_VER > 1400
+ #include <crtdbg.h>
+index 0ea41e6..f9473a4 100644
+--- a/development/src/cosem.c
++++ b/development/src/cosem.c
+@@ -446,7 +446,7 @@ uint16_t cosem_getObjectSize(DLMS_OBJECT_TYPE type)
+ #if _MSC_VER > 1400
+     {
+         /*
+-            printf("Object %s size: %d\r\n", obj_typeToString2(type), size);
++            LOG("Object %s size: %d\r\n", obj_typeToString2(type), size);
+             */
+     }
+ #endif
+@@ -472,7 +472,7 @@ int cosem_createObject(DLMS_OBJECT_TYPE type, gxObject** object)
+     /*
+     #if _MSC_VER > 1400
+     {
+-    printf("Object %s size: %d\r\n", obj_typeToString2(type), (int)_msize(*object));
++    LOG("Object %s size: %d\r\n", obj_typeToString2(type), (int)_msize(*object));
+     }
+     #endif
+     */
+@@ -2197,4 +2197,4 @@ int cosem_getDeltaInt32(gxByteBuffer* bb, int32_t* value)
+     }
+     return 0;
+ }
+-#endif //DLMS_IGNORE_DELTA
+\ No newline at end of file
++#endif //DLMS_IGNORE_DELTA
+index 638a5d6..8467993 100644
+--- a/development/src/date.c
++++ b/development/src/date.c
+@@ -812,11 +812,11 @@ int time_print(const char* format, gxtime* time)
+     }
+     if (format != NULL)
+     {
+-        printf(format, buff);
++        LOG(format, buff);
+     }
+     else
+     {
+-        printf("%s", buff);
++        LOG("%s", buff);
+     }
+     return 0;
+ }
+index b0f7fb3..18f2b12 100644
+--- a/development/src/dlmsSettings.c
++++ b/development/src/dlmsSettings.c
+@@ -37,6 +37,8 @@
+ #include <stdio.h>
+ #endif
+ 
++#include "../include/dlms_log.h"
++
+ // Server sender frame sequence starting number.
+ static const unsigned char SERVER_START_SENDER_FRAME_SEQUENCE = 0x1E;
+ // Server receiver frame sequence starting number.
+@@ -403,9 +405,7 @@ unsigned char checkFrame(
+         settings->receiverFrame = frame;
+         return 1;
+     }
+-#if defined(_WIN32) || defined(_WIN64) || defined(__linux__) //If Windows or Linux
+-    printf("Invalid frame %X. Expected %X.\r\n", frame, expected);
+-#endif
++    LOG("Invalid frame %X. Expected %X.\r\n", frame, expected);
+ 
+ #endif //DLMS_IGNORE_HDLC_CHECK
+     return 0;
+@@ -522,9 +522,7 @@ bool checkFrameAlternative(
+         }
+     }
+ 
+-#if defined(_WIN32) || defined(_WIN64) || defined(__linux__) //If Windows or Linux
+-    printf("Invalid frame %X. Expected %X.\r\n", frame, expected);
+-#endif
++    LOG("Invalid frame %X. Expected %X.\r\n", frame, expected);
+ 
+     return false;
+ #else //DLMS_IGNORE_HDLC_CHECK
+new file mode 100644
+index 0000000..d0b2fde
+--- /dev/null
++++ b/development/src/dlms_log.c
+@@ -0,0 +1,33 @@
++#if !defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__))
++#define LOG_SUPPORTED
++#endif
++
++#ifdef LOG_SUPPORTED
++#include <stdio.h>
++#include <stdarg.h>
++#endif
++
++#include "../include/dlms_log.h"
++
++static bool g_dlms_log_enabled = true;
++
++void dlms_log(const char *format, ...)
++{
++#ifdef LOG_SUPPORTED
++    if (!g_dlms_log_enabled) {
++        return;
++    }
++
++    va_list args;
++    va_start(args, format);
++
++    vprintf(format, args);
++
++    va_end(args);
++#endif
++}
++
++void dlms_log_set_enabled(bool enabled)
++{
++    g_dlms_log_enabled = enabled;
++}
+index fa8acf8..d8c4650 100644
+--- a/development/src/gxaes.c
++++ b/development/src/gxaes.c
+@@ -550,7 +550,7 @@ void gxaes_cbc_encrypt(unsigned char* output, unsigned char* input, uint32_t len
+         Iv = output;
+         input += BLOCKLEN;
+         output += BLOCKLEN;
+-        //printf("Step %d - %d", i/16, i);
++        //LOG("Step %d - %d", i/16, i);
+     }
+ 
+     if (extra)
+index 204899a..64bc303 100644
+--- a/development/src/gxobjects.c
++++ b/development/src/gxobjects.c
+@@ -32,9 +32,6 @@
+ 
+ #if defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+ #include <assert.h>
+-#ifndef GX_DLMS_MICROCONTROLLER
+-#include <stdio.h> //printf needs this or error is generated.
+-#endif
+ #endif
+ #include "../include/gxmem.h"
+ #if _MSC_VER > 1400
+@@ -1793,9 +1790,7 @@ int obj_getAttributeIndexToRead(gxObject* object, gxByteBuffer* ba)
+                     }
+                     else
+                     {
+-#if !defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__))
+-                        printf("Attribute access is denied.");
+-#endif
++                        LOG("Attribute access is denied.");
+                     }
+                 }
+             }
+index 946ffd5..c3734b5 100644
+--- a/development/src/gxserializer.c
++++ b/development/src/gxserializer.c
+@@ -533,12 +533,10 @@ int ser_loadBitStringtoVariant(gxSerializerSettings* serializeSettings, dlmsVARI
+     {
+         return ret;
+     }
+-#if defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+     if (value->capacity != capacity)
+     {
+-        printf("Warning! Serialized capacity is different than allocated capacity.\n");
++        LOG("Warning! Serialized capacity is different than allocated capacity.\n");
+     }
+-#endif //defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+     value->size = count;
+     return ser_get(serializeSettings, value->pVal, ba_getByteCount(count), ba_getByteCount(capacity));
+ }
+@@ -559,12 +557,10 @@ int ser_loadOctetString(gxSerializerSettings* serializeSettings, gxByteBuffer* v
+     {
+         return ret;
+     }
+-#if defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+     if (bb_getCapacity(value) != capacity)
+     {
+-        printf("Warning! Serialized capacity is different than allocated capacity.\n");
++        LOG("Warning! Serialized capacity is different than allocated capacity.\n");
+     }
+-#endif //defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+     if ((ret = bb_clear(value)) == 0 &&
+         (ret = ser_set2(value, serializeSettings, count, capacity)) == 0)
+     {
+@@ -750,13 +746,11 @@ int ser_loadBitString(gxSerializerSettings* serializeSettings, bitArray* value)
+     {
+         return ret;
+     }
+-#if defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+     uint16_t size = ba_getByteCount(ba_getCapacity(value));
+     if (size != capacity)
+     {
+-        printf("Warning! Serialized capacity is different than allocated capacity.\n");
++        LOG("Warning! Serialized capacity is different than allocated capacity.\n");
+     }
+-#endif //defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+ #endif //DLMS_IGNORE_MALLOC
+ #ifndef DLMS_IGNORE_MALLOC
+     if ((ret = ba_capacity(value, count)) != 0)
+index aedf1ba..f0c72bc 100644
+--- a/development/src/helpers.c
++++ b/development/src/helpers.c
+@@ -662,11 +662,11 @@ void hlp_trace(unsigned char* data, int index, int count, unsigned char send)
+     char* buff = hlp_bytesToHex(data + index, count);
+     if (send)
+     {
+-        printf("<- %s\r\n", buff);
++        LOG("<- %s\r\n", buff);
+     }
+     else
+     {
+-        printf("-> %s\r\n", buff);
++        LOG("-> %s\r\n", buff);
+     }
+     gxfree(buff);
+ }
+@@ -742,11 +742,11 @@ int hlp_printLogicalName(const char* format, const unsigned char value[6])
+     }
+     if (format != NULL)
+     {
+-        printf(format, ln);
++        LOG(format, ln);
+     }
+     else
+     {
+-        printf("%s", ln);
++        LOG("%s", ln);
+     }
+     return 0;
+ }
+@@ -1434,4 +1434,4 @@ int hlp_fromBase64(const char* input, uint16_t length, gxByteBuffer* decoded)
+     }
+     return ret;
+ }
+-#endif //defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+\ No newline at end of file
++#endif //defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+index 61c4fa5..45c7015 100644
+--- a/development/src/objectarray.c
++++ b/development/src/objectarray.c
+@@ -46,6 +46,8 @@
+ #include "../include/helpers.h"
+ #endif //defined(_WIN64) || defined(_WIN32) || defined(__linux__)
+ 
++#include "../include/dlms_log.h"
++
+ //Initialize objectArray.
+ void oa_init(objectArray* arr)
+ {
+@@ -154,7 +156,7 @@ int oa_verify(objectArray* arr)
+                 {
+                     return ret;
+                 }
+-                printf("Last initialized object:%s\n", ln);
++                LOG("Last initialized object:%s\n", ln);
+             }
+ #endif
+             //If init2 is not called.
+index e2a5642..dc59819 100644
+--- a/development/src/variant.c
++++ b/development/src/variant.c
+@@ -2741,7 +2741,7 @@ int var_print(const char* format, dlmsVARIANT* target)
+             {
+                 format = "%s\r\n";
+             }
+-            printf(format, tmp.strVal->data);
++            LOG(format, tmp.strVal->data);
+         }
+     }
+     var_clear(&tmp);

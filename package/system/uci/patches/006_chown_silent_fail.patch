@@ -1,0 +1,24 @@
+From 96668b39a274c2ec1c212c7b5112f0e6bde1adf1 Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Mon, 27 Jan 2025 14:56:49 +0200
+Subject: [PATCH 1/1] uci: chown with silent fail
+
+---
+ file.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/file.c b/file.c
+index 22f0dd5..a5614d8 100644
+--- a/file.c
++++ b/file.c
+@@ -968,6 +968,7 @@ done:
+ 			unlink(filename);
+ 			UCI_THROW(ctx, UCI_ERR_IO);
+ 		}
++		chown(path, getuid() ? (uid_t)-1 : statbuf.st_uid, statbuf.st_gid);
+ 		free(path);
+ 	}
+ 	uci_close_stream(f1);
+-- 
+2.48.1
+

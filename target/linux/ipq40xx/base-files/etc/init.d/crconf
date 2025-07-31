@@ -1,0 +1,29 @@
+#!/bin/sh /etc/rc.common
+
+START=05
+
+boot() {
+	# OpenVPN-DCO algs
+	crconf add driver "gcm_base(ctr-aes-neonbs-sync,ghash-ce-sync)" type 3 2>/dev/null
+	crconf add driver "rfc7539(chacha20-arm,poly1305-neon)" type 3 2>/dev/null
+
+	# IPsec HMAC-based algs
+	HASH_ALGS="sha1-neon sha256-neon sha384-neon sha512-neon md5-generic"
+	CIPHER_ALGS="cbc(des-generic) cbc(des3_ede-generic) cbc-aes-neonbs rfc3686(ctr-aes-neonbs-sync)"
+
+	for hash in $HASH_ALGS; do
+		for cipher in $CIPHER_ALGS; do
+			crconf add driver "pcrypt(authenc(hmac(${hash}),${cipher}))" type 3 2>/dev/null
+		done
+	done
+
+	# IPsec combined AEAD algs
+	GCM_ALG="gcm_base(ctr-aes-neonbs-sync,ghash-ce-sync)"
+	CCM_ALG="ccm_base(ctr-aes-neonbs-sync,cbcmac(aes-arm))"
+	CHAPOLY_ALG="rfc7539esp(chacha20-arm,poly1305-neon)"
+	AEAD_ALGS="rfc4106(${GCM_ALG}) rfc4543(${GCM_ALG}) rfc4309(${CCM_ALG}) ${CHAPOLY_ALG}"
+
+	for aead in $AEAD_ALGS; do
+		crconf add driver "pcrypt(${aead})" type 3 2>/dev/null
+	done
+}

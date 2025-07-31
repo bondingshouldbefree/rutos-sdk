@@ -1,0 +1,22 @@
+{
+  "network/ports": {
+    "title": "Ports",
+    "index": 100
+  },
+  "network/ports/port_security_client": {
+    "title": "802.1X Client",
+    "index": 20,
+    "view": "network/PortSecurity",
+    "acls": ["network/ports/port_security"],
+    "depends": {
+      "packages": {
+        "anyOf": ["dot1x_client"],
+        "notAnyOf": ["dot1x_server", "dsa_dot1x_server"]
+      },
+      "board": {
+        "notAllOf": ["is_ap", "is_industrial_ap"],
+		"allOf": ["has_ethernet"]
+      }
+    }
+  }
+}

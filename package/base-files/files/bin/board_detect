@@ -1,0 +1,32 @@
+#!/bin/sh
+
+CFG=$1
+
+[ -n "$CFG" ] || CFG=/etc/board.json
+
+# don't generate 2nd time. Test integriy
+if [ -s "$CFG" ] && jsonfilter -i "$CFG" -e '@.model.name' 1>/dev/null; then
+	[ "$CFG" = "/etc/board.json" ] || return 0
+	[ -s "/etc/board.hash" ] &&  md5sum -s -c /etc/board.hash &&	return 0
+	echo " board_detect: board.json incorrect checksum!"
+	rm -f "$CFG"
+fi
+
+# during system boot squashfs is mounted at / and not /rom
+# however, we set EARLY_INIT=1 on preinit board.json generation
+# which means that our board.json is at /etc
+# determine here from which point to use predefined board.json file
+
+PREFEF_CONF=/etc/board.json
+[ -n "$EARLY_INIT" ] || PREFEF_CONF="/rom$PREFEF_CONF"
+[ -s "$PREFEF_CONF" ] && cp "$PREFEF_CONF" "$CFG"
+
+[ -d "/etc/board.d/" ] && {
+	for a in $(ls /etc/board.d/*); do
+		[ -x $a ] || continue;
+		echo  "Processing: $a"
+		$(. $a)
+	done
+}
+
+[ -s "$CFG" ] || return 1

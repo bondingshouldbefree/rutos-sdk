@@ -1,0 +1,10 @@
+--- a/files/etc/init.d/mwan3
++++ b/files/etc/init.d/mwan3
+@@ -133,6 +133,7 @@ stop_service() {
+ 	done
+ 
+ 	for ipset in $($IPS -n list | grep mwan3_); do
++		$IPS -q flush $ipset
+ 		$IPS -q destroy $ipset
+ 	done
+ 

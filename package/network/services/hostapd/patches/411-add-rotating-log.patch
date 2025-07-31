@@ -1,0 +1,475 @@
+--- a/src/utils/wpa_debug.c
++++ b/src/utils/wpa_debug.c
+@@ -9,6 +9,7 @@
+ #include "includes.h"
+ 
+ #include "common.h"
++#include <linux/limits.h>
+ 
+ #ifdef CONFIG_DEBUG_SYSLOG
+ #include <syslog.h>
+@@ -32,7 +33,12 @@ int wpa_debug_show_keys = 0;
+ int wpa_debug_timestamp = 0;
+ int wpa_debug_syslog = 0;
+ #ifndef CONFIG_NO_STDOUT_DEBUG
+-static FILE *out_file = NULL;
++static struct wpa_logfile {
++	FILE *file;
++	char path[PATH_MAX];
++	size_t bytes_written;
++} logfile = {NULL, {0}, 0};
++
+ #endif /* CONFIG_NO_STDOUT_DEBUG */
+ 
+ 
+@@ -60,28 +66,38 @@ static int wpa_to_android_level(int leve
+ #ifndef CONFIG_NO_STDOUT_DEBUG
+ 
+ #ifdef CONFIG_DEBUG_FILE
++#include <dirent.h>
++#include <unistd.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#include <libgen.h>
+ #include <fcntl.h>
+-#endif /* CONFIG_DEBUG_FILE */
+ 
++#define MAX_LOG_SIZE 1024 * 32
++#define MAX_LOGS 4
++#define MSG_SIZE 2048
++static char *last_path = NULL;
++#endif /* CONFIG_DEBUG_FILE */
+ 
+-void wpa_debug_print_timestamp(void)
++void wpa_debug_print_timestamp(int add_timestamp)
+ {
+ #ifndef CONFIG_ANDROID_LOG
+-	struct os_time tv;
++	struct os_reltime tv;
+ 
+-	if (!wpa_debug_timestamp)
++	if (!add_timestamp)
+ 		return;
+ 
+-	os_get_time(&tv);
++	os_get_reltime(&tv);
+ #ifdef CONFIG_DEBUG_FILE
+-	if (out_file)
+-		fprintf(out_file, "%ld.%06u: ", (long) tv.sec,
++	if (logfile.file) {
++		logfile.bytes_written += fprintf(logfile.file, "[%ld.%06u]: ", (long) tv.sec,
+ 			(unsigned int) tv.usec);
++	}
+ #endif /* CONFIG_DEBUG_FILE */
+-	if (!out_file && !wpa_debug_syslog)
+-		printf("%ld.%06u: ", (long) tv.sec, (unsigned int) tv.usec);
++	if (!logfile.file && !wpa_debug_syslog)
++		printf("[%ld.%06u] ", (long) tv.sec, (unsigned int) tv.usec);
++#else
++	(void)add_timestamp;
+ #endif /* CONFIG_ANDROID_LOG */
+ }
+ 
+@@ -194,6 +210,114 @@ void wpa_debug_close_linux_tracing(void)
+ 
+ #endif /* CONFIG_DEBUG_LINUX_TRACING */
+ 
++#ifdef CONFIG_DEBUG_FILE
++static int wpa_debug_logfile_filter(const struct dirent *entry)
++{
++	int ret;
++	char *prefix, *path_copy;
++
++	path_copy = os_strdup(last_path);
++	prefix = basename(path_copy);
++
++	ret = !strncmp(entry->d_name, prefix, os_strlen(prefix));
++
++	os_free(path_copy);
++
++	return ret;
++}
++
++static void wpa_debug_rotate_log()
++{
++	struct dirent **log_list;
++	int log_count;
++	int cur = 0;
++
++	char tmp[PATH_MAX];
++	char *prefix, *dir, *bcpy, *dcpy;
++
++	bcpy = os_strdup(last_path);
++	dcpy = os_strdup(last_path);
++
++	dir = dirname(dcpy);
++	prefix = basename(bcpy);
++	log_count = scandir(dir, &log_list, wpa_debug_logfile_filter, alphasort);
++
++	if (log_count < 0)
++		return;
++
++	while (log_count--) {
++		if (strncmp(log_list[log_count]->d_name, prefix, os_strlen(prefix))) {
++			os_free(log_list[log_count]);
++			continue;
++		}
++
++		if(cur ++ < MAX_LOGS - 1) {
++			os_free(log_list[log_count]);
++			continue;
++		}
++
++		snprintf(tmp, sizeof(tmp), "%s/%s", dir, log_list[log_count]->d_name);
++
++		unlink(tmp);
++
++		os_free(log_list[log_count]);
++	}
++
++	os_free(log_list);
++	os_free(bcpy);
++	os_free(dcpy);
++	wpa_debug_reopen_file();
++}
++
++static int wpa_debug_log_write(const char *buf)
++{
++	int buf_len, write_len;
++
++	if(!logfile.file)
++		return -1;
++
++	if (!buf)
++		return -1;
++
++	/* Check if file entry exists on the filesystem. fwrite() would still succeed
++	even if that file was deleted as the fd is still open, so this check is needed
++	to handle such case.*/
++	if (access(logfile.path, F_OK))
++		goto err;
++
++	buf_len = strlen(buf);
++	write_len = fwrite(buf, 1, buf_len, logfile.file);
++
++	if (write_len != buf_len)
++		goto err;
++
++	logfile.bytes_written += write_len;
++	if (logfile.bytes_written >= MAX_LOG_SIZE)
++		wpa_debug_rotate_log();
++
++	return write_len;
++
++err:
++	wpa_debug_reopen_file();
++	return -1;
++}
++
++static int wpa_debug_log_printf(const char *fmt, ...) PRINTF_FORMAT(1,2);
++static int wpa_debug_log_printf(const char *fmt, ...)
++{
++	char tmp[MSG_SIZE] = {0};
++	int ret;
++	va_list ap;
++
++	va_start(ap, fmt);
++	vsnprintf(tmp, sizeof(tmp), fmt, ap);
++	ret = wpa_debug_log_write(tmp);
++	va_end(ap);
++
++	return ret;
++}
++#endif /* CONFIG_DEBUG_FILE */
++
+ 
+ /**
+  * wpa_printf - conditional printf
+@@ -206,10 +330,15 @@ void wpa_debug_close_linux_tracing(void)
+  *
+  * Note: New line '\n' is added to the end of the text when printing to stdout.
+  */
+-void _wpa_printf(int level, const char *fmt, ...)
++void _wpa_printf(int level_flags, const char *fmt, ...)
+ {
+-	va_list ap;
++ 	va_list ap;
+ 
++#ifdef CONFIG_DEBUG_FILE
++	char buf[MSG_SIZE] = {0};
++#endif /* CONFIG_DEBUG_FILE */
++	int write_log = level_flags & MSG_LOGFILE;
++	int level = ~(MSG_LOGFILE) & level_flags;
+ 	if (level >= wpa_debug_level) {
+ #ifdef CONFIG_ANDROID_LOG
+ 		va_start(ap, fmt);
+@@ -224,22 +353,37 @@ void _wpa_printf(int level, const char *
+ 			va_end(ap);
+ 		}
+ #endif /* CONFIG_DEBUG_SYSLOG */
+-		wpa_debug_print_timestamp();
++
+ #ifdef CONFIG_DEBUG_FILE
+-		if (out_file) {
++		wpa_debug_print_timestamp(1);
++		if (logfile.file) {
+ 			va_start(ap, fmt);
+-			vfprintf(out_file, fmt, ap);
+-			fprintf(out_file, "\n");
++			vsnprintf(buf, sizeof(buf), fmt, ap);
++			wpa_debug_log_write(buf);
++			wpa_debug_log_write("\n");
+ 			va_end(ap);
+ 		}
++#else
++		wpa_debug_print_timestamp(wpa_debug_timestamp);
+ #endif /* CONFIG_DEBUG_FILE */
+-		if (!wpa_debug_syslog && !out_file) {
++		if (!wpa_debug_syslog && !logfile.file) {
+ 			va_start(ap, fmt);
+ 			vprintf(fmt, ap);
+ 			printf("\n");
+ 			va_end(ap);
+ 		}
+ #endif /* CONFIG_ANDROID_LOG */
++#ifdef CONFIG_DEBUG_FILE
++	} else if (write_log) {
++		wpa_debug_print_timestamp(1);
++		if (logfile.file) {
++			va_start(ap, fmt);
++			vsnprintf(buf, sizeof(buf), fmt, ap);
++			wpa_debug_log_write(buf);
++			wpa_debug_log_write("\n");
++			va_end(ap);
++		}
++#endif /* CONFIG_DEBUG_FILE*/
+ 	}
+ 
+ #ifdef CONFIG_DEBUG_LINUX_TRACING
+@@ -351,23 +495,26 @@ void _wpa_hexdump(int level, const char
+ 			return;
+ 	}
+ #endif /* CONFIG_DEBUG_SYSLOG */
+-	wpa_debug_print_timestamp();
++
+ #ifdef CONFIG_DEBUG_FILE
+-	if (out_file) {
+-		fprintf(out_file, "%s - hexdump(len=%lu):",
++	if (logfile.file) {
++		wpa_debug_print_timestamp(1);
++		wpa_debug_log_printf("%s - hexdump(len=%lu):",
+ 			title, (unsigned long) len);
+ 		if (buf == NULL) {
+-			fprintf(out_file, " [NULL]");
++			wpa_debug_log_printf(" [NULL]");
+ 		} else if (show) {
+ 			for (i = 0; i < len; i++)
+-				fprintf(out_file, " %02x", buf[i]);
++				wpa_debug_log_printf(" %02x", buf[i]);
+ 		} else {
+-			fprintf(out_file, " [REMOVED]");
++			wpa_debug_log_printf(" [REMOVED]");
+ 		}
+-		fprintf(out_file, "\n");
++		wpa_debug_log_printf("\n");
+ 	}
++#else
++	wpa_debug_print_timestamp(wpa_debug_timestamp);
+ #endif /* CONFIG_DEBUG_FILE */
+-	if (!wpa_debug_syslog && !out_file) {
++	if (!wpa_debug_syslog && !logfile.file) {
+ 		printf("%s - hexdump(len=%lu):", title, (unsigned long) len);
+ 		if (buf == NULL) {
+ 			printf(" [NULL]");
+@@ -417,47 +564,50 @@ void _wpa_hexdump_ascii(int level, const
+ 	if (wpa_debug_syslog)
+ 		_wpa_hexdump(level, title, buf, len, show, 1);
+ #endif /* CONFIG_DEBUG_SYSLOG */
+-	wpa_debug_print_timestamp();
++
+ #ifdef CONFIG_DEBUG_FILE
+-	if (out_file) {
++	wpa_debug_print_timestamp(1);
++	if (logfile.file) {
+ 		if (!show) {
+-			fprintf(out_file,
++			wpa_debug_log_printf(
+ 				"%s - hexdump_ascii(len=%lu): [REMOVED]\n",
+ 				title, (unsigned long) len);
+ 			goto file_done;
+ 		}
+ 		if (buf == NULL) {
+-			fprintf(out_file,
++			wpa_debug_log_printf(
+ 				"%s - hexdump_ascii(len=%lu): [NULL]\n",
+ 				title, (unsigned long) len);
+ 			goto file_done;
+ 		}
+-		fprintf(out_file, "%s - hexdump_ascii(len=%lu):\n",
++		wpa_debug_log_printf("%s - hexdump_ascii(len=%lu):\n",
+ 			title, (unsigned long) len);
+ 		while (len) {
+ 			llen = len > line_len ? line_len : len;
+-			fprintf(out_file, "    ");
++			wpa_debug_log_printf("    ");
+ 			for (i = 0; i < llen; i++)
+-				fprintf(out_file, " %02x", pos[i]);
++				wpa_debug_log_printf(" %02x", pos[i]);
+ 			for (i = llen; i < line_len; i++)
+-				fprintf(out_file, "   ");
+-			fprintf(out_file, "   ");
++				wpa_debug_log_printf("   ");
++			wpa_debug_log_printf("   ");
+ 			for (i = 0; i < llen; i++) {
+ 				if (isprint(pos[i]))
+-					fprintf(out_file, "%c", pos[i]);
++					wpa_debug_log_printf("%c", pos[i]);
+ 				else
+-					fprintf(out_file, "_");
++					wpa_debug_log_printf("_");
+ 			}
+ 			for (i = llen; i < line_len; i++)
+-				fprintf(out_file, " ");
+-			fprintf(out_file, "\n");
++				wpa_debug_log_printf(" ");
++			wpa_debug_log_printf("\n");
+ 			pos += llen;
+ 			len -= llen;
+ 		}
+ 	}
+ file_done:
++#else
++	wpa_debug_print_timestamp(wpa_debug_timestamp);
+ #endif /* CONFIG_DEBUG_FILE */
+-	if (!wpa_debug_syslog && !out_file) {
++	if (!wpa_debug_syslog && !logfile.file) {
+ 		if (!show) {
+ 			printf("%s - hexdump_ascii(len=%lu): [REMOVED]\n",
+ 			       title, (unsigned long) len);
+@@ -495,10 +645,6 @@ file_done:
+ }
+ 
+ 
+-#ifdef CONFIG_DEBUG_FILE
+-static char *last_path = NULL;
+-#endif /* CONFIG_DEBUG_FILE */
+-
+ int wpa_debug_reopen_file(void)
+ {
+ #ifdef CONFIG_DEBUG_FILE
+@@ -526,17 +672,25 @@ int wpa_debug_open_file(const char *path
+ {
+ #ifdef CONFIG_DEBUG_FILE
+ 	int out_fd;
++	char filename[PATH_MAX];
++	struct os_time now;
+ 
+ 	if (!path)
+ 		return 0;
+ 
++	logfile.bytes_written = 0;
++
+ 	if (last_path == NULL || os_strcmp(last_path, path) != 0) {
+ 		/* Save our path to enable re-open */
+ 		os_free(last_path);
+ 		last_path = os_strdup(path);
+ 	}
+ 
+-	out_fd = open(path, O_CREAT | O_APPEND | O_WRONLY,
++	os_get_time(&now);
++
++	snprintf(filename, sizeof(filename), "%s_%ld", path, now.sec);
++
++	out_fd = open(filename, O_CREAT | O_APPEND | O_WRONLY,
+ 		      S_IRUSR | S_IWUSR | S_IRGRP);
+ 	if (out_fd < 0) {
+ 		wpa_printf(MSG_ERROR,
+@@ -545,6 +699,7 @@ int wpa_debug_open_file(const char *path
+ 		return -1;
+ 	}
+ 
++	strncpy(logfile.path, filename, sizeof(logfile.path));
+ #ifdef __linux__
+ 	if (fcntl(out_fd, F_SETFD, FD_CLOEXEC) < 0) {
+ 		wpa_printf(MSG_DEBUG,
+@@ -553,15 +708,15 @@ int wpa_debug_open_file(const char *path
+ 	}
+ #endif /* __linux__ */
+ 
+-	out_file = fdopen(out_fd, "a");
+-	if (out_file == NULL) {
++	logfile.file = fdopen(out_fd, "a");
++	if (logfile.file == NULL) {
+ 		wpa_printf(MSG_ERROR, "wpa_debug_open_file: Failed to open "
+ 			   "output file, using standard output");
+ 		close(out_fd);
+ 		return -1;
+ 	}
+ #ifndef _WIN32
+-	setvbuf(out_file, NULL, _IOLBF, 0);
++	setvbuf(logfile.file, NULL, _IOLBF, 0);
+ #endif /* _WIN32 */
+ #else /* CONFIG_DEBUG_FILE */
+ 	(void)path;
+@@ -569,14 +724,13 @@ int wpa_debug_open_file(const char *path
+ 	return 0;
+ }
+ 
+-
+ void wpa_debug_stop_log(void)
+ {
+ #ifdef CONFIG_DEBUG_FILE
+-	if (!out_file)
++	if (!logfile.file)
+ 		return;
+-	fclose(out_file);
+-	out_file = NULL;
++	fclose(logfile.file);
++	logfile.file = NULL;
+ #endif /* CONFIG_DEBUG_FILE */
+ }
+ 
+--- a/src/utils/wpa_debug.h
++++ b/src/utils/wpa_debug.h
+@@ -23,9 +23,11 @@ enum {
+ 	MSG_EXCESSIVE, MSG_MSGDUMP, MSG_DEBUG, MSG_INFO, MSG_WARNING, MSG_ERROR
+ };
+ 
++#define MSG_LOGFILE 1 << 3
++
+ #ifdef CONFIG_NO_STDOUT_DEBUG
+ 
+-#define wpa_debug_print_timestamp() do { } while (0)
++#define wpa_debug_print_timestamp(t) do { } while (0)
+ #define wpa_printf(args...) do { } while (0)
+ #define wpa_hexdump(l,t,b,le) do { } while (0)
+ #define wpa_hexdump_buf(l,t,b) do { } while (0)
+@@ -69,7 +71,7 @@ extern int wpa_debug_show_keys;
+  * format if debug output has been configured to include timestamps in debug
+  * messages.
+  */
+-void wpa_debug_print_timestamp(void);
++void wpa_debug_print_timestamp(int add_timestamp);
+ 
+ /**
+  * wpa_printf - conditional printf
+@@ -82,7 +84,7 @@ void wpa_debug_print_timestamp(void);
+  *
+  * Note: New line '\n' is added to the end of the text when printing to stdout.
+  */
+-void _wpa_printf(int level, const char *fmt, ...)
++void _wpa_printf(int level_flags, const char *fmt, ...)
+ PRINTF_FORMAT(2, 3);
+ 
+ #define wpa_printf(level, ...)						\
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -113,7 +113,7 @@ static void hostapd_logger_cb(void *ctx,
+ 		conf_stdout = 0;
+ #endif /* CONFIG_DEBUG_SYSLOG */
+ 	if ((conf_stdout & module) && level >= conf_stdout_level) {
+-		wpa_debug_print_timestamp();
++		wpa_debug_print_timestamp(wpa_debug_timestamp);
+ 		wpa_printf(MSG_INFO, "%s", format);
+ 	}
+ 

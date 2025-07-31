@@ -1,0 +1,254 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -52,6 +52,10 @@ IF(SELINUX)
+   add_compile_definitions(WITH_SELINUX)
+ ENDIF()
+ 
++IF(PROFILE_SUPPORT)
++  ADD_DEFINITIONS(-DPROFILE_SUPPORT)
++ENDIF()
++
+ add_subdirectory(upgraded)
+ 
+ ADD_EXECUTABLE(procd ${SOURCES})
+--- a/system.c
++++ b/system.c
+@@ -729,6 +729,223 @@ static int system_analyze(struct ubus_co
+ 	return UBUS_STATUS_OK;
+ }
+ 
++#ifdef PROFILE_SUPPORT
++#define PROFILE_EXEC "/usr/sbin/profile.sh"
++static enum vjson_state profile_call(char **err, int argc, ...)
++{
++	enum vjson_state ret = VJSON_ERROR;
++	int _errno;
++	int fds[2];
++	int fd;
++	va_list args;
++	const char *argv[argc + 2];
++
++	blob_buf_init(&b, 0);
++	vjson_error(err, "unhandled error");
++
++	if (pipe(fds)) {
++		_errno = errno;
++		return vjson_error(err, "pipe() failed: %s (%d)",
++				   strerror(_errno), _errno);
++	}
++
++	switch (fork()) {
++	case -1:
++		_errno = errno;
++
++		close(fds[0]);
++		close(fds[1]);
++
++		return vjson_error(err, "fork() failed: %s (%d)",
++				   strerror(_errno), _errno);
++	case 0:
++		/* Set stdin & stderr to /dev/null */
++		fd = open("/dev/null", O_RDWR);
++		if (fd >= 0) {
++			dup2(fd, 0);
++			dup2(fd, 2);
++			close(fd);
++		}
++
++		/* Set stdout to the shared pipe */
++		dup2(fds[1], 1);
++		close(fds[0]);
++		close(fds[1]);
++
++		argv[0] = PROFILE_EXEC;
++		va_start(args, argc);
++		for (int i = 0; i < argc; i++) {
++			argv[i + 1] = va_arg(args, const char *);
++		}
++		va_end(args);
++		argv[argc + 1] = NULL;
++
++		execvp(argv[0], (char *const *)argv);
++
++		exit(errno);
++	}
++
++	/* Parent process */
++	close(fds[1]);
++
++	ret = vjson_parse(fds[0], err);
++	close(fds[0]);
++
++	return ret;
++}
++
++enum {
++	C_PROFILE_NAME,
++	C_PROFILE_TEMPLATE,
++	__C_PROFILE_MAX
++};
++
++static const struct blobmsg_policy c_profile_policy[__C_PROFILE_MAX] = {
++	[C_PROFILE_NAME] = { .name = "name", .type = BLOBMSG_TYPE_STRING },
++	[C_PROFILE_TEMPLATE] = { .name = "template", .type = BLOBMSG_TYPE_BOOL },
++};
++
++static int create_profile(struct ubus_context *ctx, struct ubus_object *obj,
++		      struct ubus_request_data *req, const char *method,
++		      struct blob_attr *msg)
++{
++	struct blob_attr *tb[__C_PROFILE_MAX];
++	enum vjson_state ret = VJSON_ERROR;
++	char *err;
++
++	if (!msg)
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	blobmsg_parse(c_profile_policy, __C_PROFILE_MAX, tb, blob_data(msg), blob_len(msg));
++	if (!tb[C_PROFILE_NAME])
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	bool template = tb[C_PROFILE_TEMPLATE] && blobmsg_get_bool(tb[C_PROFILE_TEMPLATE]);
++
++	ret = profile_call(&err, 3, "-b", blobmsg_get_string(tb[C_PROFILE_NAME]), template ? "-t" : NULL);
++	if (ret != VJSON_SUCCESS)
++		return UBUS_STATUS_UNKNOWN_ERROR;
++
++	ubus_send_reply(ctx, req, b.head);
++
++	return UBUS_STATUS_OK;
++}
++
++enum {
++	PROFILE_NAME,
++	__PROFILE_MAX
++};
++
++static const struct blobmsg_policy profile_policy[__PROFILE_MAX] = {
++	[PROFILE_NAME] = { .name = "name", .type = BLOBMSG_TYPE_STRING },
++};
++
++static int profile_action(struct ubus_context *ctx, struct ubus_request_data *req, struct blob_attr *msg, const char* arg)
++{
++	struct blob_attr *tb[__PROFILE_MAX];
++	enum vjson_state ret = VJSON_ERROR;
++	char *err;
++
++	if (!msg)
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	blobmsg_parse(profile_policy, __PROFILE_MAX, tb, blob_data(msg), blob_len(msg));
++	if (!tb[PROFILE_NAME])
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	ret = profile_call(&err, 2, arg, blobmsg_get_string(tb[PROFILE_NAME]));
++	if (ret != VJSON_SUCCESS)
++		return UBUS_STATUS_UNKNOWN_ERROR;
++
++	ubus_send_reply(ctx, req, b.head);
++
++	return UBUS_STATUS_OK;
++}
++
++enum {
++	CH_PROFILE_NAME,
++	CH_PROFILE_FORCE,
++	__CH_PROFILE_MAX
++};
++
++static const struct blobmsg_policy ch_profile_policy[__CH_PROFILE_MAX] = {
++	[CH_PROFILE_NAME] = { .name = "name", .type = BLOBMSG_TYPE_STRING },
++	[CH_PROFILE_FORCE] = { .name = "force", .type = BLOBMSG_TYPE_BOOL },
++};
++
++static int change_profile(struct ubus_context *ctx, struct ubus_object *obj,
++		      struct ubus_request_data *req, const char *method,
++		      struct blob_attr *msg)
++{
++	struct blob_attr *tb[__CH_PROFILE_MAX];
++	enum vjson_state ret = VJSON_ERROR;
++	char *err;
++
++	if (!msg)
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	blobmsg_parse(ch_profile_policy, __CH_PROFILE_MAX, tb, blob_data(msg), blob_len(msg));
++	if (!tb[CH_PROFILE_NAME])
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	bool force = tb[CH_PROFILE_FORCE] && blobmsg_get_bool(tb[CH_PROFILE_FORCE]);
++
++	ret = profile_call(&err, 3, "-c", blobmsg_get_string(tb[CH_PROFILE_NAME]), force ? "-f" : NULL);
++	if (ret != VJSON_SUCCESS)
++		return UBUS_STATUS_UNKNOWN_ERROR;
++
++	ubus_send_reply(ctx, req, b.head);
++
++	return UBUS_STATUS_OK;
++}
++
++static int remove_profile(struct ubus_context *ctx, struct ubus_object *obj,
++		      struct ubus_request_data *req, const char *method,
++		      struct blob_attr *msg)
++{
++	return profile_action(ctx, req, msg, "-r");
++}
++
++static int diff_profile(struct ubus_context *ctx, struct ubus_object *obj,
++		      struct ubus_request_data *req, const char *method,
++		      struct blob_attr *msg)
++{
++	return profile_action(ctx, req, msg, "-d");
++}
++
++static int update_profile(struct ubus_context *ctx, struct ubus_object *obj,
++		      struct ubus_request_data *req, const char *method,
++		      struct blob_attr *msg)
++{
++	enum vjson_state ret = VJSON_ERROR;
++	char *err;
++
++	ret = profile_call(&err, 1, "-u");
++	if (ret != VJSON_SUCCESS)
++		return UBUS_STATUS_UNKNOWN_ERROR;
++
++	ubus_send_reply(ctx, req, b.head);
++
++	return UBUS_STATUS_OK;
++}
++
++static int list_profiles(struct ubus_context *ctx, struct ubus_object *obj,
++		      struct ubus_request_data *req, const char *method,
++		      struct blob_attr *msg)
++{
++	enum vjson_state ret = VJSON_ERROR;
++	char *err;
++
++	ret = profile_call(&err, 1, "-l");
++	if (ret != VJSON_SUCCESS)
++		return UBUS_STATUS_UNKNOWN_ERROR;
++
++	ubus_send_reply(ctx, req, b.head);
++
++	return UBUS_STATUS_OK;
++}
++#endif // PROFILE_SUPPORT
++
+ static void
+ procd_subscribe_cb(struct ubus_context *ctx, struct ubus_object *obj)
+ {
+@@ -744,6 +961,14 @@ static const struct ubus_method system_m
+ 	UBUS_METHOD("validate_firmware_image", validate_firmware_image, validate_firmware_image_policy),
+ 	UBUS_METHOD("sysupgrade", sysupgrade, sysupgrade_policy),
+ 	UBUS_METHOD_NOARG("analyze", system_analyze),
++#ifdef PROFILE_SUPPORT
++	UBUS_METHOD("create_profile", create_profile, c_profile_policy),
++	UBUS_METHOD("change_profile", change_profile, ch_profile_policy),
++	UBUS_METHOD_NOARG("update_profile", update_profile),
++	UBUS_METHOD("remove_profile", remove_profile, profile_policy),
++	UBUS_METHOD("diff_profile", diff_profile, profile_policy),
++	UBUS_METHOD_NOARG("list_profiles", list_profiles),
++#endif // PROFILE_SUPPORT
+ };
+ 
+ static struct ubus_object_type system_object_type =

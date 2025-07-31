@@ -1,0 +1,1 @@
+{"system/admin/certificates/manager":{"description":"certificate manager","read":{"api":{"/certificates/*":["*"]}},"write":{"api":["/certificates/*"]},"source":["/certificates/*"],"exception":["/certificates/config/*","/certificates/ca/config/*","/certificates/actions/*"]}}

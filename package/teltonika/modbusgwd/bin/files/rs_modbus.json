@@ -1,0 +1,4 @@
+{
+	"user": "modbusgwd",
+	"publish": [ "modbus-tcp-over-serial.*" ]
+}

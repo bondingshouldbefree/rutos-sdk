@@ -1,0 +1,28 @@
+{
+	"services/serial_utilities": {
+		"title": "Serial Utilities",
+		"index": 40,
+		"depends": {
+			"board": {
+				"anyOf": ["has_mbus", "has_usb", "has_rs232", "has_rs485", "has_console"]
+			}
+		}
+	},
+	"services/serial_utilities/overip": {
+		"title": "Over IP",
+		"index": 30,
+		"view": "services/OverIP",
+		"acls": [ "services/serial_utilities/overip" ]
+	},
+	"services/mbus/gateway": {
+		"title": "Gateway",
+		"index": 20,
+		"view": "services/MBusGateway",
+		"acls": [ "services/mbus/gateway" ],
+		"depends": {
+			"board": {
+				"anyOf": ["has_mbus"]
+			}
+		}
+	}
+}

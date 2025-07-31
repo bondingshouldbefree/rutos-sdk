@@ -1,0 +1,13 @@
+{
+	"services/wifi_scanner": {
+		"title": "Wifi Scanner",
+		"index": 250,
+		"view": "services/WifiScanner",
+		"acls": [ "services/wifi_scanner" ],
+		"depends": {
+			"board": {
+				"allOf": ["has_wifi"]
+			}
+		}
+	}
+}

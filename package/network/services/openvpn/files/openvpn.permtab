@@ -1,0 +1,2 @@
+/etc/config/openvpn     openvpn:openvpn     664
+/etc/openvpn            openvpn:openvpn     -       r

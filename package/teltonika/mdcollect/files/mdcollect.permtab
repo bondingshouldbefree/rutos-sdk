@@ -1,0 +1,3 @@
+/usr/local/lib/mdcollectd	mdcollectd:mdcollectd	-	cd
+/usr/local/lib/mdcollectd/mdcollectd.db_new.gz	mdcollectd:mdcollectd	-	-
+/etc/config/mdcollectd	mdcollectd:mdcollectd	666	-

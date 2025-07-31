@@ -1,0 +1,32 @@
+{
+        "user": "gsm",
+        "access": {
+                "hotplug.gsm": {
+                        "methods": [ "call" ]
+                },
+                "sms_limit": {
+                        "methods": [ "check", "inc" ]
+                },
+                "network.interface.*": {
+                        "methods": [ "up", "down", "status" ]
+                },
+                "network.interface": {
+                        "methods": [ "dump" ]
+                },
+                "file": {
+                        "methods": [ "write" ]
+                },
+                "ioman.therm.temp*": {
+                        "methods": [ "status" ]
+                },
+                "sim": {
+                        "methods": [ "get" ]
+                },
+                "mctl": {
+                        "methods": [ "reboot" ]
+                }
+        },
+        "publish": [ "gsm", "gsm.modem*" ],
+        "send": [ "gsm.*", "sim.changed" ],
+        "listen": [ "hotplug.modem_added", "hotplug.modem_removed" ]
+}

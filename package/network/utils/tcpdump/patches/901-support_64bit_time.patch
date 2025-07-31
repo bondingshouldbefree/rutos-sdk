@@ -1,0 +1,12 @@
+Last-Update: 2025-05-08
+--- a/util-print.c
++++ b/util-print.c
+@@ -241,7 +241,7 @@
+ 		      enum date_flag date_flag, enum time_flag time_flag)
+ {
+ 	struct tm *tm;
+-	char timebuf[32];
++	char timebuf[64];
+ 	const char *timestr;
+ 
+ 	if (tv->tv_sec < 0) {

@@ -1,0 +1,29 @@
+{
+  "system/maintenance": {
+    "title": "Maintenance",
+    "index": 20
+  },
+  "system/maintenance/troubleshoot": {
+    "title": "Troubleshoot",
+    "index": 30
+  },
+  "system/maintenance/troubleshoot/general": {
+    "title": "Troubleshoot Logs",
+    "acls": ["system/maintenance/troubleshoot/general"],
+    "view": "system/Troubleshoot",
+    "index": 10,
+    "main_page": true
+  },
+  "system/maintenance/troubleshoot/logging": {
+    "title": "Logging Settings",
+    "acls": ["system/maintenance/troubleshoot/logging"],
+    "view": "system/LoggingSettings",
+    "index": 20
+  },
+  "system/maintenance/troubleshoot/diagnostics": {
+    "title": "Diagnostics",
+    "acls": ["system/maintenance/troubleshoot/diagnostics"],
+    "view": "system/NetworkDiagnostic",
+    "index": 40
+  }
+}

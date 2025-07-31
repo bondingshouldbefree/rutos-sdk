@@ -1,0 +1,8 @@
+{
+  "network/dns/https_proxy": {
+    "title": "HTTPS DNS Proxy",
+    "index": 2,
+    "view": "network/HttpsDnsProxy",
+    "acls": ["network/dns/https_dns_proxy"]
+  }
+}

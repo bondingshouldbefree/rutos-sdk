@@ -1,0 +1,17 @@
+{
+  "system/admin/memory_expansion": {
+    "title": "Storage Memory Expansion",
+    "index": 80
+  },
+  "system/admin/memory_expansion/usb": {
+    "title": "USB",
+    "index": 1,
+    "view": "services/MemoryExpansion",
+    "acls": ["system/admin/memory_expansion/usb"],
+    "depends": {
+      "board": {
+        "anyOf": ["has_sd", "has_usb"]
+      }
+    }
+  }
+}

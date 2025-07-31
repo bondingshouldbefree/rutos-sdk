@@ -1,0 +1,49 @@
+#!/bin/sh
+. /lib/functions.sh
+
+do_migration() {
+	local value="${1// /}"
+	local key="${value%%=*}"
+	local val="${value#*=}"
+
+	uci_remove_list "ipsec" "${child}" "custom" "$1"
+	case "${key}" in
+		fragmentation)
+			uci_add_list "ipsec" "${child}" "custom" "${key} = ${val}"
+			;;
+		closeaction)
+			val="${val/hold/trap}"
+			val="${val/restart/start}"
+			uci_add_list "ipsec" "${child}" "custom" "children { ${child} { close_action = $val } }"
+			;;
+		rekey)
+			[ "${val}" != "no" ] && return
+			uci_add_list "ipsec" "${child}" "custom" "rekey_time = 0"
+			$reauth_set || uci_add_list "ipsec" "${child}" "custom" "reauth_time = 0"
+			reauth_set=true
+			uci_add_list "ipsec" "${child}" "custom" "children { ${child} { life_time = 0 } }"
+			uci_add_list "ipsec" "${child}" "custom" "children { ${child} { life_bytes = 0 } }"
+			uci_add_list "ipsec" "${child}" "custom" "children { ${child} { life_packets = 0 } }"
+			;;
+		reauth)
+			[ "${val}" != "no" ] && return
+			$reauth_set || uci_add_list "ipsec" "${child}" "custom" "reauth_time = 0"
+			reauth_set=true
+			;;
+		reqid)
+			uci_add_list "ipsec" "${child}" "custom" "children { ${child} { $key = $val } }"
+			;;
+	esac
+}
+
+migrate_custom() {
+	local child="$1"
+	reauth_set=false
+	config_list_foreach "$child" custom do_migration
+}
+
+config_load ipsec
+config_foreach "migrate_custom" "connection"
+uci_commit ipsec
+
+exit 0

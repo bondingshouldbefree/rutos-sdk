@@ -1,0 +1,2657 @@
+index 4426d64..74a08a6 100644
+--- a/development/include/bytebuffer.h
++++ b/development/include/bytebuffer.h
+@@ -47,20 +47,27 @@ extern "C" {
+ #define BYTE_BUFFER_INIT bb_Init
+ #endif //DESP_PLATFORM
+ 
++#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
++    typedef uint32_t bb_size_t;
++#else
++    typedef uint16_t bb_size_t;
++#endif
++
++// The "attached" bit used to mark if the byte buffer is attached.
++// It is saved as the highest bit in the `capacity` field of `gxButeBuffer`.
++//
++// So this define is just the highest bit set on a `bb_size_t`, so for a
++// uint16_t it's 0x8000, and for a
++// uint32_t it's 0x80000000
++#define BB_CAPACITY_ATTATCHED_BIT (bb_size_t)(1 << (sizeof(bb_size_t) * 8 - 1))
++
+ #define VECTOR_CAPACITY 50
+     typedef struct
+     {
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-        unsigned char* data;
+-        uint32_t capacity;
+-        uint32_t size;
+-        uint32_t position;
+-#else
+         unsigned char* data;
+-        uint16_t capacity;
+-        uint16_t size;
+-        uint16_t position;
+-#endif
++        bb_size_t capacity;
++        bb_size_t size;
++        bb_size_t position;
+     } gxByteBuffer;
+ 
+     /*
+@@ -70,20 +77,12 @@ extern "C" {
+         gxByteBuffer* arr);
+ 
+     /*Get maximum buffer size.*/
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    uint32_t bb_getCapacity(
++    bb_size_t bb_getCapacity(
+         gxByteBuffer* arr);
+-#else
+-    uint16_t bb_getCapacity(
+-        gxByteBuffer* arr);
+-#endif
+ 
+     /*Returns amount of the available bytes.*/
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    uint32_t bb_available(gxByteBuffer* arr);
+-#else
+-    uint16_t bb_available(gxByteBuffer* arr);
+-#endif
++    bb_size_t bb_available(gxByteBuffer* arr);
++
+     /*
+     * Initialize gxByteBuffer.
+     */
+@@ -93,114 +92,61 @@ extern "C" {
+     /*
+     * Allocate new size for the array in bytes.
+     */
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+     int bb_capacity(
+         gxByteBuffer* bb,
+-        uint32_t capacity);
+-#else
+-    int bb_capacity(
+-        gxByteBuffer* bb,
+-        uint16_t capacity);
+-#endif
++        bb_size_t capacity);
+ 
+     /*
+     * Get size.
+     */
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    uint32_t bb_size(
+-        gxByteBuffer* bb);
+-#else
+-    uint16_t bb_size(
++    bb_size_t bb_size(
+         gxByteBuffer* bb);
+-#endif
+-
+ 
+     /*
+     * Fill buffer it with zeros.
+     */
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+     int bb_zero(
+         gxByteBuffer* bb,
+-        uint32_t index,
+-        uint32_t count);
+-#else
+-    int bb_zero(
+-        gxByteBuffer* bb,
+-        uint16_t index,
+-        uint16_t count);
+-#endif
++        bb_size_t index,
++        bb_size_t count);
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+     int bb_insertUInt8(
+         gxByteBuffer* arr,
+-        uint32_t index,
++        bb_size_t index,
+         unsigned char item);
+-#else
+-    int bb_insertUInt8(
+-        gxByteBuffer* arr,
+-        uint16_t index,
+-        unsigned char item);
+-#endif
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    int bb_allocate(
+-        gxByteBuffer* arr,
+-        uint32_t index,
+-        uint32_t dataSize);
+-#else
+     int bb_allocate(
+         gxByteBuffer* arr,
+-        uint16_t index,
+-        uint16_t dataSize);
+-#endif
++        bb_size_t index,
++        bb_size_t dataSize);
++
+     //Set new data to the gxByteBuffer.
+     int bb_setUInt8(
+         gxByteBuffer* bb,
+         unsigned char item);
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+     int bb_setUInt8ByIndex(
+         gxByteBuffer* arr,
+-        uint32_t index,
++        bb_size_t index,
+         unsigned char item);
+-#else
+-    int bb_setUInt8ByIndex(
+-        gxByteBuffer* arr,
+-        uint16_t index,
+-        unsigned char item);
+-#endif
+ 
+     int bb_setUInt16(
+         gxByteBuffer* bb,
+         uint16_t item);
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    int bb_setUInt16ByIndex(
+-        gxByteBuffer* arr,
+-        uint32_t index,
+-        uint16_t item);
+-#else
+     int bb_setUInt16ByIndex(
+         gxByteBuffer* arr,
+-        uint16_t index,
++        bb_size_t index,
+         uint16_t item);
+-#endif
+ 
+     int bb_setUInt32(
+         gxByteBuffer* bb,
+         uint32_t item);
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    int bb_setUInt32ByIndex(
+-        gxByteBuffer* arr,
+-        uint32_t index,
+-        uint32_t item);
+-#else
+     int bb_setUInt32ByIndex(
+         gxByteBuffer* arr,
+-        uint16_t index,
++        bb_size_t index,
+         uint32_t item);
+-#endif //!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__))
+ 
+     int bb_setUInt64(
+         gxByteBuffer* bb,
+@@ -234,46 +180,22 @@ extern "C" {
+         gxByteBuffer* bb,
+         int64_t item);
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    int bb_insert(
+-        const unsigned char* src,
+-        uint32_t count,
+-        gxByteBuffer* target,
+-        uint32_t index);
+-
+-#else
+     int bb_insert(
+         const unsigned char* src,
+-        uint16_t count,
++        bb_size_t count,
+         gxByteBuffer* target,
+-        uint16_t index);
+-#endif
++        bb_size_t index);
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+     int bb_set(
+         gxByteBuffer* bb,
+         const unsigned char* pSource,
+-        uint32_t count);
+-#else
+-    int bb_set(
+-        gxByteBuffer* bb,
+-        const unsigned char* pSource,
+-        uint16_t count);
+-#endif
++        bb_size_t count);
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+     int bb_set2(
+         gxByteBuffer* bb,
+         gxByteBuffer* data,
+-        uint32_t index,
+-        uint32_t count);
+-#else
+-    int bb_set2(
+-        gxByteBuffer* bb,
+-        gxByteBuffer* data,
+-        uint16_t index,
+-        uint16_t count);
+-#endif
++        bb_size_t index,
++        bb_size_t count);
+ 
+     int bb_addString(
+         gxByteBuffer* bb,
+@@ -283,29 +205,18 @@ extern "C" {
+         gxByteBuffer* bb,
+         char* value);
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    int bb_attach(
+-        gxByteBuffer* arr,
+-        unsigned char* value,
+-        uint32_t count,
+-        uint32_t capacity);
+-    int bb_attachString2(
+-        gxByteBuffer* arr,
+-        char* value,
+-        uint32_t count,
+-        uint32_t capacity);
+-#else
+     int bb_attach(
+         gxByteBuffer* arr,
+         unsigned char* value,
+-        uint16_t count,
+-        uint16_t capacity);
++        bb_size_t count,
++        bb_size_t capacity);
++
+     int bb_attachString2(
+         gxByteBuffer* arr,
+         char* value,
+-        uint16_t count,
+-        uint16_t capacity);
+-#endif
++        bb_size_t count,
++        bb_size_t capacity);
++
+     //Clean byte buffer and release allocated memory.
+     int bb_clear(
+         gxByteBuffer* bb);
+@@ -316,12 +227,12 @@ extern "C" {
+ 
+     int bb_getUInt8(
+         gxByteBuffer* bb,
+-        unsigned char* value);
++        uint8_t* value);
+ 
+     int bb_getUInt8ByIndex(
+         gxByteBuffer* bb,
+         uint32_t index,
+-        unsigned char* value);
++        uint8_t* value);
+ 
+     int bb_getUInt16(
+         gxByteBuffer* bb,
+@@ -335,17 +246,10 @@ extern "C" {
+         gxByteBuffer* bb,
+         uint32_t* value);
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    int bb_get(
+-        gxByteBuffer* bb,
+-        unsigned char* value,
+-        uint32_t count);
+-#else
+     int bb_get(
+         gxByteBuffer* bb,
+         unsigned char* value,
+-        uint16_t count);
+-#endif
++        bb_size_t count);
+ 
+     int bb_getInt8(
+         gxByteBuffer* arr,
+@@ -458,35 +362,18 @@ extern "C" {
+         *
+         * @param bb Byte buffer as a byte array.
+         */
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    int bb_subArray(
+-        gxByteBuffer* bb,
+-        uint32_t index,
+-        uint32_t count,
+-        gxByteBuffer* target);
+-#else
+     int bb_subArray(
+         gxByteBuffer* bb,
+-        uint16_t index,
+-        uint16_t count,
++        bb_size_t index,
++        bb_size_t count,
+         gxByteBuffer* target);
+-#endif
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    //Move data insize byte array.
+-    int bb_move(
+-        gxByteBuffer* ba,
+-        uint32_t srcPos,
+-        uint32_t destPos,
+-        uint32_t count);
+-#else
+     //Move data insize byte array.
+     int bb_move(
+         gxByteBuffer* ba,
+-        uint16_t srcPos,
+-        uint16_t destPos,
+-        uint16_t count);
+-#endif
++        bb_size_t srcPos,
++        bb_size_t destPos,
++        bb_size_t count);
+ 
+     /**
+      * Remove handled bytes. This can be used in debugging to remove handled
+@@ -507,20 +394,13 @@ extern "C" {
+        *            Array length.
+        * @return True, if arrays are similar. False, if the arrays differ.
+        */
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+     unsigned char bb_compare(
+         gxByteBuffer* bb,
+         unsigned char* buff,
+-        uint32_t length);
+-#else
+-    unsigned char bb_compare(
+-        gxByteBuffer* bb,
+-        unsigned char* buff,
+-        uint16_t length);
+-#endif
++        bb_size_t length);
+ 
+     //Find index of given char.
+-    uint32_t bb_indexOf(
++    bb_size_t bb_indexOf(
+         gxByteBuffer* bb,
+         char ch);
+ 
+index 926500b..005dcb8 100644
+--- a/development/include/dlms.h
++++ b/development/include/dlms.h
+@@ -155,19 +155,44 @@ extern "C" {
+ #endif //DLMS_IGNORE_ASSOCIATION_SHORT_NAME
+ 
+ #ifndef DLMS_IGNORE_HDLC
++    typedef struct {
++        bool complete;
++
++        uint32_t destination;
++        uint32_t destinationSize; // Will be 1, 2 or 4
++
++        uint32_t source;
++        uint32_t sourceSize; // Will be 1, 2 or 4
++
++        // HDLC_FRAME_TYPE
++        uint8_t frameType;
++        DLMS_COMMAND command;
++
++        uint32_t packetLength;
++
++        /**
++        * Is more data available.
++        */
++        DLMS_DATA_REQUEST_TYPES moreData;
++   } gxHdlcData;
++
+     //Return DLMS_ERROR_CODE_FALSE if LLC bytes are not included.
+     int dlms_checkLLCBytes(
+-        dlmsSettings* settings,
++        const dlmsSettings* settings,
+         gxByteBuffer* data);
+ 
+     int dlms_getHdlcData(
+-        unsigned char server,
+-        dlmsSettings* settings,
+-        gxByteBuffer* reply,
+-        gxReplyData* data,
+-        unsigned char* frame,
++        const dlmsSettings* settings,
++        gxByteBuffer* recv_data,
++        gxHdlcData* result,
+         unsigned char preEstablished,
+         unsigned char first);
++
++    void dlms_applyHdlcData(
++        gxHdlcData *result,
++        dlmsSettings* settings,
++        gxReplyData* reply,
++        unsigned char *frame);
+ #endif //DLMS_IGNORE_HDLC
+ 
+ #ifndef DLMS_IGNORE_WRAPPER
+index f9b7eee..8fea733 100644
+--- a/development/include/dlmssettings.h
++++ b/development/include/dlmssettings.h
+@@ -44,6 +44,7 @@ extern "C" {
+ #include "gxvalueeventargs.h"
+ #include "replydata.h"
+ #include "ciphering.h"
++#include <stdbool.h>
+ 
+ #ifndef DLMS_IGNORE_PLC
+ 
+@@ -375,11 +376,13 @@ extern "C" {
+     void resetFrameSequence(
+         dlmsSettings* settings);
+ 
+-#ifndef DLMS_IGNORE_HDLC_CHECK
+     unsigned char checkFrame(
+         dlmsSettings* settings,
+         unsigned char frame);
+-#endif //DLMS_IGNORE_HDLC_CHECK
++
++    bool checkFrameAlternative(
++        const dlmsSettings* settings,
++        unsigned char frame);
+ 
+     void updateInvokeId(
+         dlmsServerSettings* settings, unsigned char value);
+index c55d8bd..d091109 100644
+--- a/development/include/serverevents.h
++++ b/development/include/serverevents.h
+@@ -34,8 +34,10 @@
+ #define SERVER_EVENTS_H
+ 
+ #include "gxignore.h"
++
+ #if !defined(DLMS_IGNORE_SERVER) || defined(DLMS_DEBUG)
+ #include "dlmssettings.h"
++#endif // !defined(DLMS_IGNORE_SERVER) || defined(DLMS_DEBUG)
+ 
+ #ifdef  __cplusplus
+ extern "C" {
+@@ -51,7 +53,7 @@ extern "C" {
+   * @return True, if data is sent to this server.
+   */
+     extern unsigned char svr_isTarget(
+-        dlmsSettings* settings,
++        const dlmsSettings* settings,
+         uint32_t serverAddress,
+         uint32_t clientAddress);
+ 
+@@ -202,6 +204,7 @@ extern "C" {
+         dlmsSettings* settings,
+         gxValueEventCollection* args);
+ #endif //DLMS_IGNORE_SERVER
++
+ #ifdef DLMS_DEBUG
+     /**
+     * Trace that can be used in debugging.
+@@ -243,6 +246,5 @@ extern "C" {
+ 
+ #ifdef  __cplusplus
+ }
+-#endif
+ #endif //DLMS_IGNORE_SERVER
+ #endif //SERVER_EVENTS_H
+index 34d1536..bb00eeb 100644
+--- a/development/src/bytebuffer.c
++++ b/development/src/bytebuffer.c
+@@ -52,19 +52,12 @@ char bb_isAttached(gxByteBuffer* arr)
+     {
+         return 0;
+     }
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
++
+     //If byte buffer is attached.
+-    return (arr->capacity & 0x80000000) == 0x80000000;
+-#else
+-    return (arr->capacity & 0x8000) == 0x8000;
+-#endif
++    return (arr->capacity & BB_CAPACITY_ATTATCHED_BIT) == BB_CAPACITY_ATTATCHED_BIT;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-uint32_t bb_available(gxByteBuffer* arr)
+-#else
+-uint16_t bb_available(gxByteBuffer* arr)
+-#endif
++bb_size_t bb_available(gxByteBuffer* arr)
+ {
+     if (arr == NULL)
+     {
+@@ -73,26 +66,14 @@ uint16_t bb_available(gxByteBuffer* arr)
+     return arr->size - arr->position;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-uint32_t bb_getCapacity(gxByteBuffer* arr)
+-#else
+-uint16_t bb_getCapacity(gxByteBuffer* arr)
+-#endif
++bb_size_t bb_getCapacity(gxByteBuffer* arr)
+ {
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER)&& (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+     //If byte buffer is attached.
+-    return arr->capacity & 0x7FFFFFFF;
+-#else
+-    return arr->capacity & 0x7FFF;
+-#endif
++    return arr->capacity & ~BB_CAPACITY_ATTATCHED_BIT;
+ }
+ 
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-uint32_t bb_size(gxByteBuffer* arr)
+-#else
+-uint16_t bb_size(gxByteBuffer* arr)
+-#endif
++bb_size_t bb_size(gxByteBuffer* arr)
+ {
+     return arr != NULL ? arr->size : 0;
+ }
+@@ -107,15 +88,9 @@ int BYTE_BUFFER_INIT(
+     return 0;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-int bb_capacity(
+-    gxByteBuffer* arr,
+-    uint32_t capacity)
+-#else
+ int bb_capacity(
+     gxByteBuffer* arr,
+-    uint16_t capacity)
+-#endif
++    bb_size_t capacity)
+ {
+ #ifndef DLMS_IGNORE_MALLOC
+     //Capacity can't change if it's attached.
+@@ -173,6 +148,7 @@ int bb_capacity(
+         arr->capacity = capacity;
+     }
+ #endif //DLMS_IGNORE_MALLOC
++
+     if (bb_getCapacity(arr) < capacity)
+     {
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+@@ -180,17 +156,10 @@ int bb_capacity(
+     return DLMS_ERROR_CODE_OK;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ int bb_zero(
+     gxByteBuffer* arr,
+-    uint32_t index,
+-    uint32_t count)
+-#else
+-int bb_zero(
+-    gxByteBuffer* arr,
+-    uint16_t index,
+-    uint16_t count)
+-#endif
++    bb_size_t index,
++    bb_size_t count)
+ {
+     int ret;
+     if (index + count > arr->capacity)
+@@ -220,17 +189,10 @@ int bb_setUInt8(
+     return ret;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ int bb_insertUInt8(
+     gxByteBuffer* arr,
+-    uint32_t index,
+-    unsigned char item)
+-#else
+-int bb_insertUInt8(
+-    gxByteBuffer* arr,
+-    uint16_t index,
++    bb_size_t index,
+     unsigned char item)
+-#endif
+ {
+     int ret;
+     if ((ret = bb_move(arr, index, index + 1, arr->size)) == 0)
+@@ -245,17 +207,10 @@ int bb_insertUInt8(
+     return ret;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-int bb_allocate(
+-    gxByteBuffer* arr,
+-    uint32_t index,
+-    uint32_t dataSize)
+-#else
+ int bb_allocate(
+     gxByteBuffer* arr,
+-    uint16_t index,
+-    uint16_t dataSize)
+-#endif
++    bb_size_t index,
++    bb_size_t dataSize)
+ {
+ #ifndef DLMS_IGNORE_MALLOC
+     if (!bb_isAttached(arr) && (arr->capacity == 0 || index + dataSize > arr->capacity))
+@@ -304,24 +259,19 @@ int bb_allocate(
+         }
+     }
+ #endif //DLMS_IGNORE_MALLOC
++
+     if (bb_getCapacity(arr) < index + dataSize)
+     {
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+     }
++
+     return 0;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ int bb_setUInt8ByIndex(
+     gxByteBuffer* arr,
+-    uint32_t index,
++    bb_size_t index,
+     unsigned char item)
+-#else
+-int bb_setUInt8ByIndex(
+-    gxByteBuffer* arr,
+-    uint16_t index,
+-    unsigned char item)
+-#endif
+ {
+     if (arr == NULL)
+     {
+@@ -347,17 +297,10 @@ int bb_setUInt16(
+     return ret;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ int bb_setUInt16ByIndex(
+     gxByteBuffer* arr,
+-    uint32_t index,
++    bb_size_t index,
+     uint16_t item)
+-#else
+-int bb_setUInt16ByIndex(
+-    gxByteBuffer* arr,
+-    uint16_t index,
+-    uint16_t item)
+-#endif
+ {
+     int ret = 0;
+     if (index + 2 > arr->size)
+@@ -384,17 +327,10 @@ int bb_setUInt32(
+     return ret;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-int bb_setUInt32ByIndex(
+-    gxByteBuffer* arr,
+-    uint32_t index,
+-    uint32_t item)
+-#else
+ int bb_setUInt32ByIndex(
+     gxByteBuffer* arr,
+-    uint16_t index,
++    bb_size_t index,
+     uint32_t item)
+-#endif //defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ {
+     int ret = bb_allocate(arr, index, 4);
+     if (ret == 0)
+@@ -411,21 +347,21 @@ int bb_setUInt64(
+     int ret = bb_allocate(arr, arr->size, 8);
+     if (ret == 0)
+     {
+-        ((unsigned char*)arr->data)[arr->size + 7] = item & 0xFF;
++        arr->data[arr->size + 7] = item & 0xFF;
+         item >>= 8;
+-        ((unsigned char*)arr->data)[arr->size + 6] = item & 0xFF;
++        arr->data[arr->size + 6] = item & 0xFF;
+         item >>= 8;
+-        ((unsigned char*)arr->data)[arr->size + 5] = item & 0xFF;
++        arr->data[arr->size + 5] = item & 0xFF;
+         item >>= 8;
+-        ((unsigned char*)arr->data)[arr->size + 4] = item & 0xFF;
++        arr->data[arr->size + 4] = item & 0xFF;
+         item >>= 8;
+-        ((unsigned char*)arr->data)[arr->size + 3] = item & 0xFF;
++        arr->data[arr->size + 3] = item & 0xFF;
+         item >>= 8;
+-        ((unsigned char*)arr->data)[arr->size + 2] = item & 0xFF;
++        arr->data[arr->size + 2] = item & 0xFF;
+         item >>= 8;
+-        ((unsigned char*)arr->data)[arr->size + 1] = item & 0xFF;
++        arr->data[arr->size + 1] = item & 0xFF;
+         item >>= 8;
+-        ((unsigned char*)arr->data)[arr->size] = item & 0xFF;
++        arr->data[arr->size] = item & 0xFF;
+         arr->size += 8;
+     }
+     return ret;
+@@ -515,17 +451,10 @@ int bb_setInt64(
+     return bb_setUInt64(arr, (uint64_t)item);
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-int bb_set(
+-    gxByteBuffer* arr,
+-    const unsigned char* pSource,
+-    uint32_t count)
+-#else
+ int bb_set(
+     gxByteBuffer* arr,
+     const unsigned char* pSource,
+-    uint16_t count)
+-#endif
++    bb_size_t count)
+ {
+     if (count != 0)
+     {
+@@ -547,27 +476,15 @@ int bb_set(
+     }
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ int bb_set2(
+     gxByteBuffer* arr,
+     gxByteBuffer* data,
+-    uint32_t index,
+-    uint32_t count)
+-#else
+-int bb_set2(
+-    gxByteBuffer* arr,
+-    gxByteBuffer* data,
+-    uint16_t index,
+-    uint16_t count)
+-#endif
++    bb_size_t index,
++    bb_size_t count)
+ {
+     if (data != NULL && count != 0)
+     {
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-        if (count == (uint32_t)-1)
+-#else
+-        if (count == (uint16_t)-1)
+-#endif
++        if (count == (bb_size_t)-1)
+         {
+             count = data->size - index;
+         }
+@@ -603,19 +520,11 @@ int bb_addString(
+     return 0;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ int bb_attach(
+     gxByteBuffer* arr,
+     unsigned char* value,
+-    uint32_t count,
+-    uint32_t capacity)
+-#else
+-int bb_attach(
+-    gxByteBuffer* arr,
+-    unsigned char* value,
+-    uint16_t count,
+-    uint16_t capacity)
+-#endif
++    bb_size_t count,
++    bb_size_t capacity)
+ {
+     //If capacity is 1 value is cast t
+     if (value == NULL || capacity < count)
+@@ -623,37 +532,21 @@ int bb_attach(
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+     }
+     arr->data = value;
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    if (capacity >= 0x80000000)
+-    {
+-        return DLMS_ERROR_CODE_OUTOFMEMORY;
+-    }
+-    arr->capacity = (0x80000000 | capacity);
+-#else
+-    if (capacity >= 0x8000)
++    if (capacity >= BB_CAPACITY_ATTATCHED_BIT)
+     {
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+     }
+-    arr->capacity = (uint16_t)(0x8000 | capacity);
+-#endif
++    arr->capacity = (BB_CAPACITY_ATTATCHED_BIT | capacity);
+     arr->size = count;
+     arr->position = 0;
+     return 0;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ int bb_attachString2(
+     gxByteBuffer* arr,
+     char* value,
+-    uint32_t count,
+-    uint32_t capacity)
+-#else
+-int bb_attachString2(
+-    gxByteBuffer* arr,
+-    char* value,
+-    uint16_t count,
+-    uint16_t capacity)
+-#endif
++    bb_size_t count,
++    bb_size_t capacity)
+ {
+     return bb_attach(arr, (unsigned char*)value, count, capacity);
+ }
+@@ -700,13 +593,13 @@ int bb_empty(
+ 
+ int bb_getUInt8(
+     gxByteBuffer* arr,
+-    unsigned char* value)
++    uint8_t* value)
+ {
+     if (arr->position >= arr->size)
+     {
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+     }
+-    *value = ((unsigned char*)arr->data)[arr->position];
++    *value = arr->data[arr->position];
+     ++arr->position;
+     return 0;
+ }
+@@ -719,7 +612,7 @@ int bb_getInt8(
+     {
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+     }
+-    *value = (signed char)((unsigned char*)arr->data)[arr->position];
++    *value = (signed char)arr->data[arr->position];
+     ++arr->position;
+     return 0;
+ }
+@@ -727,13 +620,13 @@ int bb_getInt8(
+ int bb_getUInt8ByIndex(
+     gxByteBuffer* arr,
+     uint32_t index,
+-    unsigned char* value)
++    uint8_t* value)
+ {
+     if (index >= arr->size)
+     {
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+     }
+-    *value = ((unsigned char*)arr->data)[index];
++    *value = arr->data[index];
+     return 0;
+ }
+ 
+@@ -746,8 +639,7 @@ int bb_getUInt16(
+     {
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+     }
+-    *value = (uint16_t)(((unsigned char*)arr->data)[arr->position] << 8 |
+-        ((unsigned char*)arr->data)[arr->position + 1]);
++    *value = (uint16_t)(arr->data[arr->position] << 8 | arr->data[arr->position + 1]);
+     arr->position += 2;
+     return 0;
+ }
+@@ -775,8 +667,8 @@ int bb_getInt16(
+     {
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+     }
+-    *value = (short)(((unsigned char*)arr->data)[arr->position] << 8 |
+-        ((unsigned char*)arr->data)[arr->position + 1]);
++    *value = (short)(arr->data[arr->position] << 8 |
++        arr->data[arr->position + 1]);
+     arr->position += 2;
+     return 0;
+ }
+@@ -809,9 +701,9 @@ int bb_getUInt24ByIndex(
+     {
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+     }
+-    *value = ((uint32_t)(arr->data)[index] << 16) |
+-        ((uint32_t)(arr->data)[index + 1] << 8) |
+-        ((uint32_t)(arr->data)[index + 2]);
++    *value = ((uint32_t)arr->data[index] << 16) |
++        ((uint32_t)arr->data[index + 1] << 8) |
++        ((uint32_t)arr->data[index + 2]);
+     return 0;
+ }
+ 
+@@ -955,8 +847,7 @@ int bb_getUInt16ByIndex(
+     {
+         return DLMS_ERROR_CODE_OUTOFMEMORY;
+     }
+-    *value = (uint16_t)(((unsigned char*)arr->data)[index] << 8 |
+-        ((unsigned char*)arr->data)[index + 1]);
++    *value = (uint16_t)(arr->data[index] << 8 | arr->data[index + 1]);
+     return 0;
+ }
+ 
+@@ -1104,36 +995,21 @@ int bb_addIntAsString2(gxByteBuffer* bb, int value, unsigned char digits)
+     return ret;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-int bb_subArray(
+-    gxByteBuffer* bb,
+-    uint32_t index,
+-    uint32_t count,
+-    gxByteBuffer* target)
+-#else
+ int bb_subArray(
+     gxByteBuffer* bb,
+-    uint16_t index,
+-    uint16_t count,
++    bb_size_t index,
++    bb_size_t count,
+     gxByteBuffer* target)
+-#endif
+ {
+     bb_clear(target);
+     bb_set2(target, bb, index, count);
+     return 0;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ int bb_insert(const unsigned char* src,
+-    uint32_t count,
++    bb_size_t count,
+     gxByteBuffer* target,
+-    uint32_t index)
+-#else
+-int bb_insert(const unsigned char* src,
+-    uint16_t count,
+-    gxByteBuffer* target,
+-    uint16_t index)
+-#endif
++    bb_size_t index)
+ {
+     int ret;
+     if (target->size == 0)
+@@ -1152,19 +1028,11 @@ int bb_insert(const unsigned char* src,
+     return ret;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ int bb_move(
+     gxByteBuffer* bb,
+-    uint32_t srcPos,
+-    uint32_t destPos,
+-    uint32_t count)
+-#else
+-int bb_move(
+-    gxByteBuffer* bb,
+-    uint16_t srcPos,
+-    uint16_t destPos,
+-    uint16_t count)
+-#endif
++    bb_size_t srcPos,
++    bb_size_t destPos,
++    bb_size_t count)
+ {
+     //If items are removed.
+     if (srcPos > destPos)
+@@ -1222,17 +1090,10 @@ int bb_trim(
+     return DLMS_ERROR_CODE_OK;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ unsigned char bb_compare(
+     gxByteBuffer* bb,
+     unsigned char* buff,
+-    uint32_t length)
+-#else
+-unsigned char bb_compare(
+-    gxByteBuffer* bb,
+-    unsigned char* buff,
+-    uint16_t length)
+-#endif
++    bb_size_t length)
+ 
+ {
+     unsigned char equal;
+@@ -1248,17 +1109,10 @@ unsigned char bb_compare(
+     return equal;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-int bb_get(
+-    gxByteBuffer* bb,
+-    unsigned char* value,
+-    uint32_t count)
+-#else
+ int bb_get(
+     gxByteBuffer* bb,
+     unsigned char* value,
+-    uint16_t count)
+-#endif
++    bb_size_t count)
+ {
+     if (bb == NULL || value == NULL || bb->size - bb->position < count)
+     {
+@@ -1269,23 +1123,24 @@ int bb_get(
+     return 0;
+ }
+ 
+-uint32_t bb_indexOf(
++bb_size_t bb_indexOf(
+     gxByteBuffer* bb,
+     char ch)
+ {
+-    uint32_t pos;
+     if (bb == NULL)
+     {
+-        return (uint32_t)-1;
++        return (bb_size_t)-1;
+     }
+-    for (pos = bb->position; pos < bb->size; ++pos)
++
++    for (bb_size_t pos = bb->position; pos < bb->size; ++pos)
+     {
+         if (bb->data[pos] == ch)
+         {
+             return pos;
+         }
+     }
+-    return (uint32_t)-1;
++
++    return (bb_size_t)-1;
+ }
+ 
+ #if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+index 0ff63d2..2515230 100644
+--- a/development/src/dlms.c
++++ b/development/src/dlms.c
+@@ -32,6 +32,9 @@
+ 
+ #include "../include/gxignore.h"
+ #include "../include/serverevents.h"
++#include <stdint.h>
++#include <stdbool.h>
++#include <stdio.h>
+ #if defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+ #include <assert.h>
+ #endif
+@@ -2222,24 +2225,24 @@ int dlms_getData(gxByteBuffer* data, gxDataInfo* info, dlmsVARIANT* value)
+ #ifndef DLMS_IGNORE_HDLC
+ 
+ //Return DLMS_ERROR_CODE_FALSE if LLC bytes are not included.
+-int dlms_checkLLCBytes(dlmsSettings* settings, gxByteBuffer* data)
++int dlms_checkLLCBytes(const dlmsSettings* settings, gxByteBuffer* data)
+ {
++    uint8_t *llc_bytes = NULL;
+     if (settings->server)
+     {
+-        //Check LLC bytes.
+-        if (memcmp(data->data + data->position, LLC_SEND_BYTES, 3) != 0)
+-        {
+-            return DLMS_ERROR_CODE_INVALID_PARAMETER;
+-        }
++        llc_bytes = (uint8_t*)LLC_SEND_BYTES;
+     }
+     else
+     {
+-        //Check LLC bytes.
+-        if (memcmp(data->data + data->position, LLC_REPLY_BYTES, 3) != 0)
+-        {
+-            return DLMS_ERROR_CODE_INVALID_PARAMETER;
+-        }
++        llc_bytes = (uint8_t*)LLC_REPLY_BYTES;
++    }
++
++    //Check LLC bytes.
++    if (memcmp(data->data + data->position, llc_bytes, 3) != 0)
++    {
++        return DLMS_ERROR_CODE_INVALID_PARAMETER;
+     }
++
+     data->position += 3;
+     return DLMS_ERROR_CODE_OK;
+ }
+@@ -2247,59 +2250,67 @@ int dlms_checkLLCBytes(dlmsSettings* settings, gxByteBuffer* data)
+ int dlms_getHDLCAddress(
+     gxByteBuffer* buff,
+     uint32_t* address,
+-    unsigned char checkClientAddress)
++    uint32_t* size)
+ {
+-    unsigned char ch;
+-    uint16_t s, pos;
+-    uint32_t l;
+-    int ret, size = 0;
+-    for (pos = (uint16_t)buff->position; pos != (uint16_t)buff->size; ++pos)
++    *address = 0;
++    *size = 0;
++
++    for (bb_size_t pos = buff->position; pos != buff->size; ++pos)
+     {
+-        ++size;
+-        if ((ret = bb_getUInt8ByIndex(buff, pos, &ch)) != 0)
++        uint8_t byte;
++        if (bb_getUInt8ByIndex(buff, pos, &byte) != 0)
+         {
+-            return ret;
++            return DLMS_ERROR_CODE_OUTOFMEMORY;
+         }
+-        if ((ch & 0x1) == 1)
++
++        (*size) += 1;
++
++        if ((byte & 0x1) == 1)
+         {
+             break;
+         }
+-    }
+-    //DLMS CCT test requires that client size is one byte.
+-    if (checkClientAddress && size != 1)
+-    {
+-        return DLMS_ERROR_CODE_INVALID_CLIENT_ADDRESS;
+-    }
+ 
+-    if (size == 1)
+-    {
+-        if ((ret = bb_getUInt8(buff, &ch)) != 0)
++        // A HDLC can at most be 4 bytes long.
++        // The least significant bit on the fourth byte should have been zero 
++        if (*size == 4)
+         {
+-            return ret;
++            return DLMS_ERROR_CODE_INVALID_PARAMETER;
+         }
+-        *address = ((ch & 0xFE) >> 1);
+     }
+-    else if (size == 2)
++
++    if (*size == 1)
+     {
+-        if ((ret = bb_getUInt16(buff, &s)) != 0)
+-        {
+-            return ret;
+-        }
+-        *address = ((s & 0xFE) >> 1) | ((s & 0xFE00) >> 2);
++        uint8_t ch;
++        int ret = bb_getUInt8(buff, &ch);
++        assert(ret == 0);
++
++        *address |= ((ch & 0xFE) >> 1);
+     }
+-    else if (size == 4)
++    else if (*size == 2)
+     {
+-        if ((ret = bb_getUInt32(buff, &l)) != 0)
+-        {
+-            return ret;
+-        }
+-        *address = ((l & 0xFE) >> 1) | ((l & 0xFE00) >> 2)
+-            | ((l & 0xFE0000) >> 3) | ((l & 0xFE000000) >> 4);
++        uint16_t s;
++        int ret = bb_getUInt16(buff, &s);
++        assert(ret == 0);
++
++        *address |= ((s & 0xFE)   >> 1);
++        *address |= ((s & 0xFE00) >> 2);
++    }
++    else if (*size == 4)
++    {
++        uint32_t l;
++        int ret = bb_getUInt32(buff, &l);
++        assert(ret == 0);
++
++        *address |= ((l & 0xFE)       >> 1);
++        *address |= ((l & 0xFE00)     >> 2);
++        *address |= ((l & 0xFE0000)   >> 3);
++        *address |= ((l & 0xFE000000) >> 4);
+     }
+     else
+     {
+         return DLMS_ERROR_CODE_INVALID_PARAMETER;
+     }
++
+     return DLMS_ERROR_CODE_OK;
+ }
+ 
+@@ -2307,16 +2318,27 @@ void dlms_getServerAddress(uint32_t address, uint32_t* logical, uint32_t* physic
+ {
+     if (address < 0x4000)
+     {
++        // Address is uses 1 or 2 bytes
+         *logical = address >> 7;
+         *physical = address & 0x7F;
+     }
+     else
+     {
++        // Address is uses 4 bytes
+         *logical = address >> 14;
+         *physical = address & 0x3FFF;
+     }
+ }
+ 
++bool dlms_isServerAddressBroadcast(uint32_t address)
++{
++    // If All-station (Broadcast).
++    bool is_1byte_broadcast = (address & 0x7F)   == 0x7F;
++    bool is_2byte_broadcast = (address & 0x3FFF) == 0x3FFF;
++
++    return is_1byte_broadcast || is_2byte_broadcast;
++}
++
+ /**
+ * Check that client and server address match.
+ *
+@@ -2333,60 +2355,54 @@ void dlms_getServerAddress(uint32_t address, uint32_t* logical, uint32_t* physic
+ int dlms_checkHdlcAddress(
+     unsigned char server,
+     dlmsSettings* settings,
+-    gxByteBuffer* reply,
++    gxByteBuffer* recv_data,
+     uint16_t index)
+ {
+-    unsigned char ch;
+     int ret;
+-    uint32_t source, target;
++
+     // Get destination and source addresses.
+-    if ((ret = dlms_getHDLCAddress(reply, &target, 0)) != 0)
++    uint32_t target;
++    uint32_t targetSize;
++    if ((ret = dlms_getHDLCAddress(recv_data, &target, &targetSize)) != 0)
+     {
+         return ret;
+     }
+-    if ((ret = dlms_getHDLCAddress(reply, &source, server)) != 0)
++
++    uint32_t source;
++    uint32_t sourceSize;
++    if ((ret = dlms_getHDLCAddress(recv_data, &source, &sourceSize)) != 0)
+     {
+         return ret;
+     }
++
+     if (server)
+     {
+         // Check that server addresses match.
+         if (settings->serverAddress != 0 && settings->serverAddress != target)
+         {
+-            // Get frame command.
+-            if (bb_getUInt8ByIndex(reply, reply->position, &ch) != 0)
+-            {
+-                return DLMS_ERROR_CODE_INVALID_SERVER_ADDRESS;
+-            }
+             return DLMS_ERROR_CODE_INVALID_SERVER_ADDRESS;
+         }
+-        else
+-        {
+-            settings->serverAddress = target;
+-        }
++
++        settings->serverAddress = target;
+ 
+         // Check that client addresses match.
+         if (settings->clientAddress != 0 && settings->clientAddress != source)
+         {
+             // Get frame command.
+-            if (bb_getUInt8ByIndex(reply, reply->position, &ch) != 0)
++            uint8_t ch;
++            if (bb_getUInt8ByIndex(recv_data, recv_data->position, &ch) != 0)
+             {
+-                return DLMS_ERROR_CODE_INVALID_CLIENT_ADDRESS;
++                return DLMS_ERROR_CODE_OUTOFMEMORY;
+             }
++
+             //If SNRM and client has not call disconnect and changes client ID.
+-            if (ch == DLMS_COMMAND_SNRM)
+-            {
+-                settings->clientAddress = (uint16_t)source;
+-            }
+-            else
++            if (ch != DLMS_COMMAND_SNRM)
+             {
+                 return DLMS_ERROR_CODE_INVALID_CLIENT_ADDRESS;
+             }
+         }
+-        else
+-        {
+-            settings->clientAddress = (uint16_t)source;
+-        }
++
++        settings->clientAddress = (uint16_t)source;
+     }
+     else
+     {
+@@ -2396,27 +2412,30 @@ int dlms_checkHdlcAddress(
+             // If echo.
+             if (settings->clientAddress == source && settings->serverAddress == target)
+             {
+-                reply->position = index + 1;
++                recv_data->position = index + 1;
+             }
+             return DLMS_ERROR_CODE_FALSE;
+         }
++
+         // Check that server addresses match.
+-        if (settings->serverAddress != source &&
+-            // If All-station (Broadcast).
+-            (settings->serverAddress & 0x7F) != 0x7F && (settings->serverAddress & 0x3FFF) != 0x3FFF)
+-        {
+-            //Check logical and physical address separately.
+-            //This is done because some meters might send four bytes
+-            //when only two bytes are needed.
+-            uint32_t readLogical, readPhysical, logical, physical;
++        if (settings->serverAddress != source && !dlms_isServerAddressBroadcast(settings->serverAddress))
++        {
++            // Check logical and physical address separately.
++            // This is done because some meters might send four bytes
++            // when only two bytes are needed.
++            uint32_t readLogical, readPhysical;
+             dlms_getServerAddress(source, &readLogical, &readPhysical);
++
++            uint32_t logical, physical;
+             dlms_getServerAddress(settings->serverAddress, &logical, &physical);
++
+             if (readLogical != logical || readPhysical != physical)
+             {
+                 return DLMS_ERROR_CODE_FALSE;
+             }
+         }
+     }
++
+     return DLMS_ERROR_CODE_OK;
+ }
+ 
+@@ -2489,11 +2508,7 @@ int dlms_getHdlcFrame(
+     uint16_t crc;
+     int ret;
+     uint16_t frameSize;
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    uint32_t len = 0;
+-#else
+-    uint16_t len = 0;
+-#endif
++    bb_size_t len = 0;
+     gxByteBuffer primaryAddress, secondaryAddress;
+     bb_clear(reply);
+     bb_attach(&primaryAddress, tmp, 0, 4);
+@@ -2827,326 +2842,337 @@ int dlms_getMacFrame(
+ #endif //DLMS_IGNORE_PLC
+ 
+ int dlms_getDataFromFrame(
+-    gxByteBuffer* reply,
+-    gxReplyData* data,
++    gxByteBuffer* recv_data,
++    gxReplyData* reply,
+     unsigned char hdlc)
+ {
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    uint32_t offset = data->data.size;
+-    uint32_t cnt;
+-#else
+-    uint16_t offset = data->data.size;
+-    uint16_t cnt;
+-#endif
+-    if (data->packetLength < reply->position)
++    bb_size_t offset = reply->data.size;
++    bb_size_t count = 0;
++    if (reply->packetLength < recv_data->position)
+     {
+-        cnt = 0;
++        count = 0;
+     }
+     else
+     {
+-        cnt = data->packetLength - reply->position;
++        count = reply->packetLength - recv_data->position;
+     }
+-    if (cnt != 0)
++
++    if (count != 0)
+     {
+         int ret;
+-        if ((ret = bb_capacity(&data->data, offset + cnt)) != 0 ||
+-            (ret = bb_set2(&data->data, reply, reply->position, cnt)) != 0)
++        if ((ret = bb_capacity(&reply->data, offset + count)) != 0 ||
++            (ret = bb_set2(&reply->data, recv_data, recv_data->position, count)) != 0)
+         {
+             return ret;
+         }
++
+         if (hdlc)
+         {
+-            reply->position += 3;
++            recv_data->position += 3;
+         }
+     }
++
+     // Set position to begin of new data.
+-    data->data.position = offset;
++    reply->data.position = offset;
+     return 0;
+ }
+ 
+ #ifndef DLMS_IGNORE_HDLC
+ 
+ int dlms_getHdlcData(
+-    unsigned char server,
+-    dlmsSettings* settings,
+-    gxByteBuffer* reply,
+-    gxReplyData* data,
+-    unsigned char* frame,
++    const dlmsSettings* settings,
++    gxByteBuffer* recv_data,
++    gxHdlcData* result,
+     unsigned char preEstablished,
+     unsigned char first)
+ {
+-    int ret;
+-    unsigned char ch;
+-    uint16_t eopPos;
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    uint32_t pos, frameLen = 0;
+-    uint32_t packetStartID = reply->position;
+-#else
+-    uint16_t pos, frameLen = 0;
+-    uint16_t packetStartID = (uint16_t)reply->position;
+-#endif
+-    uint16_t crc, crcRead;
+-    // If whole frame is not received yet.
+-    if (reply->size - reply->position < 9)
+-    {
+-        data->complete = 0;
+-        return 0;
+-    }
+-    data->complete = 1;
+-    // Find start of HDLC frame.
+-    for (pos = (uint16_t)reply->position; pos < reply->size; ++pos)
+-    {
+-        if ((ret = bb_getUInt8(reply, &ch)) != 0)
+-        {
+-            return ret;
+-        }
+-        if (ch == HDLC_FRAME_START_END)
+-        {
+-            packetStartID = pos;
+-            break;
+-        }
+-    }
+-    // Not a HDLC frame.
+-    // Sometimes meters can send some strange data between DLMS frames.
+-    if (reply->position == reply->size)
+-    {
+-        data->complete = 0;
+-        // Not enough data to parse;
+-        return 0;
+-    }
+-    if ((ret = bb_getUInt8(reply, frame)) != 0)
++    int ret = DLMS_ERROR_CODE_UNKNOWN;
++
++    bb_size_t packetStartIndex = recv_data->position;
++
++    uint8_t startOfPacket;
++    if ((ret = bb_getUInt8(recv_data, &startOfPacket)) != 0)
+     {
+-        return ret;
++        goto need_more_bytes;
+     }
+-    if ((*frame & 0xF0) != 0xA0)
++
++    if (startOfPacket != HDLC_FRAME_START_END)
+     {
+-        --reply->position;
+-        // If same data.
+-        return dlms_getHdlcData(server, settings, reply, data, frame, preEstablished, first);
++        ret = DLMS_ERROR_CODE_FALSE;
++        goto err;
+     }
+-    // Check frame length.
+-    if ((*frame & 0x7) != 0)
++
++    uint16_t frameFormat;
++    if ((ret = bb_getUInt16(recv_data, &frameFormat)) != 0)
+     {
+-        frameLen = ((*frame & 0x7) << 8);
++        goto need_more_bytes;
+     }
+-    if ((ret = bb_getUInt8(reply, &ch)) != 0)
++
++    // The length of the frame is stored in the lowest 11 bits from the frame format
++    uint16_t frameLen = frameFormat & 0x07FF;
++
++    // The next bit after `frameLen` is the segmentation bit
++    bool segmentationBit = (frameFormat & 0x0800) != 0;
++
++    // The last 4 bits from frame format are format type
++    uint8_t formatType = (frameFormat & 0xF000) >> 12;
++    if (formatType != 0xA)
+     {
+-        return ret;
++        ret = DLMS_ERROR_CODE_FALSE;
++        goto err;
+     }
+-    // If not enough data.
+-    frameLen += ch;
+-    if ((reply->size - reply->position + 1) < frameLen)
++
++    if ((ret = dlms_getHDLCAddress(recv_data, &result->destination, &result->destinationSize)) != 0)
+     {
+-        data->complete = 0;
+-        reply->position = packetStartID;
+-        // Not enough data to parse;
+-        return 0;
++        if (ret == DLMS_ERROR_CODE_OUTOFMEMORY) {
++            goto need_more_bytes;
++        } else {
++            ret = DLMS_ERROR_CODE_INVALID_SERVER_ADDRESS;
++            goto err;
++        }
+     }
+-    eopPos = (uint16_t)(frameLen + packetStartID + 1);
+-    if ((ret = bb_getUInt8ByIndex(reply, eopPos, &ch)) != 0)
++
++    if ((ret = dlms_getHDLCAddress(recv_data, &result->source, &result->sourceSize)) != 0)
+     {
+-        return ret;
++        if (ret == DLMS_ERROR_CODE_OUTOFMEMORY) {
++            goto need_more_bytes;
++        } else {
++            ret = DLMS_ERROR_CODE_INVALID_CLIENT_ADDRESS;
++            goto err;
++        }
+     }
+-    if (ch != HDLC_FRAME_START_END)
++
++    if ((ret = bb_getUInt8(recv_data, &result->frameType)) != 0)
+     {
+-        reply->position -= 2;
+-        return dlms_getHdlcData(server, settings, reply, data, frame, preEstablished, first);
++        goto need_more_bytes;
+     }
+ 
+-    // Check addresses.
+-    ret = dlms_checkHdlcAddress(server, settings, reply, eopPos);
+-    if (ret != 0)
+-    {
+-        //If pre-established client address has change.
+-        if (ret == DLMS_ERROR_CODE_INVALID_CLIENT_ADDRESS)
++    if (settings->server) {
++        //DLMS CCT test requires that client size is one byte.
++        if (result->sourceSize != 1) {
++            ret = DLMS_ERROR_CODE_INVALID_CLIENT_ADDRESS;
++            goto err;
++        }
++
++        // Check that server addresses match.
++        if (settings->serverAddress != 0 && settings->serverAddress != result->destination)
+         {
+-            return DLMS_ERROR_CODE_INVALID_CLIENT_ADDRESS;
++            // Not sure what is the reason for having this `bb_clear`. So will just leave it as 
++            // a reminder that existed in the previous version of `dlms_getHdlcData`
++            //
++            // if (recv_data->position + 4 == recv_data->size) {
++            //     result->packetLength = 0;
++            //     bb_clear(recv_data);
++            // }
++            ret = DLMS_ERROR_CODE_INVALID_SERVER_ADDRESS;
++            goto err;
+         }
+-        else
++
++        // Check that client addresses match.
++        if (settings->clientAddress != 0 && settings->clientAddress != result->source)
+         {
+-            if (ret == DLMS_ERROR_CODE_INVALID_SERVER_ADDRESS &&
+-                reply->position + 4 == reply->size)
++            //If SNRM and client has not call disconnect and changes client ID.
++            if (result->frameType != DLMS_COMMAND_SNRM)
+             {
+-                data->packetLength = 0;
+-                bb_clear(reply);
+-                return ret;
++                ret = DLMS_ERROR_CODE_INVALID_CLIENT_ADDRESS;
++                goto err;
+             }
+-            if (ret == DLMS_ERROR_CODE_FALSE)
++        }
++    } else {
++        // Check that client addresses match.
++        if (settings->clientAddress != result->destination)
++        {
++            ret = DLMS_ERROR_CODE_FALSE;
++            goto err;
++        }
++
++        // Check that server addresses match.
++        if (settings->serverAddress != result->source && !dlms_isServerAddressBroadcast(settings->serverAddress))
++        {
++            // Check logical and physical address separately.
++            // This is done because some meters might send four bytes
++            // when only two bytes are needed.
++            uint32_t readLogical, readPhysical;
++            dlms_getServerAddress(result->source, &readLogical, &readPhysical);
++
++            uint32_t logical, physical;
++            dlms_getServerAddress(settings->serverAddress, &logical, &physical);
++
++            if (readLogical != logical || readPhysical != physical)
+             {
+-                // If echo or reply to other meter.
+-                return dlms_getHdlcData(server, settings, reply, data, frame, preEstablished, first);
++                ret = DLMS_ERROR_CODE_FALSE;
++                goto err;
+             }
+-            reply->position = packetStartID + 1;
+-            ret = dlms_getHdlcData(server, settings, reply, data, frame, preEstablished, first);
+-            return ret;
+         }
+     }
+-    // Is there more data available.
+-    unsigned char moreData = (*frame & 0x8) != 0;
+-    // Get frame type.
+-    if ((ret = bb_getUInt8(reply, frame)) != 0)
+-    {
+-        return ret;
+-    }
+ 
+-    // Is there more data available.
+-    if (moreData)
++    if (segmentationBit)
+     {
+-        data->moreData |= DLMS_DATA_REQUEST_TYPES_FRAME;
++        result->moreData |= DLMS_DATA_REQUEST_TYPES_FRAME;
+     }
+     else
+     {
+-        data->moreData = ((DLMS_DATA_REQUEST_TYPES)(data->moreData & ~DLMS_DATA_REQUEST_TYPES_FRAME));
++        result->moreData &= ~DLMS_DATA_REQUEST_TYPES_FRAME;
+     }
+ 
+-    if (!preEstablished
+-#ifndef DLMS_IGNORE_HDLC_CHECK
+-        && !checkFrame(settings, *frame)
+-#endif //DLMS_IGNORE_HDLC_CHECK
+-        )
++    if (!preEstablished && !checkFrameAlternative(settings, result->frameType))
+     {
+-        reply->position = eopPos + 1;
+         if (settings->server)
+         {
+-            return DLMS_ERROR_CODE_INVALID_FRAME_NUMBER;
++            ret = DLMS_ERROR_CODE_INVALID_FRAME_NUMBER;
+         }
+-        return dlms_getHdlcData(server, settings, reply, data, frame, preEstablished, first);
+-    }
+-    // Check that header CRC is correct.
+-    crc = countCRC(reply, packetStartID + 1,
+-        reply->position - packetStartID - 1);
+ 
+-    if ((ret = bb_getUInt16(reply, &crcRead)) != 0)
+-    {
+-        return ret;
++        goto err;
+     }
+ 
+-    if (crc != crcRead)
++    // Check that header CRC is correct.
+     {
+-        if (reply->size - reply->position > 8)
++        uint16_t crcRead;
++        if ((ret = bb_getUInt16(recv_data, &crcRead)) != 0)
+         {
+-            return dlms_getHdlcData(server, settings, reply, data, frame, preEstablished, first);
++            goto need_more_bytes;
++        }
++
++        uint16_t crc = countCRC(recv_data, packetStartIndex + 1, recv_data->position - packetStartIndex - 3);
++
++        if (crc != crcRead)
++        {
++            svr_notifyTrace("Invalid CRC. ", -1);
++            ret = DLMS_ERROR_CODE_WRONG_CRC;
++            goto err;
+         }
+-#ifdef DLMS_DEBUG
+-        svr_notifyTrace("Invalid CRC. ", -1);
+-#endif //DLMS_DEBUG
+-        return DLMS_ERROR_CODE_WRONG_CRC;
+     }
++
++    bb_size_t packetEndIndex = packetStartIndex + frameLen + 1;
++    bool doesPacketHaveData = recv_data->position != packetEndIndex;
++
+     // Check that packet CRC match only if there is a data part.
+-    if (reply->position != packetStartID + frameLen + 1)
+-    {
+-        crc = countCRC(reply, packetStartID + 1, frameLen - 2);
+-        if ((ret = bb_getUInt16ByIndex(reply, packetStartID + frameLen - 1, &crcRead)) != 0)
++    if (doesPacketHaveData) {
++        uint16_t crcRead;
++        if ((ret = bb_getUInt16ByIndex(recv_data, packetStartIndex + frameLen - 1, &crcRead)) != 0)
+         {
+-            return ret;
++            goto need_more_bytes;
+         }
++
++        uint16_t crc = countCRC(recv_data, packetStartIndex + 1, frameLen - 2);
++
+         if (crc != crcRead)
+         {
+-#ifdef DLMS_DEBUG
+             svr_notifyTrace("Invalid CRC. ", -1);
+-#endif //DLMS_DEBUG
+-            return DLMS_ERROR_CODE_WRONG_CRC;
++            ret = DLMS_ERROR_CODE_WRONG_CRC;
++            goto err;
+         }
+-        // Remove CRC and EOP from packet length.
+-        data->packetLength = eopPos - 2;
+     }
+-    else
++
++    // Remove CRC from packet length.
++    result->packetLength = packetEndIndex - 2;
++
++    uint8_t endOfPacket;
++    if ((ret = bb_getUInt8ByIndex(recv_data, packetEndIndex, &endOfPacket)) != 0)
+     {
+-        data->packetLength = eopPos - 2;
++        goto need_more_bytes;
+     }
+ 
+-
+-    if (*frame != 0x13 && *frame != 0x3 && (*frame & HDLC_FRAME_TYPE_U_FRAME) == HDLC_FRAME_TYPE_U_FRAME)
++    if (endOfPacket != HDLC_FRAME_START_END)
+     {
++        ret = DLMS_ERROR_CODE_FALSE;
++        goto err;
++    }
++
++    if (result->frameType != 0x13 && result->frameType != 0x3 && (result->frameType & HDLC_FRAME_TYPE_U_FRAME) == HDLC_FRAME_TYPE_U_FRAME) {
++
+         // Get Eop if there is no data.
+-        if (reply->position == packetStartID + frameLen + 1)
++        if (!doesPacketHaveData)
+         {
+             // Get EOP.
+-            if ((ret = bb_getUInt8(reply, &ch)) != 0)
++            uint8_t ch;
++            if ((ret = bb_getUInt8(recv_data, &ch)) != 0)
+             {
+-                return ret;
++                goto err;
+             }
+         }
+-        data->command = (DLMS_COMMAND)*frame;
+-        switch (data->command)
++
++        result->command = (DLMS_COMMAND)result->frameType;
++        switch (result->command)
+         {
+-        case DLMS_COMMAND_SNRM:
+-        case DLMS_COMMAND_UA:
+-        case DLMS_COMMAND_DISCONNECT_MODE:
+-        case DLMS_COMMAND_REJECTED:
+-        case DLMS_COMMAND_DISC:
+-            break;
+-        default:
+-            //Unknown command.
+-            return DLMS_ERROR_CODE_REJECTED;
++            case DLMS_COMMAND_SNRM:
++            case DLMS_COMMAND_UA:
++            case DLMS_COMMAND_DISCONNECT_MODE:
++            case DLMS_COMMAND_REJECTED:
++            case DLMS_COMMAND_DISC:
++                break;
++            default:
++                //Unknown command.
++                return DLMS_ERROR_CODE_REJECTED;
+         }
+     }
+-    else if (*frame != 0x13 && *frame != 0x3 && (*frame & HDLC_FRAME_TYPE_S_FRAME) == HDLC_FRAME_TYPE_S_FRAME)
+-    {
++    else if (result->frameType != 0x13 && result->frameType != 0x3 && (result->frameType & HDLC_FRAME_TYPE_S_FRAME) == HDLC_FRAME_TYPE_S_FRAME) {
+         // If S-frame
+-        int tmp = (*frame >> 2) & 0x3;
++        int tmp = (result->frameType >> 2) & 0x3;
++
+         // If frame is rejected.
+         if (tmp == HDLC_CONTROL_FRAME_REJECT)
+         {
+-            return DLMS_ERROR_CODE_REJECTED;
++            ret = DLMS_ERROR_CODE_REJECTED;
++            goto err;
+         }
+         else if (tmp == HDLC_CONTROL_FRAME_RECEIVE_NOT_READY)
+         {
+-            return DLMS_ERROR_CODE_REJECTED;
++            ret = DLMS_ERROR_CODE_REJECTED;
++            goto err;
+         }
+         else if (tmp == HDLC_CONTROL_FRAME_RECEIVE_READY)
+         {
+         }
++
+         // Get Eop if there is no data.
+-        if (reply->position == packetStartID + frameLen + 1)
++        if (!doesPacketHaveData)
+         {
+             // Get EOP.
+-            if ((ret = bb_getUInt8(reply, &ch)) != 0)
++            uint8_t ch;
++            if ((ret = bb_getUInt8(recv_data, &ch)) != 0)
+             {
+-                return ret;
++                goto err;
+             }
+         }
+     }
+     else
+     {
+         // I-frame
+-        // Get Eop if there is no data.
+-        if (reply->position == packetStartID + frameLen + 1)
++        if (!doesPacketHaveData)
+         {
+             // Get EOP.
+-            if ((ret = bb_getUInt8(reply, &ch)) != 0)
++            uint8_t ch;
++            if ((ret = bb_getUInt8(recv_data, &ch)) != 0)
+             {
+-                return ret;
++                goto err;
+             }
+-            if ((*frame & 0x1) == 0x1)
++            if ((result->frameType & 0x1) == 0x1)
+             {
+-                data->moreData = DLMS_DATA_REQUEST_TYPES_FRAME;
++                result->moreData = DLMS_DATA_REQUEST_TYPES_FRAME;
+             }
+         }
+         else
+         {
+-            dlms_checkLLCBytes(settings, reply);
++            dlms_checkLLCBytes(settings, recv_data);
+         }
+     }
+-    if (settings->server && (first || data->command == DLMS_COMMAND_SNRM))
++
++    if (settings->server && (first || result->frameType == DLMS_COMMAND_SNRM))
+     {
+ #ifndef DLMS_IGNORE_SERVER
+         // Check is data send to this server.
+         if (!svr_isTarget(settings, settings->serverAddress, settings->clientAddress))
+         {
+-            settings->serverAddress = 0;
+-            settings->clientAddress = 0;
+-            if (reply->size - reply->position > 8)
++            result->destination = 0;
++            result->source = 0;
++            if (bb_available(recv_data) > 8)
+             {
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-                uint32_t pos = reply->position;
+-#else
+-                uint16_t pos = reply->position;
+-#endif //!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__))
+-                ret = dlms_getHdlcData(server, settings, reply, data, frame, preEstablished, first);
+-                if (settings->serverAddress != 0 && settings->clientAddress != 0)
++                bb_size_t pos = recv_data->position;
++                ret = dlms_getHdlcData(settings, recv_data, result, preEstablished, first);
++                if (result->destination != 0 && result->source != 0)
+                 {
+-                    reply->position = pos;
++                    recv_data->position = pos;
+                 }
+                 return ret;
+             }
+@@ -3154,8 +3180,14 @@ int dlms_getHdlcData(
+         }
+ #endif //DLMS_IGNORE_SERVER
+     }
+-    return DLMS_ERROR_CODE_OK;
++
++    result->complete = true;
++need_more_bytes:
++    ret = DLMS_ERROR_CODE_OK;
++err:
++    return ret;
+ }
++
+ #endif //DLMS_IGNORE_HDLC
+ 
+ #ifndef DLMS_IGNORE_WRAPPER
+@@ -3270,28 +3302,31 @@ int dlms_getTcpData(
+     gxReplyData* notify,
+     unsigned char* isNotify)
+ {
+-    int ret, pos;
+-    uint16_t value;
++    int ret;
+     *isNotify = 0;
++    data->complete = 0;
++
+     // If whole frame is not received yet.
+-    if (buff->size - buff->position < 8)
++    if (bb_available(buff) < 8)
+     {
+-        data->complete = 0;
+         return DLMS_ERROR_CODE_OK;
+     }
+-    pos = buff->position;
+-    data->complete = 0;
++
+     if (notify != NULL)
+     {
+         notify->complete = 0;
+     }
+-    while (buff->position != buff->size)
++
++    bb_size_t pos = buff->position;
++    while (bb_available(buff) > 0)
+     {
+         // Get version
++        uint16_t value;
+         if ((ret = bb_getUInt16(buff, &value)) != 0)
+         {
+             return ret;
+         }
++
+         if (value == 1)
+         {
+             // Check TCP/IP addresses.
+@@ -3654,10 +3689,12 @@ int dlms_getPlcHdlcData(
+             {
+                 return ret;
+             }
+-            if ((ret = dlms_getHdlcData(settings->server, settings, buff, data, frame, 0, 1)) != 0)
++            gxHdlcData result = { 0 };
++            if ((ret = dlms_getHdlcData(settings, buff, &result, data->preEstablished, 1)) != 0)
+             {
+                 return ret;
+             }
++            dlms_applyHdlcData(&result, settings, data, frame);
+             dlms_getDataFromFrame(buff, data, dlms_useHdlc(settings->interfaceType));
+             buff->position = buff->position + padLen;
+             uint32_t crcCount = dlms_countFCS24(buff->data, index, buff->position - index);
+@@ -5183,7 +5220,7 @@ int dlms_handleExceptionResponse(gxByteBuffer* data)
+ 
+ int dlms_getPdu(
+     dlmsSettings* settings,
+-    gxReplyData* data,
++    gxReplyData* reply,
+     unsigned char first)
+ {
+     int ret = DLMS_ERROR_CODE_OK;
+@@ -5191,32 +5228,32 @@ int dlms_getPdu(
+     uint32_t index;
+ #endif //!defined(DLMS_IGNORE_CLIENT)
+     unsigned char ch;
+-    DLMS_COMMAND cmd = data->command;
++    DLMS_COMMAND cmd = reply->command;
+     // If header is not read yet or GBT message.
+     if (cmd == DLMS_COMMAND_NONE)
+     {
+         // If PDU is missing.
+-        if (bb_available(&data->data) == 0)
++        if (bb_available(&reply->data) == 0)
+         {
+             // Invalid PDU.
+             return DLMS_ERROR_CODE_INVALID_PARAMETER;
+         }
+ #if !defined(DLMS_IGNORE_CLIENT)
+-        index = data->data.position;
++        index = reply->data.position;
+ #endif //!defined(DLMS_IGNORE_CLIENT)
+         // Get command.
+-        if ((ret = bb_getUInt8(&data->data, &ch)) != 0)
++        if ((ret = bb_getUInt8(&reply->data, &ch)) != 0)
+         {
+             return ret;
+         }
+         cmd = (DLMS_COMMAND)ch;
+-        data->command = cmd;
++        reply->command = cmd;
+         switch (cmd)
+         {
+ #if !defined(DLMS_IGNORE_CLIENT)
+ #if !defined(DLMS_IGNORE_ASSOCIATION_SHORT_NAME) && !defined(DLMS_IGNORE_MALLOC)
+         case DLMS_COMMAND_READ_RESPONSE:
+-            if ((ret = dlms_handleReadResponse(settings, data, (uint16_t)index)) != 0)
++            if ((ret = dlms_handleReadResponse(settings, reply, (uint16_t)index)) != 0)
+             {
+                 if (ret == DLMS_ERROR_CODE_FALSE)
+                 {
+@@ -5227,7 +5264,7 @@ int dlms_getPdu(
+             break;
+ #endif //!defined(DLMS_IGNORE_ASSOCIATION_SHORT_NAME) && !defined(DLMS_IGNORE_MALLOC)
+         case DLMS_COMMAND_GET_RESPONSE:
+-            if ((ret = dlms_handleGetResponse(settings, data, index)) != 0)
++            if ((ret = dlms_handleGetResponse(settings, reply, index)) != 0)
+             {
+                 if (ret == DLMS_ERROR_CODE_FALSE)
+                 {
+@@ -5237,30 +5274,30 @@ int dlms_getPdu(
+             }
+             break;
+         case DLMS_COMMAND_SET_RESPONSE:
+-            ret = dlms_handleSetResponse(settings, data);
++            ret = dlms_handleSetResponse(settings, reply);
+             break;
+ #if !defined(DLMS_IGNORE_ASSOCIATION_SHORT_NAME) && !defined(DLMS_IGNORE_MALLOC)
+         case DLMS_COMMAND_WRITE_RESPONSE:
+-            ret = dlms_handleWriteResponse(data);
++            ret = dlms_handleWriteResponse(reply);
+             break;
+ #endif //!defined(DLMS_IGNORE_ASSOCIATION_SHORT_NAME) && !defined(DLMS_IGNORE_MALLOC)
+         case DLMS_COMMAND_METHOD_RESPONSE:
+-            ret = dlms_handleMethodResponse(settings, data);
++            ret = dlms_handleMethodResponse(settings, reply);
+             break;
+         case DLMS_COMMAND_GENERAL_BLOCK_TRANSFER:
+-            ret = dlms_handleGbt(settings, data);
++            ret = dlms_handleGbt(settings, reply);
+             break;
+         case DLMS_COMMAND_CONFIRMED_SERVICE_ERROR:
+-            ret = dlms_handleConfirmedServiceError(&data->data);
++            ret = dlms_handleConfirmedServiceError(&reply->data);
+             break;
+         case DLMS_COMMAND_EXCEPTION_RESPONSE:
+-            ret = dlms_handleExceptionResponse(&data->data);
++            ret = dlms_handleExceptionResponse(&reply->data);
+             break;
+ #endif //!defined(DLMS_IGNORE_CLIENT)
+         case DLMS_COMMAND_AARQ:
+         case DLMS_COMMAND_AARE:
+             // This is parsed later.
+-            data->data.position -= 1;
++            reply->data.position -= 1;
+             break;
+         case DLMS_COMMAND_RELEASE_RESPONSE:
+             break;
+@@ -5274,7 +5311,7 @@ int dlms_getPdu(
+         case DLMS_COMMAND_METHOD_REQUEST:
+         case DLMS_COMMAND_RELEASE_REQUEST:
+             // Server handles this.
+-            if ((data->moreData & DLMS_DATA_REQUEST_TYPES_FRAME) != 0)
++            if ((reply->moreData & DLMS_DATA_REQUEST_TYPES_FRAME) != 0)
+             {
+                 break;
+             }
+@@ -5305,7 +5342,7 @@ int dlms_getPdu(
+         case DLMS_COMMAND_DED_EVENT_NOTIFICATION:
+         case DLMS_COMMAND_DED_METHOD_RESPONSE:
+             // If all frames are read.
+-            ret = dlms_handleGloDedResponse(settings, data, index);
++            ret = dlms_handleGloDedResponse(settings, reply, index);
+             break;
+ #endif // !defined(DLMS_IGNORE_CLIENT)
+         case DLMS_COMMAND_GENERAL_GLO_CIPHERING:
+@@ -5321,18 +5358,18 @@ int dlms_getPdu(
+             else
+ #endif // !defined(DLMS_IGNORE_SERVER)
+             {
+-                ret = dlms_handleGloDedResponse(settings, data, index);
++                ret = dlms_handleGloDedResponse(settings, reply, index);
+             }
+ #endif //!defined(DLMS_IGNORE_CLIENT)
+             break;
+ #if !defined(DLMS_IGNORE_GENERAL_CIPHERING) && !defined(DLMS_IGNORE_HIGH_GMAC)
+         case DLMS_COMMAND_GENERAL_CIPHERING:
+-            ret = dlms_handleGeneralCiphering(settings, data);
++            ret = dlms_handleGeneralCiphering(settings, reply);
+             break;
+ #endif //!defined(DLMS_IGNORE_GENERAL_CIPHERING) && !defined(DLMS_IGNORE_HIGH_GMAC)
+ #endif //DLMS_IGNORE_HIGH_GMAC
+         case DLMS_COMMAND_DATA_NOTIFICATION:
+-            ret = dlms_handleDataNotification(settings, data);
++            ret = dlms_handleDataNotification(settings, reply);
+             // Client handles this.
+             break;
+         case DLMS_COMMAND_EVENT_NOTIFICATION:
+@@ -5346,27 +5383,27 @@ int dlms_getPdu(
+             return DLMS_ERROR_CODE_UNKNOWN_COMMAND;
+         }
+     }
+-    else if ((data->moreData & DLMS_DATA_REQUEST_TYPES_FRAME) == 0)
++    else if ((reply->moreData & DLMS_DATA_REQUEST_TYPES_FRAME) == 0)
+     {
+         // Is whole block is read and if last packet and data is not try to
+         // peek.
+-        if (!data->peek && data->moreData == DLMS_DATA_REQUEST_TYPES_NONE)
++        if (!reply->peek && reply->moreData == DLMS_DATA_REQUEST_TYPES_NONE)
+         {
+-            if (!settings->server || data->command == DLMS_COMMAND_AARE || data->command == DLMS_COMMAND_AARQ)
++            if (!settings->server || reply->command == DLMS_COMMAND_AARE || reply->command == DLMS_COMMAND_AARQ)
+             {
+-                data->data.position = 0;
++                reply->data.position = 0;
+             }
+             else
+             {
+-                data->data.position = 1;
++                reply->data.position = 1;
+             }
+         }
+         if (cmd == DLMS_COMMAND_GENERAL_BLOCK_TRANSFER)
+         {
+-            data->data.position = data->cipherIndex + 1;
+-            ret = dlms_handleGbt(settings, data);
+-            data->cipherIndex = (uint16_t)data->data.size;
+-            data->command = DLMS_COMMAND_NONE;
++            reply->data.position = reply->cipherIndex + 1;
++            ret = dlms_handleGbt(settings, reply);
++            reply->cipherIndex = (uint16_t)reply->data.size;
++            reply->command = DLMS_COMMAND_NONE;
+         }
+         // Get command if operating as a server.
+ #ifndef DLMS_IGNORE_SERVER
+@@ -5384,9 +5421,9 @@ int dlms_getPdu(
+             case DLMS_COMMAND_GENERAL_GLO_CIPHERING:
+             case DLMS_COMMAND_GENERAL_DED_CIPHERING:
+             case DLMS_COMMAND_GENERAL_CIPHERING:
+-                data->command = DLMS_COMMAND_NONE;
+-                data->data.position = (data->cipherIndex);
+-                ret = dlms_getPdu(settings, data, 0);
++                reply->command = DLMS_COMMAND_NONE;
++                reply->data.position = (reply->cipherIndex);
++                ret = dlms_getPdu(settings, reply, 0);
+                 break;
+             default:
+                 break;
+@@ -5397,7 +5434,7 @@ int dlms_getPdu(
+ #endif //DLMS_IGNORE_SERVER
+         {
+             // Client do not need a command any more.
+-            data->command = DLMS_COMMAND_NONE;
++            reply->command = DLMS_COMMAND_NONE;
+ #ifndef DLMS_IGNORE_HIGH_GMAC
+             // Ciphered messages are handled after whole PDU is received.
+             switch (cmd)
+@@ -5413,8 +5450,8 @@ int dlms_getPdu(
+             case DLMS_COMMAND_GENERAL_GLO_CIPHERING:
+             case DLMS_COMMAND_GENERAL_DED_CIPHERING:
+             case DLMS_COMMAND_GENERAL_CIPHERING:
+-                data->data.position = data->cipherIndex;
+-                ret = dlms_getPdu(settings, data, 0);
++                reply->data.position = reply->cipherIndex;
++                ret = dlms_getPdu(settings, reply, 0);
+                 break;
+             default:
+                 break;
+@@ -5427,23 +5464,23 @@ int dlms_getPdu(
+ #if !defined(DLMS_IGNORE_ASSOCIATION_SHORT_NAME)
+     // Get data only blocks if SN is used. This is faster.
+     if (ret == 0 && cmd == DLMS_COMMAND_READ_RESPONSE
+-        && data->commandType == DLMS_SINGLE_READ_RESPONSE_DATA_BLOCK_RESULT
+-        && (data->moreData & DLMS_DATA_REQUEST_TYPES_FRAME) != 0)
++        && reply->commandType == DLMS_SINGLE_READ_RESPONSE_DATA_BLOCK_RESULT
++        && (reply->moreData & DLMS_DATA_REQUEST_TYPES_FRAME) != 0)
+     {
+         return 0;
+     }
+ #endif //!defined(DLMS_IGNORE_ASSOCIATION_SHORT_NAME)
+     // Get data if all data is read or we want to peek data.
+-    if (ret == 0 && !data->ignoreValue && data->data.position != data->data.size
++    if (ret == 0 && !reply->ignoreValue && reply->data.position != reply->data.size
+         && (
+ #if !defined(DLMS_IGNORE_ASSOCIATION_SHORT_NAME)
+             cmd == DLMS_COMMAND_READ_RESPONSE ||
+ #endif //!defined(DLMS_IGNORE_ASSOCIATION_SHORT_NAME)
+             cmd == DLMS_COMMAND_GET_RESPONSE)
+-        && (data->moreData == DLMS_DATA_REQUEST_TYPES_NONE
+-            || data->peek))
++        && (reply->moreData == DLMS_DATA_REQUEST_TYPES_NONE
++            || reply->peek))
+     {
+-        ret = dlms_getValueFromData(settings, data);
++        ret = dlms_getValueFromData(settings, reply);
+     }
+ #else
+     data->dataValue.byteArr = &data->data;
+@@ -6332,60 +6369,124 @@ int dlms_getData2(
+     return dlms_getData3(settings, reply, data, NULL, first, &isNotify);
+ }
+ 
++void dlms_applyHdlcData(
++    gxHdlcData *result,
++    dlmsSettings* settings,
++    gxReplyData* reply,
++    unsigned char *frame)
++{
++    reply->complete = 1;
++    reply->packetLength = result->packetLength;
++    reply->moreData = result->moreData;
++    reply->command = result->command;
++    (*frame) = result->frameType;
++    if (settings->server) {
++        settings->serverAddress = result->destination;
++        settings->clientAddress = result->source;
++    }
++
++    if (!reply->preEstablished) {
++        // If U frame.
++        if ((*frame & 0x3) == 3)
++        {
++            if (*frame == 0x93)
++            {
++                resetFrameSequence(settings);
++            }
++        }
++        // If S frame
++        else if ((*frame & 0x1) == 1)
++        {
++            settings->receiverFrame = increaseReceiverSequence(settings->receiverFrame);
++        }
++        // If I frame
++        else if ((*frame & 0x01) == 0)
++        {
++            settings->receiverFrame = *frame;
++        }
++        // If RR
++        else
++        {
++            settings->receiverFrame = *frame;
++        }
++
++    }
++}
++
+ int dlms_getData3(
+     dlmsSettings* settings,
+-    gxByteBuffer* reply,
+-    gxReplyData* data,
++    gxByteBuffer* recv_data,
++    gxReplyData* reply,
+     gxReplyData* notify,
+     unsigned char first,
+     unsigned char* isNotify)
+ {
+-    int ret;
+-    unsigned char frame = 0;
++    int ret = DLMS_ERROR_CODE_UNKNOWN;
++
+     if (isNotify != NULL)
+     {
+         *isNotify = 0;
+     }
+-    switch (settings->interfaceType)
+-    {
++
++    unsigned char frame = 0;
++    for (bb_size_t i = recv_data->position; i < recv_data->size; i++) {
++        recv_data->position = i;
++
++        switch (settings->interfaceType)
++        {
+ #ifndef DLMS_IGNORE_HDLC
+-    case DLMS_INTERFACE_TYPE_HDLC:
+-    case DLMS_INTERFACE_TYPE_HDLC_WITH_MODE_E:
+-        ret = dlms_getHdlcData(settings->server, settings, reply, data, &frame, data->preEstablished, first);
+-        break;
++        case DLMS_INTERFACE_TYPE_HDLC:
++        case DLMS_INTERFACE_TYPE_HDLC_WITH_MODE_E: {
++            gxHdlcData result = { 0 };
++            result.command = reply->command;
++            result.moreData = reply->moreData;
++            result.packetLength = reply->packetLength;
++            ret = dlms_getHdlcData(settings, recv_data, &result, reply->preEstablished, first);
++            if (ret == DLMS_ERROR_CODE_OK && result.complete) {
++                dlms_applyHdlcData(&result, settings, reply, &frame);
++            }
++            break;
++        }
+ #endif //DLMS_IGNORE_HDLC
+ #ifndef DLMS_IGNORE_WRAPPER
+-    case DLMS_INTERFACE_TYPE_WRAPPER:
+-        ret = dlms_getTcpData(settings, reply, data, notify, isNotify);
+-        break;
++        case DLMS_INTERFACE_TYPE_WRAPPER:
++            ret = dlms_getTcpData(settings, recv_data, reply, notify, isNotify);
++            break;
+ #endif //DLMS_IGNORE_WRAPPER
+ #ifndef DLMS_IGNORE_WIRELESS_MBUS
+-    case DLMS_INTERFACE_TYPE_WIRELESS_MBUS:
+-        ret = dlms_getMBusData(settings, reply, data);
+-        break;
++        case DLMS_INTERFACE_TYPE_WIRELESS_MBUS:
++            ret = dlms_getMBusData(settings, recv_data, reply);
++            break;
+ #endif //DLMS_IGNORE_WIRELESS_MBUS
+-    case DLMS_INTERFACE_TYPE_PDU:
+-        data->packetLength = reply->size;
+-        data->complete = reply->size != 0;
+-        ret = 0;
+-        break;
++        case DLMS_INTERFACE_TYPE_PDU:
++            reply->packetLength = recv_data->size;
++            reply->complete = recv_data->size != 0;
++            ret = 0;
++            break;
+ #ifndef DLMS_IGNORE_PLC
+-    case DLMS_INTERFACE_TYPE_PLC:
+-        ret = dlms_getPlcData(settings, reply, data);
+-        break;
+-    case DLMS_INTERFACE_TYPE_PLC_HDLC:
+-        ret = dlms_getPlcHdlcData(settings, reply, data, &frame);
++        case DLMS_INTERFACE_TYPE_PLC:
++            ret = dlms_getPlcData(settings, recv_data, reply);
++            break;
++        case DLMS_INTERFACE_TYPE_PLC_HDLC:
++            ret = dlms_getPlcHdlcData(settings, recv_data, reply, &frame);
++            break;
+ #endif //DLMS_IGNORE_PLC
+-        break;
+-    default:
+-        // Invalid Interface type.
+-        ret = DLMS_ERROR_CODE_INVALID_PARAMETER;
+-        break;
++        default:
++            // Invalid Interface type.
++            ret = DLMS_ERROR_CODE_INVALID_PARAMETER;
++            break;
++        }
++
++        if (reply->complete) {
++            break;
++        }
+     }
++
+     if (ret != 0)
+     {
+-        return ret;
++        goto err;
+     }
++
+     if (*isNotify && notify != NULL)
+     {
+         if (!notify->complete)
+@@ -6393,41 +6494,44 @@ int dlms_getData3(
+             // If all data is not read yet.
+             return 0;
+         }
+-        data = notify;
++        reply = notify;
+     }
+-    else if (!data->complete)
++    else if (!reply->complete)
+     {
+         // If all data is not read yet.
+         return 0;
+     }
++
+     if (settings->interfaceType != DLMS_INTERFACE_TYPE_PLC_HDLC)
+     {
+-        if ((ret = dlms_getDataFromFrame(reply, data, dlms_useHdlc(settings->interfaceType))) != 0)
++        if ((ret = dlms_getDataFromFrame(recv_data, reply, dlms_useHdlc(settings->interfaceType))) != 0)
+         {
+             return ret;
+         }
+     }
++
+     // If keepalive or get next frame request.
+-    if (((frame != 0x13 && frame != 0x3) || data->moreData != DLMS_DATA_REQUEST_TYPES_NONE) && (frame & 0x1) != 0)
++    if (((frame != 0x13 && frame != 0x3) || reply->moreData != DLMS_DATA_REQUEST_TYPES_NONE) && (frame & 0x1) != 0)
+     {
+-        if (dlms_useHdlc(settings->interfaceType) && data->data.size != 0)
++        if (dlms_useHdlc(settings->interfaceType) && reply->data.size != 0)
+         {
+-            if (reply->position != reply->size)
++            if (recv_data->position != recv_data->size)
+             {
+-                reply->position += 3;
++                recv_data->position += 3;
+             }
+         }
+-        if (data->command == DLMS_COMMAND_REJECTED)
++        if (reply->command == DLMS_COMMAND_REJECTED)
+         {
+             return DLMS_ERROR_CODE_REJECTED;
+         }
+         return DLMS_ERROR_CODE_OK;
+     }
+-    ret = dlms_getPdu(settings, data, first);
++
++    ret = dlms_getPdu(settings, reply, first);
+     if (ret == 0 && notify != NULL && !isNotify)
+     {
+         //Check command to make sure it's not notify message.
+-        switch (data->command)
++        switch (reply->command)
+         {
+         case DLMS_COMMAND_DATA_NOTIFICATION:
+ #ifndef DLMS_IGNORE_HIGH_GMAC
+@@ -6437,25 +6541,28 @@ int dlms_getData3(
+         case DLMS_COMMAND_INFORMATION_REPORT:
+         case DLMS_COMMAND_EVENT_NOTIFICATION:
+             *isNotify = 1;
+-            notify->complete = data->complete;
+-            notify->moreData = data->moreData;
+-            notify->command = data->command;
+-            data->command = DLMS_COMMAND_NONE;
+-            notify->time = data->time;
++            notify->complete = reply->complete;
++            notify->moreData = reply->moreData;
++            notify->command = reply->command;
++            reply->command = DLMS_COMMAND_NONE;
++            notify->time = reply->time;
+ #ifdef DLMS_USE_EPOCH_TIME
+             data->time = 0;
+ #else
+-            memset(&data->time, 0, sizeof(data->time));
++            memset(&reply->time, 0, sizeof(reply->time));
+ #endif // DLMS_USE_EPOCH_TIME
+-            bb_set2(&notify->data, &data->data, data->data.position, bb_available(&data->data));
+-            bb_clear(&data->data);
+-            notify->dataValue = data->dataValue;
+-            data->dataValue.vt = DLMS_DATA_TYPE_NONE;
++            bb_set2(&notify->data, &reply->data, reply->data.position, bb_available(&reply->data));
++            bb_clear(&reply->data);
++            notify->dataValue = reply->dataValue;
++            reply->dataValue.vt = DLMS_DATA_TYPE_NONE;
+             break;
+         default:
+             break;
+         }
+     }
++
++    ret = DLMS_ERROR_CODE_OK;
++err:
+     return ret;
+ }
+ 
+index a201185..b0f7fb3 100644
+--- a/development/src/dlmsSettings.c
++++ b/development/src/dlmsSettings.c
+@@ -295,16 +295,17 @@ unsigned char increaseSendSequence(
+     return (unsigned char)((value & 0xF0) | ((value + 0x2) & 0xE));
+ }
+ 
+-#ifndef DLMS_IGNORE_HDLC_CHECK
+ unsigned char checkFrame(
+     dlmsSettings* settings,
+     unsigned char frame)
+ {
++#ifndef DLMS_IGNORE_HDLC_CHECK
+     //If notify
+     if (frame == 0x13)
+     {
+         return 1;
+     }
++
+     // If U frame.
+     if ((frame & 0x3) == 3)
+     {
+@@ -322,6 +323,7 @@ unsigned char checkFrame(
+         }
+         return 1;
+     }
++
+     // If S -frame
+     if ((frame & 0x1) == 1)
+     {
+@@ -333,6 +335,7 @@ unsigned char checkFrame(
+         settings->receiverFrame = increaseReceiverSequence(settings->receiverFrame);
+         return 1;
+     }
++
+     //Handle I-frame.
+     unsigned char expected;
+     if ((settings->senderFrame & 0x1) == 0)
+@@ -343,12 +346,14 @@ unsigned char checkFrame(
+             settings->receiverFrame = frame;
+             return 1;
+         }
++
+         //If the final bit is not set.
+         if (frame == (expected & ~0x10) && settings->windowSizeRX != 1)
+         {
+             settings->receiverFrame = frame;
+             return 1;
+         }
++
+         //If Final bit is not set for the previous message.
+         if ((settings->receiverFrame & 0x10) == 0 && settings->windowSizeRX != 1)
+         {
+@@ -390,6 +395,7 @@ unsigned char checkFrame(
+             }
+         }
+     }
++
+     //Pre-established connections needs this.
+     if ((!settings->server && settings->receiverFrame == SERVER_START_RECEIVER_FRAME_SEQUENCE) ||
+         (settings->server && settings->receiverFrame == CLIENT_START_RCEIVER_FRAME_SEQUENCE))
+@@ -397,12 +403,134 @@ unsigned char checkFrame(
+         settings->receiverFrame = frame;
+         return 1;
+     }
+-#if defined(_WIN32) || defined(_WIN64) || defined(__linux__)//If Windows or Linux
++#if defined(_WIN32) || defined(_WIN64) || defined(__linux__) //If Windows or Linux
+     printf("Invalid frame %X. Expected %X.\r\n", frame, expected);
+ #endif
++
++#endif //DLMS_IGNORE_HDLC_CHECK
+     return 0;
+ }
++
++// If this function returns 'true', that means that the frame is valid.
++// When 'false' means that the frame is invalid
++bool checkFrameAlternative(
++    const dlmsSettings* settings,
++    unsigned char frame)
++{
++#ifndef DLMS_IGNORE_HDLC_CHECK
++
++    //If notify
++    if (frame == 0x13)
++    {
++        return true;
++    }
++
++    // If U frame.
++    if ((frame & HDLC_FRAME_TYPE_U_FRAME) == HDLC_FRAME_TYPE_U_FRAME)
++    {
++        if (frame == 0x93)
++        {
++            unsigned char isEcho = !settings->server && frame == 0x93 &&
++                (settings->senderFrame == 0x10 || settings->senderFrame == 0xfe) &&
++                settings->receiverFrame == 0xE;
++            return !isEcho;
++        }
++
++        if (frame == 0x73 && !settings->server)
++        {
++            return settings->senderFrame == 0xFE && settings->receiverFrame == 0xE;
++        }
++
++        return true;
++    }
++    // If S -frame
++    else if ((frame & HDLC_FRAME_TYPE_S_FRAME) == HDLC_FRAME_TYPE_S_FRAME)
++    {
++        //If echo.
++        if (frame == (settings->senderFrame & 0xF1))
++        {
++            return false;
++        }
++
++        return true;
++    }
++
++    //Handle I-frame.
++    uint8_t expected;
++    if ((settings->senderFrame & 0x1) == 0)
++    {
++        expected = increaseReceiverSequence(increaseSendSequence(settings->receiverFrame));
++        if (frame == expected)
++        {
++            return true;
++        }
++
++        //If the final bit is not set.
++        if (frame == (expected & ~0x10) && settings->windowSizeRX != 1)
++        {
++            return true;
++        }
++
++        //If Final bit is not set for the previous message.
++        if ((settings->receiverFrame & 0x10) == 0 && settings->windowSizeRX != 1)
++        {
++            expected = (unsigned char)(0x10 | increaseSendSequence(settings->receiverFrame));
++            if (frame == expected)
++            {
++                return true;
++            }
++
++            //If the final bit is not set.
++            if (frame == (expected & ~0x10))
++            {
++                return true;
++            }
++        }
++    }
++    //If answer for RR.
++    else
++    {
++        expected = increaseSendSequence(settings->receiverFrame);
++        if (frame == expected)
++        {
++            return true;
++        }
++
++        if (frame == (expected & ~0x10))
++        {
++            return true;
++        }
++
++        if (settings->windowSizeRX != 1)
++        {
++            //If HDLC window size is bigger than one.
++            if (frame == (expected | 0x10))
++            {
++                return true;
++            }
++        }
++    }
++
++    //Pre-established connections needs this.
++    if (settings->server) {
++        if (settings->receiverFrame == SERVER_START_RECEIVER_FRAME_SEQUENCE) {
++            return true;
++        }
++    } else {
++        if (settings->receiverFrame == CLIENT_START_RCEIVER_FRAME_SEQUENCE) {
++            return true;
++        }
++    }
++
++#if defined(_WIN32) || defined(_WIN64) || defined(__linux__) //If Windows or Linux
++    printf("Invalid frame %X. Expected %X.\r\n", frame, expected);
++#endif
++
++    return false;
++#else //DLMS_IGNORE_HDLC_CHECK
++    return true;
+ #endif //DLMS_IGNORE_HDLC_CHECK
++}
+ 
+ unsigned char getNextSend(
+     dlmsSettings* settings, unsigned char first)

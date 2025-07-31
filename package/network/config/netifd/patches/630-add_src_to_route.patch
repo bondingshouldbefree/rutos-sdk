@@ -1,0 +1,13 @@
+--- a/interface-ip.c
++++ b/interface-ip.c
+@@ -601,6 +601,9 @@ interface_handle_subnet_route(struct int
+ 	r->flags = addr->flags;
+ 	r->mask = addr->mask;
+ 	memcpy(&r->addr, &addr->addr, sizeof(r->addr));
++	memcpy(&r->source, &addr->addr, sizeof(r->source));
++	r->sourcemask = (uint32_t) ~0;
++
+ 	clear_if_addr(&r->addr, r->mask);
+ 
+ 	if (!system_resolve_rt_proto("kernel", &r->proto))
+

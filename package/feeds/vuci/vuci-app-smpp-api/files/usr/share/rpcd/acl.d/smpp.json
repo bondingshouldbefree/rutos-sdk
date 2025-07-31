@@ -1,0 +1,1 @@
+{"services/mobile_utilities/smpp":{"description":"smpp configuration","read":{"api":{"/smpp/*":["*"],"/modems/status/*":["id","name","builtin","index","primary"],"/certificates/config/*":["fullname","type","cert_type"]}},"write":{"api":["/smpp/*"]}}}

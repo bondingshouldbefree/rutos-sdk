@@ -1,0 +1,206 @@
+--- a/system.c
++++ b/system.c
+@@ -52,6 +52,84 @@ struct firstboot_req {
+     struct ubus_context *ctx;
+ };
+ 
++struct backup_req {
++	struct ubus_request_data req;
++	struct uloop_fd ufd;
++	struct uloop_process proc;
++	int fds[2];
++
++	struct {
++		char *ptr;
++		size_t len;
++		size_t size;
++	} buf;
++};
++
++static void backup_error(struct ubus_context *ctx,
++	struct ubus_request_data *req, const char *fmt, ...)
++{
++	blob_buf_init(&b, 0);
++
++	va_list ap;
++	va_start(ap, fmt);
++	blobmsg_vprintf(&b, "output", fmt, ap);
++
++	ubus_send_reply(ctx, req, b.head);
++}
++
++static void backup_output_handler(struct uloop_fd *u, unsigned int events)
++{
++	struct backup_req *req = container_of(u, struct backup_req, ufd);
++	char chunk[128];
++	ssize_t len, new_size;
++	char *new_buf;
++
++	while ((len = read(u->fd, chunk, sizeof(chunk))) > 0) {
++		/* Grow buffer, if needed */
++		if (req->buf.len + len >= req->buf.size) {
++			new_size = req->buf.size ? req->buf.size * 2 : 512;
++			new_buf = realloc(req->buf.ptr, new_size);
++
++			if (!new_buf) {
++				free(req->buf.ptr);
++				req->buf.ptr = NULL;
++				req->buf.len = req->buf.size = 0;
++				return;
++			}
++
++			req->buf.ptr = new_buf;
++			req->buf.size = new_size;
++		}
++
++		memcpy(req->buf.ptr + req->buf.len, chunk, len);
++		req->buf.len += len;
++	}
++}
++
++static void backup_process_handler(struct uloop_process *c, int ret)
++{
++	struct backup_req *req = container_of(c, struct backup_req, proc);
++
++	blob_buf_init(&b, 0);
++
++	/* Add output from the child process */
++	if (req->buf.len > 0) {
++		req->buf.ptr[req->buf.len] = '\0';
++		blobmsg_add_string(&b, "output", req->buf.ptr);
++	}
++
++	blobmsg_add_u32(&b, "exit_code", WIFEXITED(ret) ? WEXITSTATUS(ret) : -1);
++
++	ubus_send_reply(_ctx, &req->req, b.head);
++	ubus_complete_deferred_request(_ctx, &req->req, 0);
++
++	free(req->buf.ptr);
++	uloop_fd_delete(&req->ufd);
++	close(req->fds[0]);
++
++	free(req);
++}
++
+ static int system_board(struct ubus_context *ctx, struct ubus_object *obj,
+                  struct ubus_request_data *req, const char *method,
+                  struct blob_attr *msg)
+@@ -976,6 +1054,110 @@ static int system_userdefaults(struct ub
+ }
+ 
+ enum {
++	BACKUP_ENV,
++	__BACKUP_MAX
++};
++
++static const struct blobmsg_policy backup_policy[__BACKUP_MAX] = {
++	[BACKUP_ENV] = { .name = "env", .type = BLOBMSG_TYPE_ARRAY },
++};
++
++static int backup(struct ubus_context *ctx, struct ubus_object *obj,
++		  struct ubus_request_data *req, const char *method,
++		  struct blob_attr *msg)
++{
++	struct blob_attr *tb[__BACKUP_MAX];
++	struct blob_attr *cur;
++	struct backup_req *breq;
++	int fd, rem;
++	char *env, *var;
++
++	if (!msg)
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	blobmsg_parse(backup_policy, __BACKUP_MAX, tb, blob_data(msg), blob_len(msg));
++	if (!tb[BACKUP_ENV])
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	breq = calloc(1, sizeof(*breq));
++	if (!breq) {
++		backup_error(ctx, req, "Failed to allocate backup request");
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++
++	if (pipe(breq->fds)) {
++		backup_error(ctx, req, "pipe() failed: %s (%d)",
++			     strerror(errno), errno);
++		free(breq);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++
++	breq->proc.pid = fork();
++
++	switch(breq->proc.pid) {
++	case -1:
++		backup_error(ctx, req, "fork() failed: %s (%d)",
++			     strerror(errno), errno);
++
++		close(breq->fds[0]);
++		close(breq->fds[1]);
++		free(breq);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	case 0:
++		/* Set stdin to /dev/null */
++		fd = open("/dev/null", O_RDWR);
++		if (fd >= 0) {
++			dup2(fd, 0);
++			close(fd);
++		}
++
++		/* Set stdout and stderr to the shared pipe */
++		dup2(breq->fds[1], 1);
++		dup2(breq->fds[1], 2);
++		close(breq->fds[0]);
++		close(breq->fds[1]);
++
++		rem = blobmsg_data_len(tb[BACKUP_ENV]);
++
++		/* Iterate through each env variable and set it */
++		__blob_for_each_attr(cur, blobmsg_data(tb[BACKUP_ENV]), rem) {
++			env = strdup(blobmsg_get_string(cur));
++
++			if (!env)
++				continue;
++
++			var = strchr(env, '=');
++
++			if (var) {
++				*var = '\0';
++				setenv(env, var + 1, 1);
++			}
++
++			free(env);
++		}
++
++		/* Source the backup script to perform action set in env */
++		execl("/bin/sh", "sh", "-c", ". /lib/functions/backup.sh", NULL);
++		exit(errno);
++	}
++
++	/* Parent process */
++	close(breq->fds[1]);
++
++	breq->ufd.fd = breq->fds[0];
++	breq->ufd.cb = backup_output_handler;
++
++	breq->proc.cb = backup_process_handler;
++
++	uloop_fd_add(&breq->ufd, ULOOP_READ);
++	uloop_process_add(&breq->proc);
++
++	ubus_defer_request(ctx, req, &breq->req);
++
++	return UBUS_STATUS_OK;
++}
++
++enum {
+ 	FIRSTBOOT_FACTORY,
+ 	__FIRSTBOOT_MAX
+ };
+@@ -1079,6 +1261,7 @@ static const struct ubus_method system_m
+ #endif // PROFILE_SUPPORT
+ 	UBUS_METHOD_NOARG("userdefaults", system_userdefaults),
+ 	UBUS_METHOD("firstboot", system_firstboot, firstboot_policy),
++	UBUS_METHOD("backup", backup, backup_policy),
+ };
+ 
+ static struct ubus_object_type system_object_type =

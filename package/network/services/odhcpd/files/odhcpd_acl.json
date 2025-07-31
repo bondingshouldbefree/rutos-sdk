@@ -1,0 +1,11 @@
+{
+	"user": "odhcpd",
+	"access": {
+		"network.interface": {
+			"methods": [ "dump" ]
+		}
+	},
+	"publish": [ "dhcp" ],
+	"listen": [ "ubus.object.add" ],
+	"subscribe": [ "network.interface" ]
+}

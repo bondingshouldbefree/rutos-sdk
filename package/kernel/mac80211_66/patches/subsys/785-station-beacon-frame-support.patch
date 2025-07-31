@@ -1,0 +1,74 @@
+--- a/net/mac80211/main.c
++++ b/net/mac80211/main.c
+@@ -686,7 +686,9 @@ ieee80211_default_mgmt_stypes[NUM_NL8021
+ 		 */
+ 		.rx = BIT(IEEE80211_STYPE_ACTION >> 4) |
+ 			BIT(IEEE80211_STYPE_AUTH >> 4) |
+-			BIT(IEEE80211_STYPE_PROBE_REQ >> 4),
++			BIT(IEEE80211_STYPE_PROBE_REQ >> 4) |
++			BIT(IEEE80211_STYPE_PROBE_RESP >> 4) |
++			BIT(IEEE80211_STYPE_BEACON >> 4),
+ 	},
+ 	[NL80211_IFTYPE_AP] = {
+ 		.tx = 0xffff,
+--- a/net/mac80211/rx.c
++++ b/net/mac80211/rx.c
+@@ -3412,6 +3412,8 @@ ieee80211_rx_h_mgmt_check(struct ieee802
+ {
+ 	struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *) rx->skb->data;
+ 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
++	struct ieee80211_sub_if_data *sdata = rx->sdata;
++	struct ieee80211_link_data *link = rx->link;
+ 
+ 	if (ieee80211_is_s1g_beacon(mgmt->frame_control))
+ 		return RX_CONTINUE;
+@@ -3444,10 +3446,14 @@ ieee80211_rx_h_mgmt_check(struct ieee802
+ 		    !(status->flag & RX_FLAG_NO_SIGNAL_VAL))
+ 			sig = status->signal;
+ 
+-		cfg80211_report_obss_beacon_khz(rx->local->hw.wiphy,
+-						rx->skb->data, rx->skb->len,
+-						ieee80211_rx_status_to_khz(status),
+-						sig);
++		if (sdata->vif.type != NL80211_IFTYPE_STATION ||
++			(sdata->vif.type == NL80211_IFTYPE_STATION &&
++			!ether_addr_equal(mgmt->bssid, link->u.mgd.bssid))) {
++				cfg80211_report_obss_beacon_khz(rx->local->hw.wiphy,
++								rx->skb->data, rx->skb->len,
++								ieee80211_rx_status_to_khz(status),
++								sig);
++		}
+ 		rx->flags |= IEEE80211_RX_BEACON_REPORTED;
+ 	}
+ 
+@@ -3846,6 +3852,9 @@ ieee80211_rx_h_action(struct ieee80211_r
+ static ieee80211_rx_result debug_noinline
+ ieee80211_rx_h_userspace_mgmt(struct ieee80211_rx_data *rx)
+ {
++	struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *) rx->skb->data;
++	struct ieee80211_sub_if_data *sdata = rx->sdata;
++	struct ieee80211_link_data *link = rx->link;
+ 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
+ 	struct cfg80211_rx_info info = {
+ 		.freq = ieee80211_rx_status_to_khz(status),
+@@ -3876,11 +3885,15 @@ ieee80211_rx_h_userspace_mgmt(struct iee
+ 		info.ack_tstamp = ktime_to_ns(status->ack_tx_hwtstamp);
+ 	}
+ 
+-	if (cfg80211_rx_mgmt_ext(&rx->sdata->wdev, &info)) {
+-		if (rx->sta)
+-			rx->link_sta->rx_stats.packets++;
+-		dev_kfree_skb(rx->skb);
+-		return RX_QUEUED;
++	if (sdata->vif.type != NL80211_IFTYPE_STATION ||
++		(sdata->vif.type == NL80211_IFTYPE_STATION &&
++		!ether_addr_equal(mgmt->bssid, link->u.mgd.bssid))) {
++			if (cfg80211_rx_mgmt_ext(&rx->sdata->wdev, &info)) {
++				if (rx->sta)
++					rx->link_sta->rx_stats.packets++;
++				dev_kfree_skb(rx->skb);
++				return RX_QUEUED;
++			}
+ 	}
+ 
+ 	return RX_CONTINUE;

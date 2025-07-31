@@ -1,0 +1,12 @@
+{
+	"user": "openvpn",
+	"access": {
+		"rc": {
+			"methods": [ "init" ]
+		},
+		"network.interface": {
+			"methods": ["dump"]
+		},
+
+	}
+}

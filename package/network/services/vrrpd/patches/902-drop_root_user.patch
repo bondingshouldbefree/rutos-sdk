@@ -1,0 +1,33 @@
+Index: vrrpd-1.15/vrrpd.h
+===================================================================
+--- vrrpd-1.15.orig/vrrpd.h
++++ vrrpd-1.15/vrrpd.h
+@@ -52,7 +52,7 @@ typedef struct { /* rfc2338.5.1 */
+ #define VRRP_PREEMPT_DFL  1 /* rfc2338.6.1.2.Preempt_Mode */
+ 
+ /* implementation specific */
+-#define VRRP_PIDDIR_DFL "/var/run" /* dir to store the pid file */
++#define VRRP_PIDDIR_DFL "/var/run/vrrpd" /* dir to store the pid file */
+ #define VRRP_PID_FORMAT "vrrpd_%s.pid" /* pid file format */
+ #define ETHTOOL_GLINK	0x0000000a /* Get link status (ethtool_value) */
+ 
+Index: vrrpd-1.15/vrrpd.c
+===================================================================
+--- vrrpd-1.15.orig/vrrpd.c
++++ vrrpd-1.15/vrrpd.c
+@@ -2226,13 +2226,13 @@ int main(int argc, char *argv[])
+ 	}
+ 
+ 	if (vsrv->instance_name) {
+-		vsrv->log_file = (char *)malloc((size_t)(16 + strlen(vsrv->instance_name)));
++		vsrv->log_file = (char *)malloc((size_t)(26 + strlen(vsrv->instance_name)));
+ 		if (vsrv->log_file == NULL) {
+ 			vrrpd_log(LOG_WARNING, "could not allocate memory for log\n");
+ 			return -1;
+ 		}
+ 
+-		snprintf(vsrv->log_file, (size_t)(16 + strlen(vsrv->instance_name)), "/tmp/vrrpd_%s_log",
++		snprintf(vsrv->log_file, (size_t)(26 + strlen(vsrv->instance_name)), "/var/run/vrrpd/vrrpd_%s_log",
+ 			 vsrv->instance_name);
+ 	}
+ 

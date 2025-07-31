@@ -1,0 +1,29 @@
+Completely disable RSS feature on EDMA hardware.
+
+It is a known issue that EDMA RSS implementation can lockup on certain malformed packets. 
+The only known fix is to just completely disable it and rely on RPS instead.
+
+---
+ drivers/net/ethernet/qualcomm/essedma/edma_axi.c |   11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+--- a/drivers/net/ethernet/qualcomm/essedma/edma_axi.c
++++ b/drivers/net/ethernet/qualcomm/essedma/edma_axi.c
+@@ -885,12 +885,11 @@ static int edma_axi_probe(struct platfor
+ 	hw->intr_clear_type = EDMA_INTR_CLEAR_TYPE;
+ 	hw->intr_sw_idx_w = EDMA_INTR_SW_IDX_W_TYPE;
+ 
+-	/* configure RSS type to the different protocol that can be
+-	 * supported
+-	 */
+-	hw->rss_type = EDMA_RSS_TYPE_IPV4TCP | EDMA_RSS_TYPE_IPV6_TCP |
+-		EDMA_RSS_TYPE_IPV4_UDP | EDMA_RSS_TYPE_IPV6UDP |
+-		EDMA_RSS_TYPE_IPV4 | EDMA_RSS_TYPE_IPV6;
++	// Disable RSS feature completely.
++	// It is a known issue that EDMA RSS implementation
++	// can lockup on certain malformed packets.
++	// The only known fix is to disable it and rely on RPS.
++	hw->rss_type = 0;
+ 
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 

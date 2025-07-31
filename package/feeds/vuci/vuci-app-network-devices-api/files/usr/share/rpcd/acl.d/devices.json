@@ -1,0 +1,1 @@
+{"network/devices":{"description":"","read":{"api":{"/network/devices/*":["*"],"/basic/network/devices/*":["*"],"/interfaces/config/*":["id","name","device"],"/ports_settings/*":["name","position"],"/devices/port_based_vlan/*":["*"],"/dot1x/ports/*":["*"]}},"write":{"api":["/network/devices/*","/devices/port_based_vlan/*"]},"exception":["/network/devices/config/*"]}}

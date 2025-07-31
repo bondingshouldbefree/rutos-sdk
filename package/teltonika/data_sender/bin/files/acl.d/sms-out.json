@@ -1,0 +1,15 @@
+{
+	"user": "ds",
+	"access": {
+		"gsm": {
+			"methods": [ "info" ]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_func",
+				"send_sms"
+			]
+		}
+	}
+}

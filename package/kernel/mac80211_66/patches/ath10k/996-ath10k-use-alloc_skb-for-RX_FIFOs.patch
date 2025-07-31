@@ -1,0 +1,46 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed May 21 10:27:50 2025 +0300
+Subject: ath10k: use alloc_skb for RX FIFO allocations
+
+dev_alloc_skb internally uses a global netdev page_frag_cache for skb buffer
+allocations. This was observed to cause excessive memory fragmentation in the
+case radios are idle and are only occasionally receiving control frames. 
+If unrelated network code was actively using netdev page_frag_cache at the same
+time, it could cause memory usage to further balloon up, to the point of causing
+OOM's on low memory (256MiB) devices.
+
+Switch to alloc_skb for refilling target -> host FIFO's, this forces all skb's
+to be allocated via kmalloc. This still isn't ideal. kmalloc wastes ~50% of the
+memory due to rounding up. Also, there is some RX perf degradation due to kmalloc
+being generally slower. In the future, might be worth to try introducing per-FIFO
+page_frag_cache's to solve both these downfalls, but for now, this is a simple
+one-line fix that still improves on base/worst-case memory usage.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/net/wireless/ath/ath10k/htt_rx.c |    2 +-
+ drivers/net/wireless/ath/ath10k/pci.c    |    2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+--- a/drivers/net/wireless/ath/ath10k/htt_rx.c
++++ b/drivers/net/wireless/ath/ath10k/htt_rx.c
+@@ -156,7 +156,7 @@ static int __ath10k_htt_rx_ring_fill_n(s
+ 	}
+ 
+ 	while (num > 0) {
+-		skb = dev_alloc_skb(HTT_RX_BUF_SIZE + HTT_RX_DESC_ALIGN);
++		skb = alloc_skb(HTT_RX_BUF_SIZE + HTT_RX_DESC_ALIGN, GFP_ATOMIC);
+ 		if (!skb) {
+ 			ret = -ENOMEM;
+ 			goto fail;
+--- a/drivers/net/wireless/ath/ath10k/pci.c
++++ b/drivers/net/wireless/ath/ath10k/pci.c
+@@ -787,7 +787,7 @@ static int __ath10k_pci_rx_post_buf(stru
+ 	dma_addr_t paddr;
+ 	int ret;
+ 
+-	skb = dev_alloc_skb(pipe->buf_sz);
++	skb = alloc_skb(pipe->buf_sz, GFP_ATOMIC);
+ 	if (!skb)
+ 		return -ENOMEM;
+ 

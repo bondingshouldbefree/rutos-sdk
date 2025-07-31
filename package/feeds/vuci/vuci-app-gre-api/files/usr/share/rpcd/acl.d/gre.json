@@ -1,0 +1,1 @@
+{"services/vpn/gre":{"description":"gre configuration","read":{"api":{"/gre/*":["*"],"/interfaces/config/*":["id","ipaddr","proto","ifname"]}},"write":{"api":["/gre/*"]},"source":["/gre/*"],"exception":["/gre/config/*"]}}

@@ -1,0 +1,24 @@
+Index: hostapd-2023-09-08-e5ccbfc6/src/ap/ucode.c
+===================================================================
+--- hostapd-2023-09-08-e5ccbfc6.orig/src/ap/ucode.c
++++ hostapd-2023-09-08-e5ccbfc6/src/ap/ucode.c
+@@ -526,6 +526,9 @@ uc_hostapd_iface_start(uc_vm_t *vm, size
+ 	if (ucv_type(info) != UC_OBJECT)
+ 		return NULL;
+ 
++	if (iface->state == HAPD_IFACE_ACS)
++		return ucv_boolean_new(false);
++
+ #define UPDATE_VAL(field, name)							\
+ 	if ((intval = ucv_int64_get(ucv_object_get(info, name, NULL))) &&	\
+ 		!errno && intval != conf->field) do {				\
+@@ -620,6 +623,9 @@ uc_hostapd_iface_switch_channel(uc_vm_t
+ 	if (!iface || ucv_type(info) != UC_OBJECT)
+ 		return NULL;
+ 
++	if(iface->state == HAPD_IFACE_ACS)
++		return ucv_boolean_new(false);
++
+ 	conf = iface->conf;
+ 	if ((intval = ucv_int64_get(ucv_object_get(info, "csa_count", NULL))) && !errno)
+ 		csa.cs_count = intval;

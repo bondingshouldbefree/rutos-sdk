@@ -1,0 +1,28 @@
+Index: rpcd-2021-03-11-ccb75178/include/rpcd/plugin.h
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/include/rpcd/plugin.h
++++ rpcd-2021-03-11-ccb75178/include/rpcd/plugin.h
+@@ -58,6 +58,9 @@
+ /* shared library */
+ #define RPC_SHARED_DIRECTORY	"/usr/lib/rpcd/shared"
+ 
++/* Special value to indicate skipping plugin */
++#define RPC_PLUGIN_SKIP ((struct ubus_object *)-1)
++
+ struct rpc_daemon_ops {
+     bool (*session_access)(const char *sid, const char *scope,
+                            const char *object, const char *function);
+Index: rpcd-2021-03-11-ccb75178/plugin.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/plugin.c
++++ rpcd-2021-03-11-ccb75178/plugin.c
+@@ -842,6 +842,9 @@ static int rpc_plugin_register_library(s
+ 	}
+ 
+ 	struct ubus_object *obj = p->init(&ops, ctx);
++	if (obj == RPC_PLUGIN_SKIP)
++		return UBUS_STATUS_OK;
++
+ 	if (!obj) {
+ 		LOG_ERROR("Failed to initialize plugin %s", path);
+ 		dlclose(dlh);

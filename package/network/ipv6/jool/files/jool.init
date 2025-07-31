@@ -1,0 +1,66 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=01
+
+USE_PROCD=1
+
+PROG_NAT64="/usr/local/usr/bin/jool"
+CONFIG_FILE="/var/etc/jool/jool-nat64.json"
+BASE_DIR="/var/etc/jool"
+
+add_interface_trigger() {
+	local section="$1"
+	procd_add_interface_trigger "interface.*.up" "$section" /etc/init.d/jool reload
+}
+
+start_service() {
+	local enabled interface ip6_prefix proto
+
+	config_load "jool"
+	config_get_bool enabled general enabled "0"
+
+	[ "$enabled" -eq 0 ] && return 1
+
+	config_get interface general interface ""
+
+	[ -z "$interface" ] && return 1
+
+	. /lib/functions/network.sh
+
+	proto="$(ubus -S call network.interface."${interface}" status 2>/dev/null | jsonfilter -q -l1 -e '@.proto')"
+	[ "$proto" = "wwan" ] && interface="${interface}_6"
+
+	network_get_prefix6 ip6_prefix "$interface"
+	[ -z "$ip6_prefix" ] && return 1
+	ip6_prefix="${ip6_prefix%/*}/96"
+
+	mkdir -p "$BASE_DIR"
+
+	json_init
+	json_add_string "instance" "default"
+	json_add_string "framework" "iptables"
+	json_add_object "global"
+	json_add_string "pool6" "$ip6_prefix"
+	json_close_object
+
+	json_dump -i > "$CONFIG_FILE"
+
+	$PROG_NAT64 file handle "$CONFIG_FILE"
+}
+
+stop_service() {
+	$PROG_NAT64 -f $CONFIG_FILE instance remove
+	rm -rf "$BASE_DIR"
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger "jool"
+	config_load 'network'
+	config_foreach add_interface_trigger 'interface'
+}

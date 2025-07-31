@@ -1,0 +1,122 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2020 Teltonika
+. /usr/share/libubox/jshn.sh
+
+USE_PROCD=1
+START=99
+STOP=1
+
+BIN="/usr/sbin/wifi_scanner"
+[ -x "$BIN" ] || BIN="/usr/local$BIN"
+
+start_tracker() {
+	local disabled interface device _device
+	interface=$1
+	device=$2
+	config_get _device "$interface" device ""
+	[ "$device" = "$_device" ] && {
+		config_get_bool disabled "$interface" disabled "0"
+		[ "$disabled" != "1" ] && ENABLED=1
+	}
+}
+
+get_if_name() {
+	local index=1
+	json_select "$1" || return
+	json_select interfaces
+	while json_is_a "$index" object; do
+		json_select "$index"; json_get_var ifname ifname
+		json_select config; json_get_var mode mode
+		if [ "$mode" = "sta" ]; then
+			echo "$ifname"
+			break
+		fi
+		index=$((index + 1))
+		json_select ..; json_select ..
+	done
+}
+
+wpa_cli_mgmt() {
+	local probe_req=0x40 probe_resp=0x50 beacon=0x80
+	local command=$1
+	shift
+	for iface in $@; do
+		for frame in $probe_req $probe_resp $beacon; do
+			wpa_cli -i $iface $command $frame 0 >/dev/null
+		done
+	done
+}
+
+start_service() {
+	local keys
+	config_load wifi_scanner
+	config_get two_g_enabled wifi_scan two_g_enabled 0
+	config_get five_g_enabled wifi_scan five_g_enabled 0
+	config_get interval wifi_scan interval 1
+
+	[ "$two_g_enabled" != "0" -o "$five_g_enabled" != "0" ] || return
+
+	config_load wireless
+	json_load "$(ubus call network.wireless status)"
+	json_get_keys keys
+	for key in $keys; do
+		if [ "$(ubus call network.wireless status | jsonfilter -e @.${key}.config.hwmode)" = "11b" ] || [ "$(ubus call network.wireless status | jsonfilter -e @.${key}.config.hwmode)" = "11g" ]; then
+			ENABLED=0
+			config_foreach start_tracker wifi-iface "$key"
+			[ "$two_g_enabled" != "0" ] && ifnames="$ifnames $(get_if_name $key)"
+			[ "$ENABLED" = "0" ] && two_g_enabled=0
+		elif [ "$(ubus call network.wireless status | jsonfilter -e @.${key}.config.hwmode)" = "11a" ]; then
+			ENABLED=0
+			config_foreach start_tracker wifi-iface "$key"
+			[ "$five_g_enabled" != "0" ] && ifnames="$ifnames $(get_if_name $key)"
+			[ "$ENABLED" = "0" ] && five_g_enabled=0
+		fi
+	done
+
+	[ "$two_g_enabled" != "0" -o "$five_g_enabled" != "0" ] || return
+
+	[ -n "$ifnames" ] && wpa_cli_mgmt REGISTER_FRAME "$ifnames"
+
+	procd_open_instance
+	procd_set_param user wifi_scanner
+	procd_set_param respawn
+	procd_set_param command "$BIN" -t "$two_g_enabled" -f "$five_g_enabled" -i "$interval"
+	procd_close_instance
+}
+
+wpa_cli_unregister_mgmt() {
+	local ifnames
+	local hwmode
+
+	config_load wifi_scanner
+	config_get two_g_enabled wifi_scan two_g_enabled 0
+	config_get five_g_enabled wifi_scan five_g_enabled 0
+
+	json_load "$(ubus call network.wireless status)"
+	json_get_keys keys
+
+	for key in $keys; do
+		json_select "$key"; json_select "config"; json_get_var hwmode "hwmode"
+		json_select ..; json_select ..
+		if [ "$hwmode" = "11b" ] || [ "$hwmode" = "11g" ]; then
+			[ "$two_g_enabled" != "0" ] && ifnames="$ifnames $(get_if_name $key)"
+		elif [ "$hwmode" = "11a" ]; then
+			[ "$five_g_enabled" != "0" ] && ifnames="$ifnames $(get_if_name $key)"
+		fi
+	done
+
+	[ -n "$ifnames" ] && wpa_cli_mgmt UNREGISTER_FRAME "$ifnames"
+}
+
+stop_service() {
+	wpa_cli_unregister_mgmt
+	killall wifi_scanner 2>/dev/null >/dev/null
+}
+
+reload_service() {
+	restart
+}
+
+service_triggers() {
+	procd_add_reload_trigger "wifi_scanner" "wireless"
+}

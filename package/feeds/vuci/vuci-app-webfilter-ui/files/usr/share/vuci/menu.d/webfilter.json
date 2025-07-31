@@ -1,0 +1,19 @@
+{
+	"services/webfilter": {
+		"title": "Web Filter",
+		"index": 200
+	},
+		"services/webfilter/site": {
+			"title": "Site Blocking",
+			"index": 1,
+			"view": "services/WebfilterSite",
+			"acls": [ "services/webfilter/site" ],
+			"main_page": true
+		},
+		"services/webfilter/proxy": {
+			"title": "Proxy Based Content Blocker",
+			"index": 2,
+			"view": "services/WebfilterProxy",
+			"acls": [ "services/webfilter/proxy" ]
+		}
+}

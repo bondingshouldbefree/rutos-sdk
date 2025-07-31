@@ -1,0 +1,2 @@
+/etc/config/rut_fota           rut_fota:rut_fota       666       -
+/etc/TN_RUT_FOTA_CA.pem        rut_fota:rut_fota       -         -

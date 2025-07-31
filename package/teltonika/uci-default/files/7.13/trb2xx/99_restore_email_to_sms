@@ -1,0 +1,10 @@
+#!/bin/sh
+
+. /lib/functions.sh
+PACKAGE_FILE="/etc/package_restore.txt"
+
+enabled=$(uci_get email_to_sms.pop3.enabled)
+
+[ "$enabled" -eq 1 ] && echo "email_to_sms - Email to SMS" >> "$PACKAGE_FILE"
+
+exit 0

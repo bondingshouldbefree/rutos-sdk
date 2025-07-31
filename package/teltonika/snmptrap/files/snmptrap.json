@@ -1,0 +1,16 @@
+{
+    "user": "snmptrap",
+    "listen": ["ubus.object.add", "logd.db_write", "chilli.connect", "chilli.disconnect" ],
+    "subscribe": ["gsm.modem*", "ioman.*"],
+    "access": {
+        "ioman.*": {
+            "methods": [ "status", "location" ]
+        },
+        "gsm": {
+            "methods": [ "info" ]
+        },
+        "gsm.modem*": {
+            "methods": [ "info" ]
+        }
+    }
+}

@@ -1,0 +1,492 @@
+net: netfilter: flowtables: move route type specific info to separate struct
+
+In preparation of adding an XFRM flow type, move route type specific info to
+separate struct and union.
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -123,6 +123,37 @@ enum flow_offload_xmit_type {
+ 
+ #define NF_FLOW_TABLE_ENCAP_MAX		2
+ 
++struct flow_offload_tuple_route {
++	u8				xmit_type:3,
++					out_encap_num:2,
++					out_ingress_vlans:2;
++	u16				mtu;
++
++	struct flow_xfrm_route		xfrm_route;
++
++	union {
++		struct {
++			struct dst_entry *dst_cache;
++			u32		dst_cookie;
++			union nf_inet_addr xmit_dst_ip;
++		};
++		struct {
++			u32		ifidx;
++			u32		hw_ifidx;
++			u8		h_source[ETH_ALEN];
++			u8		h_dest[ETH_ALEN];
++		} out;
++		struct {
++			u32		iifidx;
++		} tc;
++	};
++	struct dst_entry		*dst_reverse;
++	struct {
++		u16		id;
++		__be16		proto;
++	} out_encap[NF_FLOW_TABLE_ENCAP_MAX];
++};
++
+ struct flow_offload_tuple {
+ 	union {
+ 		struct in_addr		src_v4;
+@@ -156,38 +187,12 @@ struct flow_offload_tuple {
+ 	struct { }			__key;
+ 
+ 	u8				dir:2,
+-					xmit_type:3,
+ 					encap_num:2,
+ 					in_vlan_ingress:2;
+-	u16				mtu;
+-
+-	struct flow_xfrm_route		xfrm_route;
+ 
+ 	union {
+-		struct {
+-			struct dst_entry *dst_cache;
+-			u32		dst_cookie;
+-			union nf_inet_addr xmit_dst_ip;
+-		};
+-		struct {
+-			u32		ifidx;
+-			u32		hw_ifidx;
+-			u8		h_source[ETH_ALEN];
+-			u8		h_dest[ETH_ALEN];
+-		} out;
+-		struct {
+-			u32		iifidx;
+-		} tc;
++		struct flow_offload_tuple_route route;
+ 	};
+-	struct dst_entry		*dst_reverse;
+-	struct {
+-		struct {
+-			u16		id;
+-			__be16		proto;
+-		} encap[NF_FLOW_TABLE_ENCAP_MAX];
+-		u8			encap_num:2,
+-					ingress_vlans:2;
+-	} encap_out;
+ };
+ 
+ struct flow_offload_tuple_rhash {
+--- a/include/net/netfilter/nf_flow_table_xfrm.h
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -125,7 +125,7 @@ __flow_offload_route_xfrm_expired_tuple(
+ 	if (nf_flow_xfrm_tuple_expired(&tuple->xfrm_tuple))
+ 		return true;
+ 
+-	if (nf_flow_xfrm_route_expired(&tuple->xfrm_route))
++	if (nf_flow_xfrm_route_expired(&tuple->route.xfrm_route))
+ 		return true;
+ 
+ 	return false;
+@@ -175,7 +175,7 @@ static inline int flow_offload_xfrm_enca
+ 					  struct nf_flow_rule *flow_rule)
+ {
+ #ifdef CONFIG_NF_FLOW_TABLE_XFRM
+-	if (flow->tuplehash[dir].tuple.xfrm_route.bundle)
++	if (flow->tuplehash[dir].tuple.route.xfrm_route.bundle)
+ 		return -ENOTSUPP;
+ #endif
+ 	return 0;
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -91,7 +91,7 @@ EXPORT_SYMBOL_GPL(flow_offload_alloc);
+ static u32 flow_offload_dst_cookie(struct flow_offload_tuple *flow_tuple)
+ {
+ 	if (flow_tuple->l3proto == NFPROTO_IPV6)
+-		return rt6_get_cookie(dst_rt6_info(flow_tuple->dst_cache));
++		return rt6_get_cookie(dst_rt6_info(flow_tuple->route.dst_cache));
+ 
+ 	return 0;
+ }
+@@ -116,10 +116,10 @@ static int flow_offload_fill_route(struc
+ 
+ 	switch (flow_tuple->l3proto) {
+ 	case NFPROTO_IPV4:
+-		flow_tuple->mtu = ip_dst_mtu_maybe_forward(mtu_dst, true);
++		flow_tuple->route.mtu = ip_dst_mtu_maybe_forward(mtu_dst, true);
+ 		break;
+ 	case NFPROTO_IPV6:
+-		flow_tuple->mtu = ip6_dst_mtu_maybe_forward(mtu_dst, true);
++		flow_tuple->route.mtu = ip6_dst_mtu_maybe_forward(mtu_dst, true);
+ 		break;
+ 	}
+ 
+@@ -135,39 +135,39 @@ static int flow_offload_fill_route(struc
+ 
+ 	j = 0;
+ 	for (i = route->out.num_encaps - 1; i >= 0; i--) {
+-		flow_tuple->encap_out.encap[j].id = route->out.encap[i].id;
+-		flow_tuple->encap_out.encap[j].proto = route->out.encap[i].proto;
++		flow_tuple->route.out_encap[j].id = route->out.encap[i].id;
++		flow_tuple->route.out_encap[j].proto = route->out.encap[i].proto;
+ 		if (route->out.ingress_vlans & BIT(i))
+-			flow_tuple->encap_out.ingress_vlans |= BIT(j);
++			flow_tuple->route.out_ingress_vlans |= BIT(j);
+ 		j++;
+ 	}
+-	flow_tuple->encap_out.encap_num = route->out.num_encaps;
++	flow_tuple->route.out_encap_num = route->out.num_encaps;
+ 
+ 	nf_flow_xfrm_tuple_clone(&flow_tuple->xfrm_tuple, &route->in.xfrm_tuple);
+-	nf_flow_xfrm_route_assign(&flow_tuple->xfrm_route, &route->out.xfrm_route);
++	nf_flow_xfrm_route_assign(&flow_tuple->route.xfrm_route, &route->out.xfrm_route);
+ 
+ 	switch (route->xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+-		memcpy(flow_tuple->out.h_dest, route->out.h_dest,
++		memcpy(flow_tuple->route.out.h_dest, route->out.h_dest,
+ 		       ETH_ALEN);
+-		memcpy(flow_tuple->out.h_source, route->out.h_source,
++		memcpy(flow_tuple->route.out.h_source, route->out.h_source,
+ 		       ETH_ALEN);
+-		flow_tuple->out.ifidx = route->out.ifindex;
+-		flow_tuple->out.hw_ifidx = route->out.hw_ifindex;
++		flow_tuple->route.out.ifidx = route->out.ifindex;
++		flow_tuple->route.out.hw_ifidx = route->out.hw_ifindex;
+ 		break;
+ 	case FLOW_OFFLOAD_XMIT_XFRM:
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+-		flow_tuple->dst_cache = nft_route_dst_fetch(route, dir);
+-		flow_tuple->dst_cookie = flow_offload_dst_cookie(flow_tuple);
+-		flow_tuple->xmit_dst_ip = route->out.xmit_dst_ip;
++		flow_tuple->route.dst_cache = nft_route_dst_fetch(route, dir);
++		flow_tuple->route.dst_cookie = flow_offload_dst_cookie(flow_tuple);
++		flow_tuple->route.xmit_dst_ip = route->out.xmit_dst_ip;
+ 		break;
+ 	default:
+ 		WARN_ON_ONCE(1);
+ 		break;
+ 	}
+-	flow_tuple->dst_reverse = route->dst_reverse;
++	flow_tuple->route.dst_reverse = route->dst_reverse;
+ 	route->dst_reverse = NULL;
+-	flow_tuple->xmit_type = route->xmit_type;
++	flow_tuple->route.xmit_type = route->xmit_type;
+ 
+ 	return 0;
+ }
+@@ -178,11 +178,11 @@ static void flow_offload_release_common_
+ 
+ static void nft_flow_dst_release(struct flow_offload_tuple *tuple)
+ {
+-	if (tuple->xmit_type == FLOW_OFFLOAD_XMIT_NEIGH ||
+-	    tuple->xmit_type == FLOW_OFFLOAD_XMIT_XFRM)
+-		dst_release(tuple->dst_cache);
++	if (tuple->route.xmit_type == FLOW_OFFLOAD_XMIT_NEIGH ||
++	    tuple->route.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)
++		dst_release(tuple->route.dst_cache);
+ 
+-	dst_release(tuple->dst_reverse);
++	dst_release(tuple->route.dst_reverse);
+ }
+ 
+ static void flow_offload_fixup_tcp(struct ip_ct_tcp *tcp)
+@@ -227,7 +227,7 @@ static void flow_offload_route_tuple_rel
+ {
+ 	flow_offload_release_common_tuple(tuple);
+ 	nft_flow_dst_release(tuple);
+-	nf_flow_xfrm_route_release(&tuple->xfrm_route);
++	nf_flow_xfrm_route_release(&tuple->route.xfrm_route);
+ }
+ 
+ static void flow_offload_route_release(struct flow_offload *flow)
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -260,11 +260,11 @@ static bool nf_flow_exceeds_mtu(const st
+ 
+ static inline bool nf_flow_dst_check(struct flow_offload_tuple *tuple)
+ {
+-	if (tuple->xmit_type != FLOW_OFFLOAD_XMIT_NEIGH &&
+-	    tuple->xmit_type != FLOW_OFFLOAD_XMIT_XFRM)
++	if (tuple->route.xmit_type != FLOW_OFFLOAD_XMIT_NEIGH &&
++	    tuple->route.xmit_type != FLOW_OFFLOAD_XMIT_XFRM)
+ 		return true;
+ 
+-	return dst_check(tuple->dst_cache, tuple->dst_cookie);
++	return dst_check(tuple->route.dst_cache, tuple->route.dst_cookie);
+ }
+ 
+ static unsigned int nf_flow_xmit_xfrm(struct sk_buff *skb, struct net *net,
+@@ -338,13 +338,13 @@ static unsigned int nf_flow_queue_xmit(s
+ {
+ 	struct net_device *outdev;
+ 
+-	outdev = dev_get_by_index_rcu(net, tuple->out.ifidx);
++	outdev = dev_get_by_index_rcu(net, tuple->route.out.ifidx);
+ 	if (!outdev)
+ 		return NF_DROP;
+ 
+ 	skb->dev = outdev;
+-	dev_hard_header(skb, skb->dev, type, tuple->out.h_dest,
+-			tuple->out.h_source, skb->len);
++	dev_hard_header(skb, skb->dev, type, tuple->route.out.h_dest,
++			tuple->route.out.h_source, skb->len);
+ 	dev_queue_xmit(skb);
+ 
+ 	return NF_STOLEN;
+@@ -379,7 +379,7 @@ static int nf_flow_offload_forward(struc
+ 	dir = tuplehash->tuple.dir;
+ 	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
+ 
+-	mtu = flow->tuplehash[dir].tuple.mtu + ctx->offset;
++	mtu = flow->tuplehash[dir].tuple.route.mtu + ctx->offset;
+ 	if (unlikely(nf_flow_exceeds_mtu(skb, mtu)))
+ 		return 0;
+ 
+@@ -423,18 +423,18 @@ unsigned int nf_flow_offload_ip_hook_tai
+ 	__be32 nexthop;
+ 	int ret;
+ 
+-	if (unlikely(tuple->xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
+-		rt = (struct rtable *)tuple->dst_cache;
++	if (unlikely(tuple->route.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
++		rt = (struct rtable *)tuple->route.dst_cache;
+ 		return nf_flow_xmit_xfrm(skb, net, &rt->dst);
+ 	}
+ 
+-	switch (tuple->xmit_type) {
++	switch (tuple->route.xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+-		rt = (struct rtable *)tuple->dst_cache;
++		rt = (struct rtable *)tuple->route.dst_cache;
+ 		outdev = rt->dst.dev;
+ 		skb->dev = outdev;
+ 		nexthop = rt_nexthop(
+-			rt, flow->tuplehash[tuple->dir].tuple.xmit_dst_ip.ip);
++			rt, flow->tuplehash[tuple->dir].tuple.route.xmit_dst_ip.ip);
+ 		skb_dst_set_noref(skb, &rt->dst);
+ 		neigh_xmit(NEIGH_ARP_TABLE, outdev, &nexthop, skb);
+ 		ret = NF_STOLEN;
+@@ -473,7 +473,7 @@ nf_flow_offload_ip_hook(void *priv, stru
+ 		return NF_ACCEPT;
+ 
+ #ifdef CONFIG_NF_FLOW_TABLE_XFRM
+-	if (nf_flow_route_has_bundle(&tuplehash->tuple.xfrm_route)) {
++	if (nf_flow_route_has_bundle(&tuplehash->tuple.route.xfrm_route)) {
+ 		return nf_flow_xmit_xfrm_direct(skb, flow, dir);
+ 	}
+ #endif
+@@ -674,7 +674,7 @@ static int nf_flow_offload_ipv6_forward(
+ 	dir = tuplehash->tuple.dir;
+ 	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
+ 
+-	mtu = flow->tuplehash[dir].tuple.mtu + ctx->offset;
++	mtu = flow->tuplehash[dir].tuple.route.mtu + ctx->offset;
+ 	if (unlikely(nf_flow_exceeds_mtu(skb, mtu)))
+ 		return 0;
+ 
+@@ -734,18 +734,18 @@ unsigned int nf_flow_offload_ipv6_hook_t
+ 	const struct in6_addr *nexthop;
+ 	int ret;
+ 
+-	if (unlikely(tuple->xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
+-		rt = (struct rt6_info *)tuple->dst_cache;
++	if (unlikely(tuple->route.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
++		rt = (struct rt6_info *)tuple->route.dst_cache;
+ 		return nf_flow_xmit_xfrm(skb, net, &rt->dst);
+ 	}
+ 
+-	switch (tuple->xmit_type) {
++	switch (tuple->route.xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+-		rt = (struct rt6_info *)tuple->dst_cache;
++		rt = (struct rt6_info *)tuple->route.dst_cache;
+ 		outdev = rt->dst.dev;
+ 		skb->dev = outdev;
+ 		nexthop = rt6_nexthop(
+-			rt, &flow->tuplehash[tuple->dir].tuple.xmit_dst_ip.in6);
++			rt, &flow->tuplehash[tuple->dir].tuple.route.xmit_dst_ip.in6);
+ 		skb_dst_set_noref(skb, &rt->dst);
+ 		neigh_xmit(NEIGH_ND_TABLE, outdev, nexthop, skb);
+ 		ret = NF_STOLEN;
+@@ -784,7 +784,7 @@ nf_flow_offload_ipv6_hook(void *priv, st
+ 		return NF_ACCEPT;
+ 
+ #ifdef CONFIG_NF_FLOW_TABLE_XFRM
+-	if (nf_flow_route_has_bundle(&tuplehash->tuple.xfrm_route)) {
++	if (nf_flow_route_has_bundle(&tuplehash->tuple.route.xfrm_route)) {
+ 		return nf_flow_xmit_xfrm_direct(skb, flow, dir);
+ 	}
+ #endif
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -110,8 +110,8 @@ static int nf_flow_rule_match(struct nf_
+ 		nf_flow_rule_lwt_match(match, tun_info);
+ 	}
+ 
+-	if (tuple->xmit_type == FLOW_OFFLOAD_XMIT_TC)
+-		key->meta.ingress_ifindex = tuple->tc.iifidx;
++	if (tuple->route.xmit_type == FLOW_OFFLOAD_XMIT_TC)
++		key->meta.ingress_ifindex = tuple->route.tc.iifidx;
+ 	else
+ 		key->meta.ingress_ifindex = tuple->iifidx;
+ 
+@@ -236,12 +236,12 @@ static int flow_offload_eth_src(struct n
+ 
+ 	tuple = &flow->tuplehash[dir].tuple;
+ 
+-	switch (tuple->xmit_type) {
++	switch (tuple->route.xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+-		addr = tuple->out.h_source;
++		addr = tuple->route.out.h_source;
+ 		break;
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+-		dev = tuple->dst_cache->dev;
++		dev = tuple->route.dst_cache->dev;
+ 		if (!dev)
+ 			return -ENOENT;
+ 
+@@ -283,14 +283,14 @@ static int flow_offload_eth_dst(struct n
+ 
+ 	this_tuple = &flow->tuplehash[dir].tuple;
+ 
+-	switch (this_tuple->xmit_type) {
++	switch (this_tuple->route.xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+-		ether_addr_copy(ha, this_tuple->out.h_dest);
++		ether_addr_copy(ha, this_tuple->route.out.h_dest);
+ 		break;
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+ 		other_tuple = &flow->tuplehash[!dir].tuple;
+ 		daddr = &other_tuple->src_v4;
+-		dst_cache = this_tuple->dst_cache;
++		dst_cache = this_tuple->route.dst_cache;
+ 		n = dst_neigh_lookup(dst_cache, daddr);
+ 		if (!n)
+ 			return -ENOENT;
+@@ -550,16 +550,16 @@ static void flow_offload_redirect(struct
+ 	int ifindex;
+ 
+ 	tuple = &flow->tuplehash[dir].tuple;
+-	switch (tuple->xmit_type) {
++	switch (tuple->route.xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+ 		tuple = &flow->tuplehash[dir].tuple;
+-		ifindex = tuple->out.hw_ifidx;
++		ifindex = tuple->route.out.hw_ifidx;
+ 		dev = dev_get_by_index(net, ifindex);
+ 		if (!dev)
+ 			return;
+ 		break;
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+-		dev = tuple->dst_cache->dev;
++		dev = tuple->route.dst_cache->dev;
+ 		if (!dev)
+ 			return;
+ 		dev_hold(dev);
+@@ -582,10 +582,10 @@ static void flow_offload_encap_tunnel(co
+ 	struct dst_entry *dst;
+ 
+ 	this_tuple = &flow->tuplehash[dir].tuple;
+-	if (this_tuple->xmit_type == FLOW_OFFLOAD_XMIT_DIRECT)
++	if (this_tuple->route.xmit_type == FLOW_OFFLOAD_XMIT_DIRECT)
+ 		return;
+ 
+-	dst = this_tuple->dst_cache;
++	dst = this_tuple->route.dst_cache;
+ 	if (dst && dst->lwtstate) {
+ 		struct ip_tunnel_info *tun_info;
+ 
+@@ -608,7 +608,7 @@ static void flow_offload_decap_tunnel(co
+ 
+ 	tuple = &flow->tuplehash[dir].tuple;
+ 
+-	dst = tuple->dst_reverse;
++	dst = tuple->route.dst_reverse;
+ 	if (dst && dst->lwtstate) {
+ 		struct ip_tunnel_info *tun_info;
+ 
+@@ -655,23 +655,23 @@ nf_flow_rule_route_common(struct net *ne
+ 
+ 	tuple = &flow->tuplehash[dir].tuple;
+ 
+-	for (i = 0; i < tuple->encap_out.encap_num; i++) {
++	for (i = 0; i < tuple->route.out_encap_num; i++) {
+ 		struct flow_action_entry *entry;
+ 
+-		if (tuple->encap_out.ingress_vlans & BIT(i))
++		if (tuple->route.out_ingress_vlans & BIT(i))
+ 			continue;
+ 
+ 		entry = flow_action_entry_next(flow_rule);
+ 
+-		switch (tuple->encap_out.encap[i].proto) {
++		switch (tuple->route.out_encap[i].proto) {
+ 		case htons(ETH_P_PPP_SES):
+ 			entry->id = FLOW_ACTION_PPPOE_PUSH;
+-			entry->pppoe.sid = tuple->encap_out.encap[i].id;
++			entry->pppoe.sid = tuple->route.out_encap[i].id;
+ 			break;
+ 		case htons(ETH_P_8021Q):
+ 			entry->id = FLOW_ACTION_VLAN_PUSH;
+-			entry->vlan.vid = tuple->encap_out.encap[i].id;
+-			entry->vlan.proto = tuple->encap_out.encap[i].proto;
++			entry->vlan.vid = tuple->route.out_encap[i].id;
++			entry->vlan.proto = tuple->route.out_encap[i].proto;
+ 			break;
+ 		}
+ 	}
+@@ -753,7 +753,7 @@ nf_flow_offload_rule_alloc(struct net *n
+ 
+ 	tuple = &flow->tuplehash[dir].tuple;
+ 
+-	err = nf_flow_rule_match(&flow_rule->match, tuple, tuple->dst_reverse);
++	err = nf_flow_rule_match(&flow_rule->match, tuple, tuple->route.dst_reverse);
+ 	if (err < 0)
+ 		goto err_flow_match;
+ 
+--- a/net/netfilter/nf_flow_table_xfrm_output.c
++++ b/net/netfilter/nf_flow_table_xfrm_output.c
+@@ -641,7 +641,7 @@ static int nf_flow_xfrm_direct_gso(struc
+ {
+ 	struct sk_buff *segs, *nskb;
+ 	struct flow_offload_tuple *tuple = &flow->tuplehash[dir].tuple;
+-	struct xfrm_state *x = tuple->xfrm_route.bundle->xfrm;
++	struct xfrm_state *x = tuple->route.xfrm_route.bundle->xfrm;
+ 	struct nf_flow_xfrm_skb_cb *cb;
+ 
+ 	BUILD_BUG_ON(sizeof(*IPCB(skb)) > SKB_GSO_CB_OFFSET);
+@@ -660,7 +660,7 @@ static int nf_flow_xfrm_direct_gso(struc
+ 
+ 		cb = nf_flow_xfrm_cb(segs);
+ 		cb->tuple = tuple;
+-		skb_dst_set_noref(segs, tuple->xfrm_route.bundle);
++		skb_dst_set_noref(segs, tuple->route.xfrm_route.bundle);
+ 
+ 		nf_flow_xfrm_direct_one(segs, tuple, x);
+ 	}
+@@ -673,7 +673,7 @@ int nf_flow_xmit_xfrm_direct(struct sk_b
+ {
+ 	struct flow_offload_tuple *tuple = &flow->tuplehash[dir].tuple;
+ 	struct nf_flow_xfrm_skb_cb *cb;
+-	struct xfrm_state *x = tuple->xfrm_route.bundle->xfrm;
++	struct xfrm_state *x = tuple->route.xfrm_route.bundle->xfrm;
+ 	int err;
+ 
+ 	BUILD_BUG_ON(sizeof(struct nf_flow_xfrm_skb_cb) >
+@@ -709,7 +709,7 @@ int nf_flow_xmit_xfrm_direct(struct sk_b
+ 
+ 	cb = nf_flow_xfrm_cb(skb);
+ 	cb->tuple = tuple;
+-	skb_dst_set_noref(skb, tuple->xfrm_route.bundle);
++	skb_dst_set_noref(skb, tuple->route.xfrm_route.bundle);
+ 
+ 	return nf_flow_xfrm_direct_one(skb, tuple, x);
+ }

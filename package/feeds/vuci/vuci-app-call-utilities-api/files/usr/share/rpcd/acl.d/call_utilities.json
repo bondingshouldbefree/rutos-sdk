@@ -1,0 +1,1 @@
+{"services/mobile_utilities/call_utilities":{"description":"call utilities configuration","read":{"api":{"/call_utilities/*":["*"],"/modem_control/config/*":["ctl_mode","enabled"],"/io/status/*":["*"],"/io/scheduler/config/*":["*"],"/recipients/phone_groups/config/*":["*"]}},"write":{"api":["/call_utilities/*"]}}}

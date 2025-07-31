@@ -1,0 +1,105 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2006-2012 OpenWrt.org
+
+START=99
+STOP=01
+USE_PROCD=1
+PROG="/usr/local/usr/sbin/vrrpd"
+
+append_arg() {
+	local cfg="$1"
+	local var="$2"
+	local opt="$3"
+	local def="$4"
+	local val
+
+	config_get val "$cfg" "$var"
+	[ -n "$val" -o -n "$def" ] && procd_append_param command "$opt" "${val:-$def}"
+}
+
+append_value() {
+	procd_append_param command $1
+}
+
+section_enabled() {
+	local enabled
+	[ "$1" == "ping" ] && return
+	config_get_bool enabled "$1" 'enabled' 0
+	[ $enabled -gt 0 ]
+}
+
+start_instance() {
+	local section="$1"
+	local id
+	local iface
+	local dev
+	local args
+	local virtual_mac
+
+	section_enabled "$section" || return
+
+	[ -e "/var/run/vrrpd/vrrp_${section}.status" ] && return
+
+	config_get iface "$section" 'interface' ''
+	[ -n "$iface" ] || return
+	config_get virtual_mac "$section" 'virtual_mac' 0
+	network_flush_cache
+	network_get_device dev "$iface"
+
+	if [ -n "$dev" ] ; then
+		procd_open_instance "$1"
+
+		procd_set_param command $PROG -i $dev
+		procd_set_param user vrrpd
+		append_arg "$section" 'virtual_id' '-v' '1'
+		append_arg "$section" 'delay' '-d'
+		append_arg "$section" 'priority' '-p'
+		[ "$virtual_mac" -eq 1 ] && procd_append_param command -n
+		procd_append_param command "-y" "$section"
+		procd_set_param term_timeout 10
+
+		config_list_foreach "$section" 'virtual_ip' append_value
+
+		procd_close_instance "$1"
+	else
+		logger -t "vrrpd.init" "No '$iface' interface found"
+	fi
+
+}
+
+service_triggers()
+{
+	procd_add_reload_trigger "vrrpd"
+}
+
+start_service() {
+	. /lib/functions/network.sh
+	config_load 'vrrpd'
+
+	config_foreach start_instance 'vrrpd'
+}
+
+stop_service() {
+	. /lib/functions/network.sh
+	config_load 'vrrpd'
+
+	config_foreach stop_instance 'vrrpd'
+}
+
+
+stop_instance() {
+	local section="$1"
+	local iface
+	local dev
+	section_enabled "$section" || return
+	config_get iface "$section" 'interface' ''
+	network_get_device dev "$iface"
+
+	local pid_file="/var/run/vrrpd/vrrpd_${dev}.pid"
+	[ -e "$pid_file" ] && rm "$pid_file"
+}
+
+reload_service() {
+	stop
+	start
+}

@@ -1,0 +1,128 @@
+Index: fstools-2022-05-03-9e11b372/libfstools/partname.c
+===================================================================
+--- fstools-2022-05-03-9e11b372.orig/libfstools/partname.c
++++ fstools-2022-05-03-9e11b372/libfstools/partname.c
+@@ -110,6 +110,34 @@ static char *rootdevname(char *devpath)
+ 	return basename(devpath);
+ }
+ 
++static int valid_uuid(const char* uuid) {
++	size_t len;
++	int valid = 0;
++
++	if (!uuid || !*uuid) {
++		return valid;
++	}
++
++	len = strlen(uuid);
++
++	for (size_t i = 0; i < len; i++) {
++		if (!isxdigit(uuid[i]) && uuid[i] != '-') {
++			return valid;
++		}
++	}
++
++
++	for (size_t i = 0; i < len; i++) {
++		if (isxdigit(uuid[i])) {
++			valid = 1;
++			break;
++		}
++	}
++
++	return valid;
++}
++
++
+ static struct volume *partname_volume_find(char *name)
+ {
+ 	struct partname_volume *p;
+@@ -118,7 +146,7 @@ static struct volume *partname_volume_fi
+ 	char rootparam[BUFLEN];
+ 	char cmd[BUFLEN];
+ 	char output[BUFLEN];
+-	char *rootdev = NULL, *devname, *tmp;
++	char *rootdev = NULL, *devname, *tmp, *part = NULL;
+ 	int j;
+ 	bool found = false;
+ 	glob_t gl;
+@@ -131,7 +159,12 @@ static struct volume *partname_volume_fi
+ 
+ 	if (get_var_from_file("/proc/cmdline", "root", rootparam, sizeof(rootparam))) {
+ 		if (!strncmp(rootparam, "UUID=", 5)) {
+-			snprintf(cmd, sizeof(cmd), "blkid -U %s", rootparam + 5);
++			const char *uuid = rootparam + 5;
++
++			if (!valid_uuid(uuid))
++				return NULL;
++
++			snprintf(cmd, sizeof(cmd), "blkid -U %s", uuid);
+ 			fp = popen(cmd, "r");
+ 			if (fp) {
+ 				if (fgets(output, sizeof(output), fp)) {
+@@ -141,8 +174,10 @@ static struct volume *partname_volume_fi
+ 						*nl = '\0';
+ 
+ 					tmp = strrchr(output, '/');
+-					if (tmp)
++					if (tmp) {
++						part = strdup(tmp + 1);
+ 						rootdev = rootdevname(tmp + 1);
++					}
+ 				}
+ 				pclose(fp);
+ 			}
+@@ -167,17 +202,29 @@ static struct volume *partname_volume_fi
+ 			}
+ 		}
+ 
+-	if (!found)
+-		return NULL;
++	if (!found) {
++		// if we don't use GPT partitioning, but UUID is set and rootdev
++		//  was found then we can use it
++		if (!strncmp(rootparam, "UUID=", 5) && rootdev && part) {
++			devname = part;
++			goto use_rootdev;
++		} else {
++			free(part);
++			return NULL;
++		}
++	}
+ 
+ 	devname = gl.gl_pathv[j];
+ 	tmp = strrchr(devname, '/');
+-	if (!tmp)
++	if (!tmp) {
++		free(part);
+ 		return NULL;
++	}
+ 
+ 	*tmp = '\0';
+ 	devname = strrchr(devname, '/') + 1;
+ 
++use_rootdev:
+ 	p = calloc(1, sizeof(*p));
+ 	memcpy(p->dev.devpath.prefix, "/dev/", sizeof(p->dev.devpath.prefix));
+ 	strncpy(p->dev.devpath.device, devname, sizeof(p->dev.devpath.device) - 1);
+@@ -191,6 +238,8 @@ static struct volume *partname_volume_fi
+ 
+ 	p->parent_dev.devpath.device[sizeof(p->parent_dev.devpath.device)-1] = '\0';
+ 
++	free(part);
++
+ 	p->v.drv = &partname_driver;
+ 	p->v.blk = p->dev.devpathstr;
+ 	p->v.name = name;
+Index: fstools-2022-05-03-9e11b372/libfstools/common.h
+===================================================================
+--- fstools-2022-05-03-9e11b372.orig/libfstools/common.h
++++ fstools-2022-05-03-9e11b372/libfstools/common.h
+@@ -15,6 +15,7 @@
+ #include <fcntl.h>
+ #include <unistd.h>
+ #include <libgen.h>
++#include <ctype.h>
+ 
+ #include "libfstools.h"
+ #include "volume.h"

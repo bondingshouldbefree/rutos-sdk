@@ -1,0 +1,71 @@
+{
+  "network/firewall": {
+    "title": "Firewall",
+    "index": 60
+  },
+  "network/firewall/forwards": {
+    "title": "Port Forwards",
+    "index": 10,
+    "view": "network/portForward/PortForwards",
+    "acls": ["network/firewall/forwards"]
+  },
+  "network/firewall/rules": {
+    "title": "Traffic Rules",
+    "index": 20,
+    "view": "network/trafficRules/TrafficRules",
+    "acls": ["network/firewall/rules"]
+  },
+  "network/firewall/nat_rules": {
+    "title": "NAT Rules",
+    "index": 30,
+    "view": "network/natRules/NATRules",
+    "acls": ["network/firewall/nat_rules"]
+  },
+  "network/firewall/zones": {
+    "title": "Zones",
+    "index": 40,
+    "view": "network/zones/Zones",
+    "acls": ["network/firewall/zones"]
+  },
+  "network/firewall/settings": {
+    "title": "Settings",
+    "index": 50,
+    "view": "network/Settings",
+    "acls": ["network/firewall/settings"]
+  },
+  "network/firewall/attack_prevention": {
+    "title": "Attack Prevention",
+    "index": 60,
+    "view": "network/attackPrevention/AttackPrevention",
+    "acls": ["network/firewall/attack_prevention"]
+  },
+  "network/firewall/custom": {
+    "title": "Custom Rules",
+    "index": 70,
+    "view": "network/CustomRules",
+    "acls": ["network/firewall/custom"]
+  },
+  "network/firewall/dmz": {
+    "title": "DMZ",
+    "index": 80,
+    "view": "network/Dmz",
+    "acls": ["network/firewall/dmz"]
+  },
+  "status/network/firewall": {
+    "title": "Firewall",
+    "acls": ["status/network/firewall"],
+    "index": 40
+  },
+  "status/network/firewall/ipv4": {
+    "title": "IPv4",
+    "acls": ["status/network/firewall"],
+    "view": "status/IptablesIPv4",
+    "index": 10
+  },
+  "status/network/firewall/ipv6": {
+    "title": "IPv6",
+    "acls": ["status/network/firewall"],
+    "view": "status/IptablesIPv6",
+    "index": 20
+  }
+}

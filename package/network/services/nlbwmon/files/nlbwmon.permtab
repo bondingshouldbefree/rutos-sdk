@@ -1,0 +1,2 @@
+/etc/config/nlbwmon             nlbwmon:nlbwmon       666       -
+/usr/local/share/nlbwmon        nlbwmon:nlbwmon       -         r

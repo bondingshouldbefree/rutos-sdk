@@ -1,0 +1,17 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CONFIG="system"
+
+log_file=$(uci_get "$CONFIG" "$CONFIG" "log_file")
+buffer=$(uci_get "$CONFIG" "$CONFIG" "log_buffer_size")
+log_size=$(uci_get "$CONFIG" "$CONFIG" "log_size")
+
+[ -n "$log_file" ] && size="$log_size"
+[ -n "$size" ] || [ -n "$buffer" ] &&
+    uci_set "$CONFIG" "$CONFIG" "size" "${size:-$buffer}"
+
+uci_commit "$CONFIG"
+
+exit 0

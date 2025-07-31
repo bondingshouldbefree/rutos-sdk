@@ -1,0 +1,35 @@
+Index: vrrpd-1.15/vrrpd.c
+===================================================================
+--- vrrpd-1.15.orig/vrrpd.c
++++ vrrpd-1.15/vrrpd.c
+@@ -1710,10 +1710,9 @@ static void state_init(struct ubus_conte
+ 	struct events_log new_task = {
+ 		.table = LLOG_NETWORK, .sender = "VRRP", .priority = EVENTLOG_NOTICE, .db_flag = 1
+ 	};
+-	vrrpd_log(LOG_WARNING, "VRRP ID %d on %s: %s%s - INIT State (backup) -", vsrv->vrid, vsrv->vif.ifname,
+-		  master_ipaddr ? ipaddr_to_str(master_ipaddr) : "", master_ipaddr ? " is up, " : "");
+ 	if (vsrv->priority == VRRP_PRIO_OWNER) {
+ 		state_goto_master(ubus, vsrv);
++		return;
+ 	}
+ 	if (vsrv->wantstate == VRRP_STATE_MAST) {
+ 		state_goto_master(ubus, vsrv);
+@@ -1965,7 +1964,17 @@ static void signal_end(int nosig)
+ 
+ 	if (vsrv->state == VRRP_STATE_MAST) {
+ 		vsrv->wantstate = VRRP_STATE_BACK;
+-		state_mast(ubus, vsrv);
++		strcpy(master_reason, "");
++
++		uint32_t addr[1024];
++		vrrp_if *vif = &vsrv->vif;
++		int max_addrs = sizeof(addr) / sizeof(addr[0]);
++		int naddr = ipaddr_list(ifname_to_idx(vif->ifname), addr, max_addrs);
++
++		vrrpd_log(LOG_WARNING, "VRRP ID %d on %s: Send gratuitous ARP for all ip addresses", vsrv->vrid, vif->ifname);
++		for (int i = 0; i < naddr; i++)
++			send_gratuitous_arp(vsrv, addr[i], 0);
++
+ 		state_leave_master(vsrv, 1);
+ 	}
+ 

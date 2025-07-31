@@ -1,0 +1,11 @@
+{
+	"user": "aws",
+	"publish": [ "aws" ],
+	"access": {
+		"file": {
+			"methods": [
+				"exec"
+			]
+		}
+	}
+}

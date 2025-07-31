@@ -1,0 +1,53 @@
+index fff3e7b..3d7bfa0 100644
+--- a/development/include/gxobjects.h
++++ b/development/include/gxobjects.h
+@@ -547,12 +547,12 @@ extern "C" {
+ 
+ #endif //!(defined(DLMS_IGNORE_PROFILE_GENERIC) && defined(DLMS_IGNORE_COMPACT_DATA) && defined(DLMS_IGNORE_PUSH_SETUP) && defined(DLMS_IGNORE_PARAMETER_MONITOR))
+ 
+-#ifndef DLMS_IGNORE_PROFILE_GENERIC
+ #ifndef DLMS_IGNORE_MALLOC
+     //Create capture object with given attribute and data indexes.
+     gxTarget* co_init(unsigned char attributeIndex, unsigned char dataIndex);
+ #endif //DLMS_IGNORE_MALLOC
+ 
++#ifndef DLMS_IGNORE_PROFILE_GENERIC
+     //---------------------------------------------------------------------------
+     // Online help:
+     //  http://www.gurux.fi/Gurux.DLMS.Objects.GXDLMSProfileGeneric
+diff --git a/development/makefile b/development/makefile
+index 1d0365f..6b23955 100644
+--- a/development/makefile
++++ b/development/makefile
+@@ -3,7 +3,7 @@ TARGET   = libgurux_dlms_c.so
+ 
+ CC       = gcc
+ # compiling flags here
+-CFLAGS = -g -std=c99 -Wall -fPIC -DDLMS_IGNORE_REGISTER_ACTIVATION
++CFLAGS = -g -std=c99 -Wall -fPIC -DDLMS_IGNORE_REGISTER_ACTIVATION -DDLMS_IGNORE_ACTIVITY_CALENDAR -DDLMS_IGNORE_PROFILE_GENERIC
+ #Add this if used on microcontroller. -DGX_DLMS_MICROCONTROLLER
+ #Add this if you don't want to use malloc. -DDLMS_IGNORE_MALLOC
+ #Add this if you don't want to use object pointers. -DDLMS_IGNORE_OBJECT_POINTERS
+diff --git a/development/src/gxobjects.c b/development/src/gxobjects.c
+index 204899a..b46d77d 100644
+--- a/development/src/gxobjects.c
++++ b/development/src/gxobjects.c
+@@ -55,8 +55,6 @@ const unsigned char* obj_getLogicalName(gxObject* target)
+     return target->logicalName;
+ }
+ 
+-#ifndef DLMS_IGNORE_PROFILE_GENERIC
+-#ifndef DLMS_IGNORE_MALLOC
+ //Create capture object with given attribute and data indexes.
+ gxTarget* co_init(
+     unsigned char attributeIndex,
+@@ -67,8 +65,8 @@ gxTarget* co_init(
+     obj->dataIndex = dataIndex;
+     return obj;
+ }
+-#endif //DLMS_IGNORE_MALLOC
+ 
++#ifndef DLMS_IGNORE_PROFILE_GENERIC
+ int obj_clearProfileGenericBuffer(gxArray* buffer)
+ {
+     //Clear data rows.

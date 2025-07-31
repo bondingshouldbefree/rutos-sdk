@@ -1,0 +1,8 @@
+{
+    "status/overview": {
+        "title": "Overview",
+        "acls": [ "status/overview" ],
+        "view": "status/Overview",
+        "index": 10
+    }
+}

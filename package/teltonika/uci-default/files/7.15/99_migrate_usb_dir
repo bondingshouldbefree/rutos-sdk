@@ -1,0 +1,60 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+OLD_MOUNT="/tmp/"
+NEW_MOUNT="/mnt/"
+
+migrate_mountpoints() {
+    local config="$1"
+    local section_type="$2"
+    local option="$3"
+
+    [ -f "/etc/config/$config" ] || return 0
+
+    CONFIG="$config"
+    config_load "$config"
+    config_foreach migrate_one "$section_type" "$option" "$config"
+
+    migrate_one "config" "$option" "$config"
+}
+
+migrate_one() {
+    local section="$1"
+    local option="$2"
+    local config="$3"
+
+    local value=$(uci_get "$config" "$section" "$option")
+
+    [ -n "$value" ] && echo "$value" | grep -q "$OLD_MOUNT" && {
+        local new_value="${value//$OLD_MOUNT/$NEW_MOUNT}"
+        uci_set "$config" "$section" "$option" "$new_value"
+        uci_commit "$config"
+    }
+}
+
+# Modbus Client needs a unique migrate, because database could have been stored in /mnt or /tmp
+# So a smarter check is needed to know if the migration needs to be applied
+migrate_modbus_client() {
+    local db_path=$(uci_get "modbus_client" "main" "db_path")
+
+    if [ "$db_path" != "/tmp/modbus_db" ]; then
+        migrate_one main db_path modbus_client
+    fi
+}
+
+migrate_mountpoints samba sambashare path
+migrate_mountpoints minidlna config media_dir
+migrate_modbus_client
+
+# Here is a list of configs which store a location `/mnt/` in in one of their options, but don't need to
+# be migrated for one reason or another. This is just a note to self (and others) as to the reasoning
+# why it wasn't needed.
+
+# GPS NMEA forwarding cache location (i.e. gps.nmea_forwarding_cache.location) doesn't need to be migrated.
+# Because WebUI hard-coded to only allow /mnt.
+
+# Modbus Server register file location (i.e. modbus_server.modbus.regfile) doesn't need to be migrated.
+# Because WebUI hard-coded to only allow /mnt or /tmp. It didn't depend on connected USB flash devices.
+
+exit 0

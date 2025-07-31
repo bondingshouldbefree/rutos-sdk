@@ -1,0 +1,15 @@
+{
+	"user": "vrrpd",
+	"subscribe": [ "network.interface" ],
+	"access": {
+		"log": {
+			"methods": [ "write_ext" ]
+		},
+		"rc": {
+			"methods": [ "init" ]
+		},
+		"network.interface.*": {
+			"methods": [ "status" ]
+		}
+	}
+}

@@ -1,0 +1,70 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CONFIG="certificates"
+json_file="/etc/certificates/status/info"
+
+migrate_certificates() {
+    [ ! -f "$json_file" ] && exit 0
+
+    local index=0
+    while true; do
+        local name=$(jsonfilter -i "$json_file" -e "@[$index].name")
+        [ -z "$name" ] && break
+
+        local fullname=$(jsonfilter -i "$json_file" -e "@[$index].fullname")
+        [ "$fullname" = "ca-certificates.crt" ] && { index=$((index + 1)); continue; }
+
+        local type=$(jsonfilter -i "$json_file" -e "@[$index].type")
+        local cert_type=$(jsonfilter -i "$json_file" -e "@[$index].cert_type")
+        local key_size=$(jsonfilter -i "$json_file" -e "@[$index].key_size")
+        local datetime=$(jsonfilter -i "$json_file" -e "@[$index].datetime")
+        local encryption=$(jsonfilter -i "$json_file" -e "@[$index].encryption")
+        local auto_renew=$(jsonfilter -i "$json_file" -e "@[$index].auto_renew")
+        local import=$(jsonfilter -i "$json_file" -e "@[$index].import")
+        local path="/etc/certificates/$fullname"
+
+        uci_add "$CONFIG" certificate
+        local last_index=$(( $(uci show certificates | grep -c "=certificate") - 1 ))
+
+        uci_set "$CONFIG" @certificate[$last_index] name "$name"
+        uci_set "$CONFIG" @certificate[$last_index] type "$type"
+        uci_set "$CONFIG" @certificate[$last_index] cert_type "$cert_type"
+        uci_set "$CONFIG" @certificate[$last_index] key_size "$key_size"
+        uci_set "$CONFIG" @certificate[$last_index] fullname "$fullname"
+
+        [ "$import" = "true" ] && uci_set "$CONFIG" @certificate[$last_index] import "1"
+        [ -f "$path" ] && {
+            uci_set "$CONFIG" @certificate[$last_index] path "$path"
+            chown certificates:certificates "$path"
+            chmod 0660 "$path"
+        }
+        [ "$datetime" != "-" ] && uci_set "$CONFIG" @certificate[$last_index] datetime "$datetime"
+        [ -n "$encryption" ] && uci_set "$CONFIG" @certificate[$last_index] encryption "$encryption"
+        [ -n "$auto_renew" ] && uci_set "$CONFIG" @certificate[$last_index] auto_renew "$auto_renew"
+
+        local dns_index=0
+        while true; do
+            dns=$(jsonfilter -i "$json_file" -e "@[$index].dns[$dns_index]")
+            [ -z "$dns" ] && break
+            uci_add_list "$CONFIG" @certificate[$last_index] dns "$dns"
+            dns_index=$((dns_index + 1))
+        done
+
+        local ip_index=0
+        while true; do
+            ip=$(jsonfilter -i "$json_file" -e "@[$index].ip[$ip_index]")
+            [ -z "$ip" ] && break
+            uci_add_list "$CONFIG" @certificate[$last_index] ip "$ip"
+            ip_index=$((ip_index + 1))
+        done
+
+        index=$((index + 1))
+    done
+}
+
+migrate_certificates
+rm -f "$json_file"
+uci_commit "$CONFIG"
+exit 0

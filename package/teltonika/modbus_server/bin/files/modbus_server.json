@@ -1,0 +1,98 @@
+{
+	"user": "modbus_server",
+	"publish": [ "modbus_server.*" ],
+	"access": {
+		"wan_info": {
+			"methods": [
+				"get"
+			]
+		},
+		"service": {
+			"methods": [
+				"event"
+			]
+		},
+		"gpsd": {
+			"methods": [
+				"position"
+			]
+		},
+		"ioman.*": {
+			"methods": [
+				"status",
+				"location",
+				"update"
+			]
+		},
+		"mobifd": {
+			"methods": [
+				"reload"
+			]
+		},
+		"network": {
+			"methods": [
+				"reload"
+			]
+		},
+		"network.wireless": {
+			"methods": [
+				"up",
+				"down"
+			]
+		},
+		"system": {
+			"methods": [
+				"reboot"
+			]
+		},
+		"network.interface.lan": {
+			"methods": [
+				"status"
+			]
+		},
+		"mdcollect": {
+			"methods": [
+				"get",
+				"get_raw_total"
+			]
+		},
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_signal_query",
+				"get_temperature",
+				"get_service_provider",
+				"get_net_reg_stat_all",
+				"get_network_info",
+				"get_imsi",
+				"set_func",
+				"get_sim_slot",
+				"set_sim_slot",
+				"change_sim_slot",
+				"send_sms"
+			]
+		},
+		"mbus_client.rpc": {
+			"methods": [
+				"get_tag_value"
+			]
+		},
+		"dnp3_client.rpc": {
+			"methods": [
+				"get_tag_value",
+				"set_tag_value"
+			]
+		},
+		"modbus_client.rpc": {
+			"methods": [
+				"get_tag_value",
+				"set_tag_value"
+			]
+		}
+	}
+}

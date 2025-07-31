@@ -1,0 +1,210 @@
+net: netfilter: xtables: add XFRMOFFLOAD hook
+
+XFRM input offload integration with xtables.
+
+'XFRMOFFLOAD' hooks ESP pakets on INPUT hook and adds respective
+XFRM flows to flowtable.
+
+XFRMOFFLOAD is implemented in the same module as FLOWOFFLOAD, to allow both
+hooks to share the same flowtables, though it is a bit messy. Nftables version
+of this hook(whenever that comes to be) should look a bit nicer. 
+
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -702,6 +702,156 @@ static struct xt_target offload_tg_reg _
+ 	.me		= THIS_MODULE,
+ };
+ 
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++static int xfrmoffload_fill_tuple(struct sk_buff *skb,
++				  const struct xt_action_param *par,
++				  struct nf_flow_xfrm *xfrm)
++{
++	int err;
++	__be32 spi, seq;
++	struct xfrm_state *x;
++
++	xfrm->tuple.iifidx = xt_in(par)->ifindex;
++
++	switch (xt_family(par)) {
++	case NFPROTO_IPV4:
++		if (unlikely(IPCB(skb)->opt.optlen))
++			return -ENOTSUPP;
++
++		xfrm->tuple.src_v4.s_addr = ip_hdr(skb)->saddr;
++		xfrm->tuple.dst_v4.s_addr = ip_hdr(skb)->daddr;
++
++		xfrm->tuple.l3proto = AF_INET;
++		xfrm->tuple.l4proto = ip_hdr(skb)->protocol;
++		break;
++	case NFPROTO_IPV6:
++		xfrm->tuple.src_v6 = ipv6_hdr(skb)->saddr;
++		xfrm->tuple.dst_v6 = ipv6_hdr(skb)->daddr;
++
++		xfrm->tuple.l3proto = AF_INET6;
++		xfrm->tuple.l4proto = ipv6_hdr(skb)->nexthdr;
++		break;
++	default:
++		return -ENOTSUPP;
++	}
++
++	switch (xfrm->tuple.l4proto) {
++	case IPPROTO_ESP:
++		err = xfrm_parse_spi(skb, IPPROTO_ESP, &spi, &seq);
++		if (err)
++			return -EINVAL;
++		xfrm->tuple.spi = spi;
++		break;
++	default:
++		return -ENOTSUPP;
++	}
++
++	// TODO: fill `encap` info
++
++	err = nf_flow_xfrm_tuple_disect(skb, &xfrm->tuple.xfrm_tuple);
++	if (err)
++		return err;
++
++	x = xfrm_state_lookup(dev_net(skb->dev), skb->mark,
++			      (xfrm_address_t *)&xfrm->tuple.dst_v4, spi,
++			      xfrm->tuple.l4proto, xfrm->tuple.l3proto);
++	if (!x)
++		return -ENOENT;
++
++	xfrm->x = x;
++
++	return 0;
++}
++
++static int xfrmoffload_policy_check(struct sk_buff *skb,
++				    struct nf_flow_xfrm *xfrm)
++{
++	struct sec_path *sp;
++
++	sp = skb_sec_path(skb);
++	if (sp && (sp->len || sp->olen) &&
++	    !xfrm_policy_check(NULL, XFRM_POLICY_IN, skb, xfrm->tuple.l3proto))
++		return -EPERM;
++
++	return 0;
++}
++
++static void xfrmoffload_release_tuple(struct nf_flow_xfrm *xfrm)
++{
++	if (xfrm->x)
++		xfrm_state_put(xfrm->x);
++}
++
++static unsigned int xfrmoffload_tg(struct sk_buff *skb,
++				   const struct xt_action_param *par)
++{
++	const struct xt_xfrmoffload_target_info *info = par->targinfo;
++	struct nf_flow_xfrm xfrm = {};
++	struct xt_flowoffload_table *table;
++	int err;
++
++	err = xfrmoffload_fill_tuple(skb, par, &xfrm);
++	if (err)
++		return XT_CONTINUE;
++
++	err = xfrmoffload_policy_check(skb, &xfrm);
++	if (err)
++		goto release_tuple;
++
++	table = &flowtable[!!(info->flags & XT_XFRMOFFLOAD_HW)];
++
++	err = flow_offload_add_xfrm(&table->ft, &xfrm, dev_net(xt_in(par)));
++	if (err)
++		goto release_tuple;
++
++	xt_flowoffload_check_device(table, xt_in(par));
++
++release_tuple:
++	xfrmoffload_release_tuple(&xfrm);
++	return XT_CONTINUE;
++}
++
++static int xfrmoffload_chk(const struct xt_tgchk_param *par)
++{
++	struct xt_xfrmoffload_target_info *info = par->targinfo;
++
++	if (info->flags & ~XT_XFRMOFFLOAD_HW)
++		return -EINVAL;
++
++	return 0;
++}
++
++static struct xt_target xfrmoffload_tg_reg __read_mostly = {
++	.family		= NFPROTO_UNSPEC,
++	.name		= "XFRMOFFLOAD",
++	.revision	= 0,
++	.targetsize	= sizeof(struct xt_xfrmoffload_target_info),
++	.usersize	= sizeof(struct xt_xfrmoffload_target_info),
++	.checkentry	= xfrmoffload_chk,
++	.target		= xfrmoffload_tg,
++	.me		= THIS_MODULE,
++};
++
++static int xfrmoffload_register_tg(void)
++{
++	return xt_register_target(&xfrmoffload_tg_reg);
++}
++
++static void xfrmoffload_unregister_tg(void)
++{
++	xt_unregister_target(&xfrmoffload_tg_reg);
++}
++#else
++static int xfrmoffload_register_tg(void)
++{
++	return 0;
++}
++
++static void xfrmoffload_unregister_tg(void)
++{
++}
++#endif /* CONFIG_NF_FLOW_TABLE_XFRM */
++
+ static int flow_offload_netdev_event(struct notifier_block *this,
+ 				     unsigned long event, void *ptr)
+ {
+@@ -802,8 +952,14 @@ static int __init xt_flowoffload_tg_init
+ 	if (ret)
+ 		goto cleanup2;
+ 
++	ret = xfrmoffload_register_tg();
++	if (ret)
++		goto cleanup3;
++
+ 	return 0;
+ 
++cleanup3:
++	xfrmoffload_unregister_tg();
+ cleanup2:
+ 	nf_flow_table_free(&flowtable[1].ft);
+ cleanup:
+@@ -814,6 +970,7 @@ cleanup:
+ static void __exit xt_flowoffload_tg_exit(void)
+ {
+ 	xt_unregister_target(&offload_tg_reg);
++	xfrmoffload_unregister_tg();
+ 	unregister_netdevice_notifier(&flow_offload_netdev_notifier);
+ 	nf_flow_table_free(&flowtable[0].ft);
+ 	nf_flow_table_free(&flowtable[1].ft);
+--- a/include/uapi/linux/netfilter/xt_FLOWOFFLOAD.h
++++ b/include/uapi/linux/netfilter/xt_FLOWOFFLOAD.h
+@@ -19,4 +19,14 @@ struct xt_flowoffload_target_info {
+ 	__u32 flags;
+ };
+ 
++enum {
++	XT_XFRMOFFLOAD_HW	= 1 << 0,
++
++	XT_XFRMOFFLOAD_MASK	= XT_XFRMOFFLOAD_HW,
++};
++
++struct xt_xfrmoffload_target_info {
++	__u32 flags;
++};
++
+ #endif /* _XT_FLOWOFFLOAD_H */

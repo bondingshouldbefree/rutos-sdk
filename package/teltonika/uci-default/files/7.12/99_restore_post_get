@@ -1,0 +1,17 @@
+#!/bin/sh
+
+. /lib/functions.sh
+PACKAGE_FILE="/etc/package_restore.txt"
+
+io_enabled=$(uci_get post_get.io.enabled)
+mobile_enabled=$(uci_get post_get.mobile.enabled)
+
+if [ "$io_enabled" -eq 1 ]; then
+        echo "io_post_get - I/O POST/GET" >> "$PACKAGE_FILE"
+fi
+
+if [ "$mobile_enabled" -eq 1 ]; then
+        echo "mobile_post_get - Mobile POST/GET" >> "$PACKAGE_FILE"
+fi
+
+exit 0

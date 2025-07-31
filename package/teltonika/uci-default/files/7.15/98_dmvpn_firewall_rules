@@ -1,0 +1,15 @@
+#!/bin/sh
+. /lib/functions.sh
+
+redirect_to_nat() {
+	local section="$1"
+	config_get "vpn_type" "$section" "vpn_type"
+	[ "$vpn_type" = "IPsec" ] || return
+	uci set "firewall.$section=nat"
+	uci rename "firewall.$section.dest=src"
+}
+
+config_load firewall
+config_foreach "redirect_to_nat" "redirect"
+uci commit firewall
+exit 0

@@ -1,0 +1,10 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+# Log level meanings changed, previously "0" was the least verbose now it is the most verbose.
+# So update the log level to "4" as to not spam syslog with debug messages.
+uci_set mbus_client main rpc_debug_level "4"
+uci_commit mbus_client
+
+exit 0

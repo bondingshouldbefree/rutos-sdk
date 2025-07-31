@@ -1,0 +1,161 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -56,6 +56,10 @@ IF(PROFILE_SUPPORT)
+   ADD_DEFINITIONS(-DPROFILE_SUPPORT)
+ ENDIF()
+ 
++IF(DEFINED CMAKE_USB_STORAGE_SUPPORT)
++	ADD_DEFINITIONS(-DUSB_STORAGE_SUPPORT)
++ENDIF(DEFINED CMAKE_USB_STORAGE_SUPPORT)
++
+ add_subdirectory(upgraded)
+ 
+ ADD_EXECUTABLE(procd ${SOURCES})
+--- a/system.c
++++ b/system.c
+@@ -1313,6 +1313,134 @@ static int troubleshoot(struct ubus_cont
+ 	return UBUS_STATUS_OK;
+ }
+ 
++#ifdef USB_STORAGE_SUPPORT
++enum {
++	FMT_ARGS, __FMT_MAX
++};
++
++static const struct blobmsg_policy format_policy[__FMT_MAX] = {
++	[FMT_ARGS] = { .name = "args", .type = BLOBMSG_TYPE_ARRAY },
++};
++
++static int fmt_generic(struct ubus_context *ctx, struct ubus_object *obj,
++		  struct ubus_request_data *req, const char *method,
++		  struct blob_attr *msg, char *target)
++{
++	struct blob_attr *tb[__FMT_MAX];
++	struct blob_attr *cur;
++	struct backup_req *breq;
++	int fd, rem;
++	char *arg;
++
++	if (!msg)
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	blobmsg_parse(format_policy, __FMT_MAX, tb, blob_data(msg), blob_len(msg));
++	if (!tb[FMT_ARGS])
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	breq = calloc(1, sizeof(*breq));
++	if (!breq) {
++		backup_error(ctx, req, "Failed to allocate request");
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++
++	if (pipe(breq->fds)) {
++		backup_error(ctx, req, "pipe() failed: %s (%d)",
++			     strerror(errno), errno);
++		free(breq);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++
++	breq->proc.pid = fork();
++
++	switch(breq->proc.pid) {
++	case -1:
++		backup_error(ctx, req, "fork() failed: %s (%d)",
++			     strerror(errno), errno);
++
++		close(breq->fds[0]);
++		close(breq->fds[1]);
++		free(breq);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	case 0:
++		/* Set stdin to /dev/null */
++		fd = open("/dev/null", O_RDWR);
++		if (fd >= 0) {
++			dup2(fd, 0);
++			close(fd);
++		}
++
++		/* Set stdout and stderr to the shared pipe */
++		dup2(breq->fds[1], 1);
++		dup2(breq->fds[1], 2);
++		close(breq->fds[0]);
++		close(breq->fds[1]);
++
++		int cnt = blobmsg_check_array(tb[FMT_ARGS], BLOBMSG_TYPE_STRING);
++		if (cnt < 0) {
++			backup_error(ctx, req, "blobmsg_check_array() failed");
++			exit(1);
++		}
++
++		char **argv = calloc(2 + cnt, sizeof(char*));
++		if (!argv) {
++			backup_error(ctx, req, "calloc() failed: %s (%d)", strerror(errno), errno);
++			exit(errno);
++		}
++
++		argv[0] = target;
++		int arg_idx = 1;
++
++		rem = blobmsg_data_len(tb[FMT_ARGS]);
++
++		/* Iterate through each env variable and set it */
++		__blob_for_each_attr(cur, blobmsg_data(tb[FMT_ARGS]), rem) {
++			arg = strdup(blobmsg_get_string(cur));
++			if (!arg)
++				continue;
++
++			argv[arg_idx++] = arg;
++		}
++
++		/* To be sure */
++		argv[cnt + 1] = NULL;
++
++		execv(argv[0], argv);
++		exit(errno);
++	}
++
++	/* Parent process */
++	close(breq->fds[1]);
++
++	breq->ufd.fd = breq->fds[0];
++	breq->ufd.cb = backup_output_handler;
++
++	breq->proc.cb = backup_process_handler;
++
++	uloop_fd_add(&breq->ufd, ULOOP_READ);
++	uloop_process_add(&breq->proc);
++
++	ubus_defer_request(ctx, req, &breq->req);
++
++	return UBUS_STATUS_OK;
++}
++
++static int format(struct ubus_context *ctx, struct ubus_object *obj,
++		  struct ubus_request_data *req, const char *method,
++		  struct blob_attr *msg)
++{
++	return fmt_generic(ctx, obj, req, method, msg, "/bin/fmt-usb-msd.sh");
++}
++
++static int sme(struct ubus_context *ctx, struct ubus_object *obj,
++		  struct ubus_request_data *req, const char *method,
++		  struct blob_attr *msg)
++{
++	return fmt_generic(ctx, obj, req, method, msg, "/bin/sme.sh");
++}
++#endif // USB_STORAGE_SUPPORT
++
+ static void
+ procd_subscribe_cb(struct ubus_context *ctx, struct ubus_object *obj)
+ {
+@@ -1328,6 +1456,10 @@ static const struct ubus_method system_m
+ 	UBUS_METHOD("validate_firmware_image", validate_firmware_image, validate_firmware_image_policy),
+ 	UBUS_METHOD("sysupgrade", sysupgrade, sysupgrade_policy),
+ 	UBUS_METHOD_NOARG("analyze", system_analyze),
++#ifdef USB_STORAGE_SUPPORT
++	UBUS_METHOD("format", format, format_policy),
++	UBUS_METHOD("sme", sme, format_policy),
++#endif // USB_STORAGE_SUPPORT
+ #ifdef PROFILE_SUPPORT
+ 	UBUS_METHOD("create_profile", create_profile, c_profile_policy),
+ 	UBUS_METHOD("change_profile", change_profile, ch_profile_policy),

@@ -1,0 +1,52 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2021 Teltonika
+#. /lib/functions.sh
+START=99
+USE_PROCD=1
+WORKDIR=/var/run/shellinabox
+
+start_service()
+{
+	local enable=$(uci get cli.status.enable)
+	local uhttpd_cert=$(uci get uhttpd.main.cert)
+	local uhttpd_key=$(uci get uhttpd.main.key)
+	local shell_cert="$WORKDIR/certificate.pem"
+
+	if [ "$enable" == "1" ]; then
+		local tmp_cert_file=$(mktemp)
+
+		if openssl rsa -in "$uhttpd_key" -check 2>/dev/null > /dev/null; then
+			cp "$uhttpd_key" "$tmp_cert_file"
+		elif openssl ec -in "$uhttpd_key" -check 2>/dev/null > /dev/null; then
+			openssl ec -in "$uhttpd_key" -outform PEM 2>/dev/null > "$tmp_cert_file"
+		else
+			openssl dsa -in "$uhttpd_key" -outform PEM 2>/dev/null > "$tmp_cert_file"
+		fi
+
+		if grep -q "[^[:print:][:blank:]]" "$uhttpd_cert"; then
+			openssl x509 -inform DER -in "$uhttpd_cert" -outform PEM >> "$tmp_cert_file"
+		else
+			cat "$uhttpd_cert" >> "$tmp_cert_file"
+		fi
+
+		mv "$tmp_cert_file" "$shell_cert"
+		chown shellinabox:shellinabox "$shell_cert"
+	fi
+}
+
+stop_service()
+{
+	rm -f "$shell_cert"
+	killall shellinaboxd 2>/dev/null
+}
+
+restart_service()
+{
+	stop
+	start
+}
+
+reload_service()
+{
+	restart_service
+}

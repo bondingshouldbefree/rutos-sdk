@@ -1,0 +1,6 @@
+#!/bin/sh
+
+chmod 600 /log/sms.db 2>/dev/null
+chown sms_limit:sms_limit /log/sms.db 2>/dev/null
+
+exit 0

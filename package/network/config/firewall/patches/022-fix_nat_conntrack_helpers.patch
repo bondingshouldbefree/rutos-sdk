@@ -1,0 +1,84 @@
+--- a/redirects.c
++++ b/redirects.c
+@@ -191,41 +191,32 @@ static void
+ select_helper(struct fw3_state *state, struct fw3_redirect *redir)
+ {
+ 	struct fw3_protocol *proto;
+-	struct fw3_cthelper *helper;
+-	int n_matches = 0;
+-
+ 	if (!state->defaults.auto_helper)
+ 		return;
+-
+ 	if (!redir->_src || redir->target != FW3_FLAG_DNAT)
+ 		return;
+-
+ 	if (!redir->port_redir.set || redir->port_redir.invert)
+ 		return;
+-
+ 	if (redir->helper.set || redir->helper.ptr)
+ 		return;
+-
+ 	if (list_empty(&redir->proto))
+ 		return;
+ 
++	struct fw3_cthelper *helper;
+ 	list_for_each_entry(proto, &redir->proto, list)
+ 	{
+ 		helper = fw3_lookup_cthelper_by_proto_port(state, proto, &redir->port_redir);
+-
+ 		if (helper)
+-			n_matches++;
++			break;
+ 	}
+ 
+-	if (n_matches != 1)
++	if (!helper)
+ 		return;
+-
+ 	/* store pointer to auto-selected helper but set ".set" flag to false,
+ 	 * to allow later code to decide between configured or auto-selected
+ 	 * helpers */
+ 	redir->helper.set = false;
+ 	redir->helper.ptr = helper;
+-
+ 	set(redir->_src->flags, FW3_FAMILY_V4, FW3_FLAG_HELPER);
+ }
+ 
+@@ -585,7 +576,6 @@ print_redirect(struct fw3_ipt_handle *h,
+ 		fw3_ipt_rule_sport_dport(r, spt, dpt);
+ 		fw3_ipt_rule_mac(r, mac);
+ 		fw3_ipt_rule_ipset(r, &redir->ipset);
+-		fw3_ipt_rule_helper(r, &redir->helper);
+ 		fw3_ipt_rule_limit(r, &redir->limit);
+ 		fw3_ipt_rule_time(r, &redir->time);
+ 		fw3_ipt_rule_mark(r, &redir->mark);
+@@ -609,15 +599,13 @@ print_redirect(struct fw3_ipt_handle *h,
+ 				info("     - Auto-selected conntrack helper '%s' based on proto/port",
+ 				     redir->helper.ptr->name);
+ 
+-			r = fw3_ipt_rule_create(h, proto, NULL, NULL, src, &redir->ip_redir);
+-			fw3_ipt_rule_sport_dport(r, spt, &redir->port_redir);
++			r = fw3_ipt_rule_create(h, proto, NULL, NULL, src, &redir->ip_dest);
++			fw3_ipt_rule_sport_dport(r, spt, &redir->port_dest);
+ 			fw3_ipt_rule_mac(r, mac);
+ 			fw3_ipt_rule_ipset(r, &redir->ipset);
+ 			fw3_ipt_rule_limit(r, &redir->limit);
+ 			fw3_ipt_rule_time(r, &redir->time);
+ 			fw3_ipt_rule_mark(r, &redir->mark);
+-			fw3_ipt_rule_addarg(r, false, "-m", "conntrack");
+-			fw3_ipt_rule_addarg(r, false, "--ctstate", "DNAT");
+ 			fw3_ipt_rule_target(r, "CT");
+ 			fw3_ipt_rule_addarg(r, false, "--helper", redir->helper.ptr->name);
+ 			set_comment(r, redir->name, num, "CT helper");
+--- a/rules.c
++++ b/rules.c
+@@ -539,7 +539,7 @@ print_rule(struct fw3_ipt_handle *handle
+ 	    !fw3_cthelper_check_proto(rule->set_helper.ptr, proto))
+ 	{
+ 		info("     ! Skipping protocol %s since helper '%s' does not support it",
+-		     fw3_protoname(proto), rule->helper.ptr->name);
++		     fw3_protoname(proto), rule->set_helper.ptr->name);
+ 		return;
+ 	}
+ 

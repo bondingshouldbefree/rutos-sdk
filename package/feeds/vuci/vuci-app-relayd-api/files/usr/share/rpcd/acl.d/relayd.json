@@ -1,0 +1,1 @@
+{"network/wireless/relayd":{"read":{"api":{"/relayd/*":["*"],"/interfaces/config/*":["id","name","proto"],"/interfaces/basic/status*":["name","ipaddrs"],"/wireless/interfaces/config/*":["mode","network","ssid","mesh_id"],"/dhcp/servers/ipv4/config/*":["interface","enable_dhcpv4"],"/dhcp/servers/ipv6/config/*":["interface","enable_dhcpv6"]}},"write":{"api":["/relayd/*"]}}}

@@ -1,0 +1,194 @@
+From 7a6f5918e3ecad95d7b7da1ff21c9e3b3a79ee67 Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Tue, 20 Aug 2024 13:28:48 +0300
+Subject: [PATCH] dynamic wired VLANs
+
+---
+ hostapd/config_file.c | 36 ++++++++++++++++++++++++++++++++++++
+ src/ap/ap_config.h    |  4 ++++
+ src/ap/hostapd.h      |  1 +
+ src/ap/ieee802_1x.c   | 26 ++++++++++++++++++++++----
+ src/ap/vlan_init.c    |  3 ++-
+ 5 files changed, 65 insertions(+), 5 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index f138681..a2941f8 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -3411,6 +3411,42 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 				   line, bss->ssid.vlan_naming);
+ 			return 1;
+ 		}
++	} else if (os_strcmp(buf, "accept_vlan") == 0) {
++		errno = 0;
++		char* endptr;
++		long accept_vlan = strtol(pos, &endptr, 10);
++		if (errno || *endptr != '\0') {
++			wpa_printf(MSG_ERROR, "Line %d: failed to read accept_vlan: '%s'", line, pos);
++			return 1;
++		}
++		bss->accept_vlan = accept_vlan;
++	} else if (os_strcmp(buf, "reject_vlan") == 0) {
++		errno = 0;
++		char* endptr;
++		long reject_vlan = strtol(pos, &endptr, 10);
++		if (errno || *endptr != '\0') {
++			wpa_printf(MSG_ERROR, "Line %d: failed to read reject_vlan: '%s'", line, pos);
++			return 1;
++		}
++		bss->reject_vlan = reject_vlan;
++	} else if (os_strcmp(buf, "guest_vlan") == 0) {
++		errno = 0;
++		char* endptr;
++		long guest_vlan = strtol(pos, &endptr, 10);
++		if (errno || *endptr != '\0') {
++			wpa_printf(MSG_ERROR, "Line %d: failed to read guest_vlan: '%s'", line, pos);
++			return 1;
++		}
++		bss->guest_vlan = guest_vlan;
++	} else if (os_strcmp(buf, "wired_vlans") == 0) {
++		errno = 0;
++		char* endptr;
++		long wired_vlans = strtol(pos, &endptr, 10);
++		if (errno || *endptr != '\0') {
++			wpa_printf(MSG_ERROR, "Line %d: failed to read wired_vlans: '%s'", line, pos);
++			return 1;
++		}
++		bss->wired_vlans = wired_vlans;
+ #ifdef CONFIG_FULL_DYNAMIC_VLAN
+ 	} else if (os_strcmp(buf, "vlan_tagged_interface") == 0) {
+ 		os_free(bss->ssid.vlan_tagged_interface);
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index c370134..b75afa5 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -303,6 +303,10 @@ struct hostapd_bss_config {
+ 	unsigned int chan_util_avg_period;
+ 
+ 	int ieee802_1x; /* use IEEE 802.1X */
++	int guest_vlan;  /* 0 - disabled */
++	int accept_vlan; /* 0 - disabled */
++	int reject_vlan; /* 0 - radius assigned */
++	int wired_vlans; /* 0 - do not clean up vlans */
+ 	int eapol_version;
+ 	int eap_server; /* Use internal EAP server instead of external
+ 			 * RADIUS server */
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 0807fb1..00c47c0 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -496,6 +496,7 @@ struct hostapd_data {
+ #ifdef CONFIG_CTRL_IFACE_UDP
+        unsigned char ctrl_iface_cookie[CTRL_IFACE_COOKIE_LEN];
+ #endif /* CONFIG_CTRL_IFACE_UDP */
++	   unsigned int radius_rejected;
+ };
+ 
+ 
+diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
+index f9d05d1..c92d1b7 100644
+--- a/src/ap/ieee802_1x.c
++++ b/src/ap/ieee802_1x.c
+@@ -2097,10 +2097,11 @@ ieee802_1x_receive_auth(struct radius_msg *msg, struct radius_msg *req,
+ 	switch (hdr->code) {
+ 	case RADIUS_CODE_ACCESS_ACCEPT:
+ #ifndef CONFIG_NO_VLAN
+-		if (hapd->conf->ssid.dynamic_vlan != DYNAMIC_VLAN_DISABLED &&
+-		    ieee802_1x_update_vlan(msg, hapd, sta) < 0)
+-			break;
+-
++		if (hapd->conf->ssid.dynamic_vlan != DYNAMIC_VLAN_DISABLED) {
++			if(hapd->conf->accept_vlan > 0)
++				ap_sta_set_vlan(hapd, sta, &(struct vlan_description){1, hapd->conf->accept_vlan, {0}});
++			else if(ieee802_1x_update_vlan(msg, hapd, sta) < 0) break;
++		}
+ 		if (sta->vlan_id > 0) {
+ 			hostapd_logger(hapd, sta->addr,
+ 				       HOSTAPD_MODULE_RADIUS,
+@@ -2140,6 +2141,7 @@ ieee802_1x_receive_auth(struct radius_msg *msg, struct radius_msg *req,
+ 	case RADIUS_CODE_ACCESS_REJECT:
+ 		sm->eap_if->aaaFail = true;
+ 		override_eapReq = 1;
++		hapd->radius_rejected = 1;
+ 		if (radius_msg_get_attr_int32(msg, RADIUS_ATTR_WLAN_REASON_CODE,
+ 					      &reason_code) == 0) {
+ 			wpa_printf(MSG_DEBUG,
+@@ -2147,6 +2149,8 @@ ieee802_1x_receive_auth(struct radius_msg *msg, struct radius_msg *req,
+ 				   MACSTR, reason_code, MAC2STR(sta->addr));
+ 			sta->disconnect_reason_code = reason_code;
+ 		}
++		if(hapd->conf->reject_vlan > 0)
++			ap_sta_set_vlan(hapd, sta, &(struct vlan_description){1, hapd->conf->reject_vlan, {0}});
+ 		break;
+ 	case RADIUS_CODE_ACCESS_CHALLENGE:
+ 		sm->eap_if->aaaEapReq = true;
+@@ -2464,6 +2468,7 @@ static void ieee802_1x_set_port_authorized(void *ctx, void *sta_ctx,
+ 	struct hostapd_data *hapd = ctx;
+ 	struct sta_info *sta = sta_ctx;
+ 
++	authorized |= hapd->conf->reject_vlan > 0 && hapd->radius_rejected;
+ 	ieee802_1x_set_sta_authorized(hapd, sta, authorized);
+ }
+ 
+@@ -2538,10 +2543,17 @@ static int ieee802_1x_erp_add_key(void *ctx, struct eap_server_erp_key *erp)
+ #endif /* CONFIG_ERP */
+ 
+ 
++static void guest_vlan(void *eloop_ctx, void *timeout_ctx) { 
++	struct hostapd_data *hapd = eloop_ctx;
++	u8 addr[6] = {0};
++	hostapd_ubus_notify_ieee802_1x(hapd, addr, hapd->conf->guest_vlan > 0, hapd->conf->guest_vlan);
++}
++
+ int ieee802_1x_init(struct hostapd_data *hapd)
+ {
+ 	struct eapol_auth_config conf;
+ 	struct eapol_auth_cb cb;
++	hapd->radius_rejected = 0;
+ 
+ 	if (hapd->mld_first_bss) {
+ 		wpa_printf(MSG_DEBUG,
+@@ -2617,6 +2629,9 @@ int ieee802_1x_init(struct hostapd_data *hapd)
+ 	}
+ #endif /* CONFIG_WEP */
+ 
++	if (hapd->conf->wired_vlans && hapd->conf->guest_vlan > 0)
++		eloop_register_timeout(0, 500000, guest_vlan, hapd, NULL);
++
+ 	return 0;
+ }
+ 
+@@ -2643,6 +2658,9 @@ void ieee802_1x_deinit(struct hostapd_data *hapd)
+ 		return;
+ 	}
+ 
++	if (hapd->conf->wired_vlans && hapd->conf->guest_vlan > 0)
++		eloop_cancel_timeout(guest_vlan, hapd, NULL);
++
+ #ifdef CONFIG_WEP
+ 	eloop_cancel_timeout(ieee802_1x_rekey, hapd, NULL);
+ #endif /* CONFIG_WEP */
+diff --git a/src/ap/vlan_init.c b/src/ap/vlan_init.c
+index b69f3de..38900bb 100644
+--- a/src/ap/vlan_init.c
++++ b/src/ap/vlan_init.c
+@@ -115,6 +115,7 @@ static void vlan_dynamic_remove(struct hostapd_data *hapd,
+ {
+ 	struct hostapd_vlan *next;
+ 
++	int wired_vlans = hapd->conf->wired_vlans;
+ 	while (vlan) {
+ 		next = vlan->next;
+ 
+@@ -123,7 +124,7 @@ static void vlan_dynamic_remove(struct hostapd_data *hapd,
+ 		if (vlan->vlan_id != VLAN_ID_WILDCARD)
+ 			vlan_dellink(vlan->ifname, hapd);
+ #else /* CONFIG_FULL_DYNAMIC_VLAN */
+-		if (vlan->vlan_id != VLAN_ID_WILDCARD &&
++		if (vlan->vlan_id != VLAN_ID_WILDCARD && !wired_vlans &&
+ 		    vlan_if_remove(hapd, vlan)) {
+ 			wpa_printf(MSG_ERROR, "VLAN: Could not remove VLAN "
+ 				   "iface: %s: %s",
+-- 
+2.48.1
+

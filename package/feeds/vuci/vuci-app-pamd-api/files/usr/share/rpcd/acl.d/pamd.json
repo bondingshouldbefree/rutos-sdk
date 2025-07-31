@@ -1,0 +1,1 @@
+{"system/admin/access_control/pam":{"description":"access control pam","read":{"api":{"/users/config/*":["id","username"],"/users/groups/config/*":["id"],"/access_control/pam/*":["*"]}},"write":{"api":["/access_control/pam/*"]}}}

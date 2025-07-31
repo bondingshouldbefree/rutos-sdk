@@ -1,0 +1,21 @@
+#!/bin/sh /etc/rc.common
+
+START=01
+
+USE_PROCD=1
+NAME=urngd
+PROG=/sbin/urngd
+
+start_service() {
+	procd_open_instance
+	procd_set_param respawn 0 5 0
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param command "$PROG"
+	procd_set_param user rng
+	procd_close_instance
+}
+
+reload_service() {
+	procd_send_signal $PROG
+}

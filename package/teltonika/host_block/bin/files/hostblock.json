@@ -1,0 +1,8 @@
+{
+  "user": "hostblock",
+  "access": {
+    "service": {
+      "methods": ["event"]
+    }
+  }
+}

@@ -1,0 +1,216 @@
+Index: hostapd-2023-09-08-e5ccbfc6/src/drivers/driver.h
+===================================================================
+--- hostapd-2023-09-08-e5ccbfc6/src/drivers/driver.h
++++ hostapd-2023-09-08-e5ccbfc6/src/drivers/driver.h
+@@ -5097,6 +5097,10 @@ struct wpa_driver_ops {
+ 	 */
+ 	int (*link_add)(void *priv, u8 link_id, const u8 *addr);
+ 
++	int (*frame_registration)(void *priv, u16 type,
++					  const u8 *match, size_t match_len,
++					  bool multicast, bool register_frame);
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	int (*register_frame)(void *priv, u16 type,
+ 			      const u8 *match, size_t match_len,
+Index: hostapd-2023-09-08-e5ccbfc6/src/drivers/driver_nl80211.c
+===================================================================
+--- hostapd-2023-09-08-e5ccbfc6/src/drivers/driver_nl80211.c
++++ hostapd-2023-09-08-e5ccbfc6/src/drivers/driver_nl80211.c
+@@ -2393,6 +2393,35 @@ static int nl80211_register_frame(struct
+ 	return ret;
+ }
+ 
++static int nl80211_unregister_frame(struct i802_bss *bss,
++				  struct nl_sock *nl_handle, u16 type)
++{
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	struct nl_msg *msg;
++	int ret;
++
++	wpa_printf(MSG_DEBUG,
++		   "nl80211: Unregister frame type=0x%x (%s) nl_handle=%p",
++		   type, fc2str(type), nl_handle);
++
++	if (!(msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_UNREGISTER_FRAME)) ||
++	    nla_put_u16(msg, NL80211_ATTR_FRAME_TYPE, type)) {
++		nlmsg_free(msg);
++		return -1;
++	}
++
++	ret = send_and_recv(drv->global, nl_handle, msg, NULL, NULL,
++			    NULL, NULL);
++
++	if (ret) {
++		wpa_printf(MSG_DEBUG, "nl80211: Unregister frame command "
++			   "failed (type=%u): ret=%d (%s)",
++			   type, ret, strerror(-ret));
++	}
++
++	return ret;
++}
++
+ 
+ static int nl80211_alloc_mgmt_handle(struct i802_bss *bss)
+ {
+@@ -2596,18 +2625,6 @@ static int nl80211_mgmt_subscribe_non_ap
+ 					  5) < 0)
+ 		ret = -1;
+ 
+-	if (nl80211_register_frame(bss, bss->nl_mgmt, (WLAN_FC_TYPE_MGMT << 2) | (WLAN_FC_STYPE_PROBE_REQ << 4), NULL,
+-				   0, false) < 0)
+-		ret = -1;
+-
+-	if (nl80211_register_frame(bss, bss->nl_mgmt, (WLAN_FC_TYPE_MGMT << 2) | (WLAN_FC_STYPE_PROBE_RESP << 4), NULL,
+-				   0, false) < 0)
+-		ret = -1;
+-
+-	if (nl80211_register_frame(bss, bss->nl_mgmt, (WLAN_FC_TYPE_MGMT << 2) | (WLAN_FC_STYPE_BEACON << 4), NULL, 0,
+-				   false) < 0)
+-		ret = -1;
+-
+ 	nl80211_mgmt_handle_register_eloop(bss);
+ 
+ 	return ret;
+@@ -13713,6 +13730,26 @@ static int nl80211_link_add(void *priv,
+ 	return 0;
+ }
+ 
++static int nl80211_frame_registration(void *priv, u16 type,
++					  const u8 *match, size_t match_len,
++					  bool multicast, bool register_frame)
++{
++	struct i802_bss *bss = priv;
++	struct nl_sock *handle;
++	int ret;
++
++	if (!bss->nl_mgmt)
++		return -1;
++
++	handle = (void *) (((intptr_t) bss->nl_mgmt) ^ ELOOP_SOCKET_INVALID);
++
++	if(!register_frame)
++		return nl80211_unregister_frame(bss, handle, type);
++	 
++	return nl80211_register_frame(bss, handle, type, match, match_len,
++					multicast);
++}
++
+ 
+ #ifdef CONFIG_TESTING_OPTIONS
+ 
+@@ -13910,6 +13947,7 @@ const struct wpa_driver_ops wpa_driver_n
+ #endif /* CONFIG_DPP */
+ 	.get_sta_mlo_info = nl80211_get_sta_mlo_info,
+ 	.link_add = nl80211_link_add,
++	.frame_registration = nl80211_frame_registration,
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	.register_frame = testing_nl80211_register_frame,
+ 	.radio_disable = testing_nl80211_radio_disable,
+Index: hostapd-2023-09-08-e5ccbfc6/wpa_supplicant/ctrl_iface.c
+===================================================================
+--- hostapd-2023-09-08-e5ccbfc6/wpa_supplicant/ctrl_iface.c
++++ hostapd-2023-09-08-e5ccbfc6/wpa_supplicant/ctrl_iface.c
+@@ -12035,6 +12035,33 @@ static int wpas_ctrl_iface_mlo_status(st
+ 	return pos - buf;
+ }
+ 
++static int wpa_ctrl_frame_registration(struct wpa_supplicant *wpa_s,
++				       const char *cmd, bool register_frame)
++{
++	u16 type;
++	char *pos, *end;
++	u8 match[10];
++	size_t match_len;
++	bool multicast = false;
++	int ret;
++
++	type = strtol(cmd, &pos, 16);
++	if (*pos != ' ')
++		return -1;
++	pos++;
++	end = os_strchr(pos, ' ');
++	if (end) {
++		match_len = end - pos;
++		multicast = os_strstr(end, "multicast") != NULL;
++	} else {
++		match_len = os_strlen(pos) / 2;
++	}
++	if (hexstr2bin(pos, match, match_len))
++		return -1;
++
++	return wpa_drv_frame_registration(wpa_s, type, match, match_len, multicast, register_frame);
++}
++
+ 
+ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
+ 					 char *buf, size_t *resp_len)
+@@ -13062,6 +13089,12 @@ char * wpa_supplicant_ctrl_iface_process
+ 	} else if (os_strcmp(buf, "MLO_SIGNAL_POLL") == 0) {
+ 		reply_len = wpas_ctrl_iface_mlo_signal_poll(wpa_s, reply,
+ 							    reply_size);
++	} else if (os_strncmp(buf, "REGISTER_FRAME", 14) == 0) {
++		if (wpa_ctrl_frame_registration(wpa_s, buf + 15, true) < 0)
++			reply_len = -1;
++	} else if (os_strncmp(buf, "UNREGISTER_FRAME", 16) == 0) {
++		if (wpa_ctrl_frame_registration(wpa_s, buf + 17, false) < 0)
++			reply_len = -1;
+ 	} else {
+ 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
+ 		reply_len = 16;
+Index: hostapd-2023-09-08-e5ccbfc6/wpa_supplicant/driver_i.h
+===================================================================
+--- hostapd-2023-09-08-e5ccbfc6/wpa_supplicant/driver_i.h
++++ hostapd-2023-09-08-e5ccbfc6/wpa_supplicant/driver_i.h
+@@ -1181,4 +1181,16 @@ wpas_drv_get_sta_mlo_info(struct wpa_sup
+ 	return wpa_s->driver->get_sta_mlo_info(wpa_s->drv_priv, mlo_info);
+ }
+ 
++static inline int
++wpa_drv_frame_registration(struct wpa_supplicant *wpa_s, u16 type,
++			   					const u8 *match, size_t match_len,
++			   					bool multicast, bool register_frame)
++{
++	if (!wpa_s->driver || !wpa_s->drv_priv || !wpa_s->driver->frame_registration)
++		return -1;
++
++	return wpa_s->driver->frame_registration(wpa_s->drv_priv, type, match, 
++						 match_len, multicast, register_frame);
++}
++
+ #endif /* DRIVER_I_H */
+Index: hostapd-2023-09-08-e5ccbfc6/wpa_supplicant/wpa_cli.c
+===================================================================
+--- hostapd-2023-09-08-e5ccbfc6/wpa_supplicant/wpa_cli.c
++++ hostapd-2023-09-08-e5ccbfc6/wpa_supplicant/wpa_cli.c
+@@ -3323,6 +3323,17 @@ static int wpa_cli_cmd_dscp_query(struct
+ 	return wpa_cli_cmd(ctrl, "DSCP_QUERY", 1, argc, argv);
+ }
+ 
++static int wpa_cli_cmd_register_frame(struct wpa_ctrl *ctrl, int argc, char *argv[])
++{
++	return wpa_cli_cmd(ctrl, "REGISTER_FRAME", 1, argc, argv);
++}
++
++
++static int wpa_cli_cmd_unregister_frame(struct wpa_ctrl *ctrl, int argc, char *argv[])
++{
++	return wpa_cli_cmd(ctrl, "UNREGISTER_FRAME", 1, argc, argv);
++}
++
+ 
+ enum wpa_cli_cmd_flags {
+ 	cli_cmd_flag_none		= 0x00,
+@@ -3528,6 +3539,12 @@ static const struct wpa_cli_cmd wpa_cli_
+ 	{ "scan_results", wpa_cli_cmd_scan_results, NULL,
+ 	  cli_cmd_flag_none,
+ 	  "= get latest scan results" },
++	{ "register_frame", wpa_cli_cmd_register_frame, NULL,
++	  cli_cmd_flag_none,
++	  "= register management frame | <hex_flag> <match> <match_len> |" },
++	{ "unregister_frame", wpa_cli_cmd_unregister_frame, NULL,
++	  cli_cmd_flag_none,
++	  "= unregister management frame | <hex_flag> <match> <match_len> |" },
+ 	{ "abort_scan", wpa_cli_cmd_abort_scan, NULL,
+ 	  cli_cmd_flag_none,
+ 	  "= request ongoing scan to be aborted" },
