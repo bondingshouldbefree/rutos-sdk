@@ -1,0 +1,8 @@
+{
+	"user": "ds",
+	"access": {
+		"azure.*": {
+			"methods": [ "message" ]
+		}
+	}
+}

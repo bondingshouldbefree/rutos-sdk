@@ -1,0 +1,1 @@
+{"services/mobile_utilities/sms_gateway/email_to_sms":{"description":"email to sms configuration","read":{"api":{"/sms_gateway/email_to_sms/*":["*"],"/modems/status/*":["id","name","builtin","index","primary"],"/modem_control/config/*":["*"]}},"write":{"api":["/sms_gateway/email_to_sms/*"]}}}

@@ -1,0 +1,23 @@
+diff --git a/development/src/dlms.c b/development/src/dlms.c
+index 4e374a8..320a2b0 100644
+--- a/development/src/dlms.c
++++ b/development/src/dlms.c
+@@ -2890,6 +2890,10 @@ int dlms_getHdlcData(
+ 
+     bb_size_t packetStartIndex = recv_data->position;
+ 
++    if (recv_data->size - recv_data->position < 9) {
++        goto need_more_bytes;
++    }
++
+     uint8_t startOfPacket;
+     if ((ret = bb_getUInt8(recv_data, &startOfPacket)) != 0)
+     {
+@@ -6434,6 +6438,7 @@ int dlms_getData3(
+             result.moreData = reply->moreData;
+             result.packetLength = reply->packetLength;
+             ret = dlms_getHdlcData(settings, recv_data, &result, reply->preEstablished, first);
++            if (!result.complete) reply->complete = 0;
+ 
+             // Ignore data unnumbered information packets, because for SOME REASON
+             // they mess up the "Send sequence number" which makes it "desync".

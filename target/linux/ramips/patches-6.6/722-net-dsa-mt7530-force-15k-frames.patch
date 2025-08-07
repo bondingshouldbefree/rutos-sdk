@@ -1,0 +1,57 @@
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -1230,40 +1230,6 @@ mt7530_port_disable(struct dsa_switch *d
+ static int
+ mt7530_port_change_mtu(struct dsa_switch *ds, int port, int new_mtu)
+ {
+-	struct mt7530_priv *priv = ds->priv;
+-	int length;
+-	u32 val;
+-
+-	/* When a new MTU is set, DSA always set the CPU port's MTU to the
+-	 * largest MTU of the slave ports. Because the switch only has a global
+-	 * RX length register, only allowing CPU port here is enough.
+-	 */
+-	if (!dsa_is_cpu_port(ds, port))
+-		return 0;
+-
+-	mt7530_mutex_lock(priv);
+-
+-	val = mt7530_mii_read(priv, MT7530_GMACCR);
+-	val &= ~MAX_RX_PKT_LEN_MASK;
+-
+-	/* RX length also includes Ethernet header, MTK tag, and FCS length */
+-	length = new_mtu + ETH_HLEN + MTK_HDR_LEN + ETH_FCS_LEN;
+-	if (length <= 1522) {
+-		val |= MAX_RX_PKT_LEN_1522;
+-	} else if (length <= 1536) {
+-		val |= MAX_RX_PKT_LEN_1536;
+-	} else if (length <= 1552) {
+-		val |= MAX_RX_PKT_LEN_1552;
+-	} else {
+-		val &= ~MAX_RX_JUMBO_MASK;
+-		val |= MAX_RX_JUMBO(DIV_ROUND_UP(length, 1024));
+-		val |= MAX_RX_PKT_LEN_JUMBO;
+-	}
+-
+-	mt7530_mii_write(priv, MT7530_GMACCR, val);
+-
+-	mt7530_mutex_unlock(priv);
+-
+ 	return 0;
+ }
+ 
+@@ -3050,6 +3016,13 @@ mt753x_setup(struct dsa_switch *ds)
+ 			mt7530_free_irq(priv);
+ 	}
+ 
++	// Hardcode internal switch frame size to 15k
++	mt7530_rmw(priv, MT7530_GMACCR,
++		   MAX_RX_PKT_LEN_MASK |
++		   MAX_RX_JUMBO_MASK,
++		   MAX_RX_JUMBO(15) |
++		   MAX_RX_PKT_LEN_JUMBO);
++
+ 	return ret;
+ }
+ 

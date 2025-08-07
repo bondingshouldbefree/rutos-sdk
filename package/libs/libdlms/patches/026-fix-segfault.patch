@@ -1,0 +1,15 @@
+diff --git a/development/src/gxsetmalloc.c b/development/src/gxsetmalloc.c
+index 06c7098..8a679f8 100644
+--- a/development/src/gxsetmalloc.c
++++ b/development/src/gxsetmalloc.c
+@@ -6441,9 +6441,9 @@ int setCaptureObjects(
+     {
+         return ret;
+     }
+-    arr_capacity(objects, value->Arr->size);
+     if (value->Arr != NULL)
+     {
++        arr_capacity(objects, value->Arr->size);
+         for (pos = 0; pos != value->Arr->size; ++pos)
+         {
+             ret = va_getByIndex(value->Arr, pos, &tmp);

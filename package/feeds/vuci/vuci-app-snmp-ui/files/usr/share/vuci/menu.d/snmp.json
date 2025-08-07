@@ -1,0 +1,36 @@
+{
+  "services/snmp": {
+    "title": "SNMP",
+    "index": 170
+  },
+  "services/snmp/snmp_settings": {
+    "title": "SNMP Settings",
+    "acls": [ "services/snmp/snmp_settings" ],
+    "view": "services/Snmp",
+    "index": 1,
+    "main_page": true
+  },
+  "services/snmp/snmpv3": {
+    "title": "SNMP V3 Users",
+    "acls": [ "services/snmp/snmpv3" ],
+    "view": "services/SnmpV3",
+    "index": 2
+  },
+  "services/snmp/community": {
+    "title": "Communities",
+    "acls": [ "services/snmp/community" ],
+    "view": "services/Communities",
+    "index": 3
+  },
+  "services/snmp/traps": {
+    "title": "Trap Settings",
+    "acls": [ "services/snmp/traps" ],
+    "view": "services/Trap",
+    "index": 4,
+    "depends": {
+      "packages": {
+        "anyOf": ["snmptrap"]
+      }
+    }
+  }
+}

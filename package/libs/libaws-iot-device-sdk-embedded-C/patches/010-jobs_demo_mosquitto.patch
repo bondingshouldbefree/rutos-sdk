@@ -1,0 +1,46 @@
+--- a/demos/jobs/jobs_demo_mosquitto/jobs_demo_mosquitto.c
++++ b/demos/jobs/jobs_demo_mosquitto/jobs_demo_mosquitto.c
+@@ -640,7 +640,7 @@ static void on_connect( struct mosquitto
+ 
+     assert( h != NULL );
+ 
+-    h->connectError = rc;
++    h->connectError = 0;
+ }
+ 
+ /*-----------------------------------------------------------*/
+@@ -654,6 +654,8 @@ static bool connect( handle_t * h )
+     assert( h->m != NULL );
+     assert( h->connectError == -1 );
+ 
++    h->connectError = 0;
++
+     if( h->port == 443 )
+     {
+         #if ( LIBMOSQUITTO_VERSION_NUMBER >= 1006000 )
+@@ -776,7 +778,7 @@ static bool subscribe( handle_t * h,
+         warnx( "subscribe: %s", mosquitto_strerror( ret ) );
+     }
+ 
+-    return ( ( h->subscribeQOS >= 0 ) && ( h->subscribeQOS <= MQTT_QOS ) ) ? true : false;
++    return true;
+ }
+ 
+ /*-----------------------------------------------------------*/
+@@ -1210,8 +1212,6 @@ int main( int argc,
+         exit( 1 );
+     }
+ 
+-    on_exit( teardown, h );
+-
+     if( ( setup( h ) == false ) || ( connect( h ) == false ) )
+     {
+         errx( 1, "fatal error" );
+@@ -1316,5 +1316,7 @@ int main( int argc,
+         }
+     }
+ 
++    teardown(0, h);
++
+     exit( EXIT_SUCCESS );
+ }

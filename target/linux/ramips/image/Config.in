@@ -1,0 +1,7 @@
+config BUILD_BOOTLOADER
+	bool
+	depends on BUILD_FACTORY_IMAGE && TARGET_ramips
+	select PACKAGE_uboot-ath79 if TARGET_ramips_mt76x8 && SMALL_FLASH
+	select PACKAGE_uboot-mt7621 if TARGET_ramips_mt7621 || \
+		(TARGET_ramips_mt76x8 && !SMALL_FLASH)
+

@@ -1,0 +1,369 @@
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/.gitignore src/.gitignore
+--- upstream/.gitignore	2021-08-10 13:43:15.000000000 +0000
++++ src/.gitignore	2025-06-19 07:30:18.000000000 +0000
+@@ -162,3 +162,14 @@
+ 
+ # VS Code
+ .vscode/
++
++_deps/*
++_deps
++compile_commands.json
++CPackConfi.cmake
++CPackSourceConfig.cmake
++CPackConfig.cmake
++cpp/examples/decoder/decoder
++cpp/examples/master-gprs/master-gprs-demo
++cpp/examples/master-udp/master-udp-demo
++cpp/examples/outstation-udp/outstation-udp-demo
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/cpp/examples/outstation/main.cpp src/cpp/examples/outstation/main.cpp
+--- upstream/cpp/examples/outstation/main.cpp	2021-08-10 13:43:15.000000000 +0000
++++ src/cpp/examples/outstation/main.cpp	2025-06-19 07:30:18.000000000 +0000
+@@ -33,6 +33,25 @@
+ using namespace std;
+ using namespace opendnp3;
+ 
++static uint32_t counter = 0;
++
++static OctetString custom_function_string(uint16_t index, void * user_data)
++{
++    cout << "Custom function called!!!!" << endl;
++    return OctetString("Hello World!");
++}
++
++static Counter custom_function(uint16_t index, void * user_data)
++{
++    cout << "Custom function called!!!!" << endl;
++    int16_t dnp3_group = 22;
++    GroupVariation gv = GroupVariationSpec::from_type(dnp3_group << 8);
++    cout << "GroupVariation: " << GroupVariationSpec::to_human_string(gv) << endl;
++    cout << "GroupVariation: " << GroupVariationSpec::to_type(gv) << endl;
++    cout << "Done!" << endl;
++    return Counter(counter++);
++}
++
+ DatabaseConfig ConfigureDatabase()
+ {
+     DatabaseConfig config(10); // 10 of each type with default settings
+@@ -41,6 +60,11 @@
+     config.analog_input[0].svariation = StaticAnalogVariation::Group30Var5;
+     config.analog_input[0].evariation = EventAnalogVariation::Group32Var7;
+             
++    config.counter[0] = {};
++    config.counter[0].value_callback = custom_function;
++    config.octet_string[0] = {};
++    config.octet_string[0].value_callback = custom_function_string;
++            
+     return config;
+ }
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/cpp/lib/include/opendnp3/app/MeasurementInfo.h src/cpp/lib/include/opendnp3/app/MeasurementInfo.h
+--- upstream/cpp/lib/include/opendnp3/app/MeasurementInfo.h	2021-08-10 13:43:15.000000000 +0000
++++ src/cpp/lib/include/opendnp3/app/MeasurementInfo.h	2025-06-19 07:30:18.000000000 +0000
+@@ -55,6 +55,7 @@
+     typedef bool value_t;
+     typedef EventBinaryVariation event_variation_t;
+     typedef StaticBinaryVariation static_variation_t;
++    typedef Binary (*value_cb_t)(uint16_t, void *);
+ 
+     static const EventType EventTypeEnum;
+     static const StaticTypeBitmask StaticTypeEnum;
+@@ -68,6 +69,7 @@
+     typedef DoubleBit value_t;
+     typedef EventDoubleBinaryVariation event_variation_t;
+     typedef StaticDoubleBinaryVariation static_variation_t;
++    typedef DoubleBitBinary (*value_cb_t)(uint16_t, void *);
+ 
+     static const EventType EventTypeEnum;
+     static const StaticTypeBitmask StaticTypeEnum;
+@@ -81,6 +83,7 @@
+     typedef bool value_t;
+     typedef EventBinaryOutputStatusVariation event_variation_t;
+     typedef StaticBinaryOutputStatusVariation static_variation_t;
++    typedef BinaryOutputStatus (*value_cb_t)(uint16_t, void *);
+ 
+     static const EventType EventTypeEnum;
+     static const StaticTypeBitmask StaticTypeEnum;
+@@ -94,6 +97,7 @@
+     typedef double value_t;
+     typedef EventAnalogVariation event_variation_t;
+     typedef StaticAnalogVariation static_variation_t;
++    typedef Analog (*value_cb_t)(uint16_t, void *);
+ 
+     static const EventType EventTypeEnum;
+     static const StaticTypeBitmask StaticTypeEnum;
+@@ -107,6 +111,7 @@
+     typedef uint32_t value_t;
+     typedef EventCounterVariation event_variation_t;
+     typedef StaticCounterVariation static_variation_t;
++    typedef Counter (*value_cb_t)(uint16_t, void *);
+ 
+     static const EventType EventTypeEnum;
+     static const StaticTypeBitmask StaticTypeEnum;
+@@ -120,6 +125,7 @@
+     typedef uint32_t value_t;
+     typedef EventFrozenCounterVariation event_variation_t;
+     typedef StaticFrozenCounterVariation static_variation_t;
++    typedef FrozenCounter (*value_cb_t)(uint16_t, void *);
+ 
+     static const EventType EventTypeEnum;
+     static const StaticTypeBitmask StaticTypeEnum;
+@@ -133,6 +139,7 @@
+     typedef double value_t;
+     typedef EventAnalogOutputStatusVariation event_variation_t;
+     typedef StaticAnalogOutputStatusVariation static_variation_t;
++    typedef AnalogOutputStatus (*value_cb_t)(uint16_t, void *);
+ 
+     static const EventType EventTypeEnum;
+     static const StaticTypeBitmask StaticTypeEnum;
+@@ -145,6 +152,7 @@
+     typedef OctetString meas_t;
+     typedef EventOctetStringVariation event_variation_t;
+     typedef StaticOctetStringVariation static_variation_t;
++    typedef OctetString (*value_cb_t)(uint16_t, void *);
+ 
+     static const EventType EventTypeEnum;
+     static const StaticTypeBitmask StaticTypeEnum;
+@@ -156,6 +164,7 @@
+ {
+     typedef TimeAndInterval meas_t;
+     typedef StaticTimeAndIntervalVariation static_variation_t;
++    typedef TimeAndInterval (*value_cb_t)(uint16_t, void *);
+ 
+     static const StaticTypeBitmask StaticTypeEnum;
+     static const StaticTimeAndIntervalVariation DefaultStaticVariation;
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/cpp/lib/include/opendnp3/gen/Parity.h src/cpp/lib/include/opendnp3/gen/Parity.h
+--- upstream/cpp/lib/include/opendnp3/gen/Parity.h	2021-08-10 13:43:15.000000000 +0000
++++ src/cpp/lib/include/opendnp3/gen/Parity.h	2025-06-19 07:30:18.000000000 +0000
+@@ -44,6 +44,8 @@
+ {
+   Even = 1,
+   Odd = 2,
++  Mark = 3,
++  Space = 4,
+   None = 0
+ };
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/cpp/lib/include/opendnp3/outstation/MeasurementConfig.h src/cpp/lib/include/opendnp3/outstation/MeasurementConfig.h
+--- upstream/cpp/lib/include/opendnp3/outstation/MeasurementConfig.h	2021-08-10 13:43:15.000000000 +0000
++++ src/cpp/lib/include/opendnp3/outstation/MeasurementConfig.h	2025-06-19 07:30:18.000000000 +0000
+@@ -31,6 +31,8 @@
+ template<class Info> struct StaticConfig
+ {
+     typename Info::static_variation_t svariation = Info::DefaultStaticVariation;
++    typename Info::value_cb_t value_callback = nullptr;
++    void *user_data = nullptr;
+ };
+ 
+ template<class Info> struct EventConfig : StaticConfig<Info>
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/cpp/lib/src/channel/ASIOSerialHelpers.cpp src/cpp/lib/src/channel/ASIOSerialHelpers.cpp
+--- upstream/cpp/lib/src/channel/ASIOSerialHelpers.cpp	2021-08-10 13:43:15.000000000 +0000
++++ src/cpp/lib/src/channel/ASIOSerialHelpers.cpp	2025-06-19 07:30:18.000000000 +0000
+@@ -88,6 +88,12 @@
+     case (Parity::Odd):
+         t = asio::serial_port_base::parity::odd;
+         break;
++    case (Parity::Mark):
++        t = asio::serial_port_base::parity::mark;
++       break;
++    case (Parity::Space):
++        t = asio::serial_port_base::parity::space;
++       break;
+     default:
+         break;
+     }
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/cpp/lib/src/outstation/StaticDataCell.h src/cpp/lib/src/outstation/StaticDataCell.h
+--- upstream/cpp/lib/src/outstation/StaticDataCell.h	2021-08-10 13:43:15.000000000 +0000
++++ src/cpp/lib/src/outstation/StaticDataCell.h	2025-06-19 07:30:18.000000000 +0000
+@@ -36,8 +36,10 @@
+     }
+ 
+     bool selected = false;
++    void *user_data = NULL;
+     typename Spec::meas_t value;
+     typename Spec::static_variation_t variation = Spec::DefaultStaticVariation;
++    typename Spec::value_cb_t value_callback;
+ };
+ 
+ /**
+@@ -48,14 +50,22 @@
+     typename Spec::meas_t value;       // current value
+     typename Spec::config_t config;    // configuration
+     typename Spec::event_cell_t event; // event cell
++    typename Spec::value_cb_t value_callback; // callback for custom value
+     SelectedValue<Spec> selection;     // selected value
++    void *user_data = NULL; // user data for callback
+ 
+     StaticDataCell() = default;
+     StaticDataCell(const typename Spec::meas_t& value, const typename Spec::config_t& config)
+         : value(value), config(config)
+     {
++        value_callback = config.value_callback;
++        user_data = config.user_data;
++    }
++    StaticDataCell(const typename Spec::config_t& config) : config(config)
++    {
++        value_callback = config.value_callback;
++        user_data = config.user_data;
+     }
+-    StaticDataCell(const typename Spec::config_t& config) : config(config) {}
+ };
+ 
+ } // namespace opendnp3
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/cpp/lib/src/outstation/StaticDataMap.h src/cpp/lib/src/outstation/StaticDataMap.h
+--- upstream/cpp/lib/src/outstation/StaticDataMap.h	2021-08-10 13:43:15.000000000 +0000
++++ src/cpp/lib/src/outstation/StaticDataMap.h	2025-06-19 07:30:18.000000000 +0000
+@@ -304,6 +304,11 @@
+             iter.second.selection = SelectedValue<Spec>{
+                 true, iter.second.value,
+                 check_for_promotion<Spec>(iter.second.value, get_variation(iter.second.config.svariation))};
++
++            // Overide measurement value with callback function
++            if (iter.second.value_callback) {
++                iter.second.selection.value = iter.second.value_callback(iter.first, iter.second.user_data);
++            }
+         }
+ 
+         return this->map.size();
+@@ -338,11 +343,17 @@
+         {
+             break;
+         }
+-
++        
+         stop = iter->first;
+         iter->second.selection = SelectedValue<Spec>{
+             true, iter->second.value,
+             check_for_promotion<Spec>(iter->second.value, get_variation(iter->second.config.svariation))};
++
++        // Overide measurement value with callback function
++        if (iter->second.value_callback) {
++            iter->second.selection.value = iter->second.value_callback(iter->first, iter->second.user_data);
++        }
++
+         ++count;
+     }
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/deps/asio.cmake src/deps/asio.cmake
+--- upstream/deps/asio.cmake	2021-08-10 13:43:15.000000000 +0000
++++ src/deps/asio.cmake	2025-06-19 07:30:18.000000000 +0000
+@@ -1,19 +1,9 @@
+-include(FetchContent)
+ 
+-FetchContent_Declare(
+-    asio
+-    URL      https://github.com/chriskohlhoff/asio/archive/asio-1-16-0.zip
+-    URL_HASH SHA1=6BDD33522D5B95B36445ABB2072A481F7CE15402
+-)
+-
+-FetchContent_GetProperties(asio)
+ if(NOT asio_POPULATED)
+-    FetchContent_Populate(asio)
+-
+     find_package(Threads)
+ 
+     add_library(asio INTERFACE)
+-    target_include_directories(asio INTERFACE ${asio_SOURCE_DIR}/asio/include)
++
+     target_compile_definitions(asio INTERFACE ASIO_STANDALONE)
+     target_compile_features(asio INTERFACE cxx_std_11)
+     target_link_libraries(asio INTERFACE Threads::Threads)
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/deps/catch.cmake src/deps/catch.cmake
+--- upstream/deps/catch.cmake	2021-08-10 13:43:15.000000000 +0000
++++ src/deps/catch.cmake	2025-06-19 07:30:18.000000000 +0000
+@@ -2,6 +2,7 @@
+ 
+ FetchContent_Declare(
+     catch
++    DOWNLOAD_DIR ${DL_DIR}
+     URL                 https://github.com/catchorg/Catch2/releases/download/v2.11.3/catch.hpp
+     URL_HASH            SHA1=C127EBB7A4F65C6CEFF7587C8EF18F84A74D6C15
+     DOWNLOAD_NO_EXTRACT TRUE
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/deps/exe4cpp.cmake src/deps/exe4cpp.cmake
+--- upstream/deps/exe4cpp.cmake	2021-08-10 13:43:15.000000000 +0000
++++ src/deps/exe4cpp.cmake	2025-06-19 07:30:18.000000000 +0000
+@@ -1,15 +1,4 @@
+-include(FetchContent)
+-
+-FetchContent_Declare(
+-    exe4cpp
+-    URL      https://github.com/automatak/exe4cpp/archive/fb878a4de598ba9d6e4338afebf83f96e03af1b8.zip
+-    URL_HASH SHA1=18B141E8CF09DC8D28CC62DD5FA2920670D501BD
+-)
+-
+-FetchContent_GetProperties(exe4cpp)
+ if(NOT exe4cpp_POPULATED)
+-    FetchContent_Populate(exe4cpp)
+-
+     add_library(exe4cpp INTERFACE)
+     target_include_directories(exe4cpp INTERFACE ${exe4cpp_SOURCE_DIR}/src)
+     target_compile_features(exe4cpp INTERFACE cxx_std_14)
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/deps/ser4cpp.cmake src/deps/ser4cpp.cmake
+--- upstream/deps/ser4cpp.cmake	2021-08-10 13:43:15.000000000 +0000
++++ src/deps/ser4cpp.cmake	2025-06-19 07:30:18.000000000 +0000
+@@ -1,15 +1,4 @@
+-include(FetchContent)
+-
+-FetchContent_Declare(
+-    ser4cpp
+-    URL      https://github.com/automatak/ser4cpp/archive/3c449734dc530a8f465eb0982de29165cc4e23d5.zip
+-    URL_HASH SHA1=937B759B7CC80180DA26B47037E796B59798A672
+-)
+-
+-FetchContent_GetProperties(ser4cpp)
+ if(NOT ser4cpp_POPULATED)
+-    FetchContent_Populate(ser4cpp)
+-
+     add_library(ser4cpp INTERFACE)
+     target_include_directories(ser4cpp INTERFACE ${ser4cpp_SOURCE_DIR}/src)
+     target_compile_features(ser4cpp INTERFACE cxx_std_14)
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/deps/serial_port_base.hpp.patch src/deps/serial_port_base.hpp.patch
+--- upstream/deps/serial_port_base.hpp.patch	1970-01-01 00:00:00.000000000 +0000
++++ src/deps/serial_port_base.hpp.patch	2025-06-19 07:30:18.000000000 +0000
+@@ -0,0 +1,13 @@
++diff --git a/asio/include/asio/serial_port_base.hpp b/asio/include/asio/serial_port_base.hpp
++index 1f027601..e2f0c4cf 100644
++--- a/asio/include/asio/serial_port_base.hpp
+++++ b/asio/include/asio/serial_port_base.hpp
++@@ -91,7 +91,7 @@ public:
++   class parity
++   {
++   public:
++-    enum type { none, odd, even };
+++    enum type { none, odd, even, mark, space };
++     ASIO_DECL explicit parity(type t = none);
++     type value() const;
++     ASIO_DECL ASIO_SYNC_OP_VOID store(
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/deps/serial_port_base.ipp.patch src/deps/serial_port_base.ipp.patch
+--- upstream/deps/serial_port_base.ipp.patch	1970-01-01 00:00:00.000000000 +0000
++++ src/deps/serial_port_base.ipp.patch	2025-06-19 07:30:18.000000000 +0000
+@@ -0,0 +1,29 @@
++diff --git a/asio/include/asio/impl/serial_port_base.ipp b/asio/include/asio/impl/serial_port_base.ipp
++index 984d7a85..7cb53d0d 100644
++--- a/asio/include/asio/impl/serial_port_base.ipp
+++++ b/asio/include/asio/impl/serial_port_base.ipp
++@@ -328,7 +328,7 @@ ASIO_SYNC_OP_VOID serial_port_base::flow_control::load(
++ serial_port_base::parity::parity(serial_port_base::parity::type t)
++   : value_(t)
++ {
++-  if (t != none && t != odd && t != even)
+++  if (t != none && t != odd && t != even && t != mark && t != space)
++   {
++     std::out_of_range ex("invalid parity value");
++     asio::detail::throw_exception(ex);
++@@ -374,6 +374,15 @@ ASIO_SYNC_OP_VOID serial_port_base::parity::store(
++     storage.c_iflag |= INPCK;
++     storage.c_cflag |= (PARENB | PARODD);
++     break;
+++  case mark:
+++    storage.c_iflag |= INPCK;
+++    storage.c_cflag |= PARENB | CMSPAR | PARODD;
+++    break;
+++  case space:
+++    storage.c_iflag |= INPCK;
+++    storage.c_cflag |= PARENB | CMSPAR;
+++    storage.c_cflag &= ~PARODD;
+++    break;
++   default:
++     break;
++   }

@@ -1,0 +1,61 @@
+--- a/drivers/char/tpm/tpm_tis_i2c.c
++++ b/drivers/char/tpm/tpm_tis_i2c.c
+@@ -105,13 +105,27 @@ static u8 tpm_tis_i2c_address_to_registe
+ 	}
+ }
+ 
++static int validate_error(int ret)
++{
++	switch (ret) {
++	case -145: /* I2C ERR Unknown */
++		return -EIO;
++	case -ENXIO: /* Bus might not be initialized yet */
++		return -EPROBE_DEFER;
++	default:
++		break;
++	}
++
++	return 0;
++}
++
+ static int tpm_tis_i2c_retry_transfer_until_ack(struct tpm_tis_data *data,
+ 						struct i2c_msg *msg)
+ {
+ 	struct tpm_tis_i2c_phy *phy = to_tpm_tis_i2c_phy(data);
+ 	bool guard_time;
+ 	int i = 0;
+-	int ret;
++	int ret, override;
+ 
+ 	if (msg->flags & I2C_M_RD)
+ 		guard_time = phy->guard_time_read;
+@@ -120,9 +134,14 @@ static int tpm_tis_i2c_retry_transfer_un
+ 
+ 	do {
+ 		ret = i2c_transfer(phy->i2c_client->adapter, msg, 1);
+-		if (ret < 0)
+-			usleep_range(GUARD_TIME_ERR_MIN, GUARD_TIME_ERR_MAX);
+-		else if (guard_time)
++		if (ret < 0) {
++			if ((override = validate_error(ret))) {
++				pr_err("TPM I2C transfer error: %d\n", ret);
++				return override;
++			} else {
++				usleep_range(GUARD_TIME_ERR_MIN, GUARD_TIME_ERR_MAX);
++			}
++		} else if (guard_time)
+ 			usleep_range(phy->guard_time_min, phy->guard_time_max);
+ 		/* retry on TPM NACK */
+ 	} while (ret < 0 && i++ < TPM_RETRY);
+@@ -361,8 +380,10 @@ static int tpm_tis_i2c_probe(struct i2c_
+ 
+ 	/* must precede all communication with the tpm */
+ 	ret = tpm_tis_i2c_init_guard_time(phy);
+-	if (ret)
++	if (ret) {
++		dev_err(&dev->dev, "Failed to initialize I2C guard time.\n");
+ 		return ret;
++	}
+ 
+ 	ret = tpm_tis_i2c_write_bytes(&phy->priv, TPM_LOC_SEL, sizeof(locality),
+ 				      &locality, TPM_TIS_PHYS_8);

@@ -1,0 +1,16 @@
+--- a/fs/jffs2/gc.c
++++ b/fs/jffs2/gc.c
+@@ -470,7 +470,12 @@ int jffs2_garbage_collect_pass(struct jf
+ 		/* Eep. This really should never happen. GC is broken */
+ 		pr_err("Error garbage collecting node at %08x!\n",
+ 		       ref_offset(jeb->gc_node));
+-		ret = -ENOSPC;
++		pr_err("ERROR CODE : %d \n", ret);
++
++		if (ret == -EIO)
++			jffs2_mark_node_obsolete(c, raw);
++		else
++			ret = -ENOSPC;
+ 	}
+  release_sem:
+ 	mutex_unlock(&c->alloc_sem);

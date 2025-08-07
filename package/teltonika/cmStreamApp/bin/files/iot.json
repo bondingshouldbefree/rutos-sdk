@@ -1,0 +1,46 @@
+{
+	"user": "iot",
+	"access": {
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_service_provider",
+				"get_signal_query",
+				"get_net_reg_stat",
+				"get_network_info",
+				"get_iccid"
+			]
+		},
+		"rpc-sys": {
+			"methods": [
+				"reboot"
+			]
+		},
+		"network.interface": {
+			"methods": [
+				"dump"
+			]
+		},
+		"system": {
+			"methods": [
+				"sysupgrade",
+				"backup"
+			]
+		},
+		"log": {
+			"methods": [
+				"write_ext"
+			]
+		},
+		"file": {
+			"methods": [
+				"exec"
+			]
+		}
+	}
+}

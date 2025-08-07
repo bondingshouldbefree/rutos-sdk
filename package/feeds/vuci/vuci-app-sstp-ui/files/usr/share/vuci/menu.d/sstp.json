@@ -1,0 +1,12 @@
+{
+	"services/vpn": {
+		"title": "VPN",
+		"index": 20
+	},
+	"services/vpn/sstp": {
+		"title": "SSTP",
+		"index": 80,
+		"view": "services/Sstp",
+		"acls": [ "services/vpn/sstp" ]
+	}
+}

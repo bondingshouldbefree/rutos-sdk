@@ -1,0 +1,20 @@
+{
+  "network/mobile/sim_idle_protection": {
+    "title": "SIM Idle Protection",
+    "view": "network/SimIdleProtection",
+    "main_page": true,
+    "index": 60,
+    "acls": ["network/mobile/sim_idle_protection"],
+    "depends": {
+      "packages": {
+        "allOf": ["sim_idle_protection"]
+      },
+      "board": {
+        "anyOf": ["has_dual_sim", "has_esim"]
+      }
+    }
+  },
+  "network/mobile/sim_idle_protection/:id": {
+    "view": "network/SimIdleProtection"
+  }
+}

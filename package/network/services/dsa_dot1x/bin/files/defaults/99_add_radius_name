@@ -1,0 +1,12 @@
+#!/bin/sh
+. /lib/functions.sh
+
+migrate_name() {
+	local name
+	config_get name "$1" name
+	[ -z "$name" ] && uci_set dot1x "$1" name "$1"
+}
+config_load dot1x
+config_foreach "migrate_name" "radius"
+uci_commit "dot1x"
+exit 0

@@ -1,0 +1,147 @@
+net: netfilter: flowtables: add _net field for 'flow_offload' struct
+
+With XFRM flow type, 'ct' field is no longer guaranteed to be non-null.
+Since 'ct' was often used to get net namespace associated with the flow,
+add '_net' field and helper functions to replace this use.
+
+Also removes 'net' field from 'nf_flowtable' struct, as its use was
+unclear, at least with xtables FLOWOFFLOAD.
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -85,7 +85,6 @@ struct nf_flowtable {
+ 	unsigned int			flags;
+ 	struct flow_block		flow_block;
+ 	struct rw_semaphore		flow_block_lock; /* Guards flow_block */
+-	possible_net_t			net;
+ };
+ 
+ static inline bool nf_flowtable_hw_offload(struct nf_flowtable *flowtable)
+@@ -221,6 +220,7 @@ enum flow_offload_type {
+ struct flow_offload {
+ 	struct flow_offload_tuple_rhash		tuplehash[FLOW_OFFLOAD_DIR_MAX];
+ 	struct hlist_node			list;
++	possible_net_t				_net;
+ 	struct nf_conn				*ct;
+ 	unsigned long				flags;
+ 	u16					type;
+@@ -235,6 +235,11 @@ struct flow_offload {
+ 
+ unsigned long flow_offload_get_timeout(struct flow_offload *flow);
+ 
++static inline struct net *flow_offload_net(struct flow_offload *flow)
++{
++	return read_pnet(&flow->_net);
++}
++
+ static inline __s32 nf_flow_timeout_delta(unsigned int timeout)
+ {
+ 	return (__s32)(timeout - nf_flowtable_time_stamp);
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -75,6 +75,7 @@ struct flow_offload *flow_offload_alloc(
+ 
+ 	refcount_inc(&ct->ct_general.use);
+ 	flow->ct = ct;
++	write_pnet(&flow->_net, nf_ct_net(ct));
+ 
+ 	flow_offload_fill_dir(flow, FLOW_OFFLOAD_DIR_ORIGINAL);
+ 	flow_offload_fill_dir(flow, FLOW_OFFLOAD_DIR_REPLY);
+@@ -287,7 +288,7 @@ static const struct rhashtable_params nf
+ unsigned long flow_offload_get_timeout(struct flow_offload *flow)
+ {
+ 	unsigned long timeout = NF_FLOW_TIMEOUT;
+-	struct net *net = nf_ct_net(flow->ct);
++	struct net *net = flow_offload_net(flow);
+ 	int l4num = nf_ct_protonum(flow->ct);
+ 
+ 	if (l4num == IPPROTO_TCP) {
+@@ -690,7 +691,7 @@ static void nf_flow_table_do_cleanup(str
+ 		return;
+ 	}
+ 
+-	if (net_eq(nf_ct_net(flow->ct), dev_net(dev)) &&
++	if (net_eq(flow_offload_net(flow), dev_net(dev)) &&
+ 	    (flow->tuplehash[0].tuple.iifidx == dev->ifindex ||
+ 	     flow->tuplehash[1].tuple.iifidx == dev->ifindex))
+ 		flow_offload_teardown(flow);
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -419,7 +419,7 @@ unsigned int nf_flow_offload_ip_hook_tai
+ {
+ 	struct net_device *outdev;
+ 	struct rtable *rt;
+-	struct net *net = nf_ct_net(flow->ct);
++	struct net *net = flow_offload_net(flow);
+ 	__be32 nexthop;
+ 	int ret;
+ 
+@@ -730,7 +730,7 @@ unsigned int nf_flow_offload_ipv6_hook_t
+ {
+ 	struct net_device *outdev;
+ 	struct rt6_info *rt;
+-	struct net *net = nf_ct_net(flow->ct);
++	struct net *net = flow_offload_net(flow);
+ 	const struct in6_addr *nexthop;
+ 	int ret;
+ 
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -801,7 +801,7 @@ static void nf_flow_offload_destroy(stru
+ static int nf_flow_offload_alloc(const struct flow_offload_work *offload,
+ 				 struct nf_flow_rule *flow_rule[])
+ {
+-	struct net *net = read_pnet(&offload->flowtable->net);
++	struct net *net = flow_offload_net(offload->flow);
+ 	struct flow_offload *flow = offload->flow;
+ 
+ 	if (flow_offload_has_orig(flow)) {
+@@ -999,7 +999,7 @@ static void flow_offload_work_handler(st
+ 	struct net *net;
+ 
+ 	offload = container_of(work, struct flow_offload_work, work);
+-	net = read_pnet(&offload->flowtable->net);
++	net = flow_offload_net(offload->flow);
+ 	switch (offload->cmd) {
+ 		case FLOW_CLS_REPLACE:
+ 			flow_offload_work_add(offload);
+@@ -1023,7 +1023,7 @@ static void flow_offload_work_handler(st
+ 
+ static void flow_offload_queue_work(struct flow_offload_work *offload)
+ {
+-	struct net *net = read_pnet(&offload->flowtable->net);
++	struct net *net = flow_offload_net(offload->flow);
+ 
+ 	if (offload->cmd == FLOW_CLS_REPLACE) {
+ 		NF_FLOW_TABLE_STAT_INC_ATOMIC(net, count_wq_add);
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -620,7 +620,6 @@ flowoffload_tg(struct sk_buff *skb, cons
+ 	struct nf_flow_route route = {};
+ 	struct net_device *indev;
+ 	struct nf_conn *ct;
+-	struct net *net;
+ 
+ 	if (xt_flowoffload_skip(skb, par))
+ 		return XT_CONTINUE;
+@@ -670,10 +669,6 @@ flowoffload_tg(struct sk_buff *skb, cons
+ 
+ 	table = &flowtable[!!(info->flags & XT_FLOWOFFLOAD_HW)];
+ 
+-	net = read_pnet(&table->ft.net);
+-	if (!net)
+-		write_pnet(&table->ft.net, xt_net(par));
+-
+ 	if (flow_offload_add(&table->ft, ct, &route,
+ 			     (enum flow_offload_tuple_dir)dir))
+ 		goto err_route_free;
+--- a/net/netfilter/nf_tables_api.c
++++ b/net/netfilter/nf_tables_api.c
+@@ -8665,7 +8665,6 @@ static int nf_tables_newflowtable(struct
+ 		}
+ 	}
+ 
+-	write_pnet(&flowtable->data.net, net);
+ 	flowtable->data.type = type;
+ 	err = type->init(&flowtable->data);
+ 	if (err < 0)

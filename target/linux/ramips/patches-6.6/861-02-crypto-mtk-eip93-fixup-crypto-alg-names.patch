@@ -1,0 +1,236 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed Oct 30 10:50:39 2024 +0200
+Subject: crypto: mtk-eip93: fixup crypto API driver names
+
+Previous naming was confusing due to ambiguities with other template instantiations.
+Eg.: 'authenc(hmac(md5-eip93), cbc(aes-eip93))' could be direct eip93 implementation, or
+an instantiation of the 'authenc' template with separate eip93 implementations for hashing
+and ciphering (well, current driver doesn't actually implement separate hashing methods,
+but this is still confusing nonetheless)
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/crypto/mtk-eip93/eip93-aead.c   |   32 ++++++++++++++++----------------
+ drivers/crypto/mtk-eip93/eip93-cipher.c |   16 ++++++++--------
+ 2 files changed, 24 insertions(+), 24 deletions(-)
+
+--- a/drivers/crypto/mtk-eip93/eip93-aead.c
++++ b/drivers/crypto/mtk-eip93/eip93-aead.c
+@@ -342,7 +342,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(md5),cbc(aes))",
+ 			.cra_driver_name =
+-				"authenc(hmac(md5-eip93), cbc(aes-eip93))",
++				"eip93-authenc-hmac-md5-cbc-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -369,7 +369,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha1),cbc(aes))",
+ 			.cra_driver_name =
+-				"authenc(hmac(sha1-eip93),cbc(aes-eip93))",
++				"eip93-authenc-hmac-sha1-cbc-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -396,7 +396,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha224),cbc(aes))",
+ 			.cra_driver_name =
+-				"authenc(hmac(sha224-eip93),cbc(aes-eip93))",
++				"eip93-authenc-hmac-sha224-cbc-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -423,7 +423,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha256),cbc(aes))",
+ 			.cra_driver_name =
+-				"authenc(hmac(sha256-eip93),cbc(aes-eip93))",
++				"eip93-authenc-hmac-sha256-cbc-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -451,7 +451,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(md5),rfc3686(ctr(aes)))",
+ 			.cra_driver_name =
+-			"authenc(hmac(md5-eip93),rfc3686(ctr(aes-eip93)))",
++				"eip93-authenc-hmac-md5-rfc3686-ctr-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -479,7 +479,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha1),rfc3686(ctr(aes)))",
+ 			.cra_driver_name =
+-			"authenc(hmac(sha1-eip93),rfc3686(ctr(aes-eip93)))",
++				"eip93-authenc-hmac-sha1-rfc3686-ctr-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -507,7 +507,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha224),rfc3686(ctr(aes)))",
+ 			.cra_driver_name =
+-			"authenc(hmac(sha224-eip93),rfc3686(ctr(aes-eip93)))",
++				"eip93-authenc-hmac-sha224-rfc3686-ctr-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -535,7 +535,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha256),rfc3686(ctr(aes)))",
+ 			.cra_driver_name =
+-			"authenc(hmac(sha256-eip93),rfc3686(ctr(aes-eip93)))",
++				"eip93-authenc-hmac-sha256-rfc3686-ctr-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -563,7 +563,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(md5),cbc(des))",
+ 			.cra_driver_name =
+-				"authenc(hmac(md5-eip93),cbc(des-eip93))",
++				"eip93-authenc-hmac-md5-cbc-des",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -590,7 +590,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha1),cbc(des))",
+ 			.cra_driver_name =
+-				"authenc(hmac(sha1-eip93),cbc(des-eip93))",
++				"eip93-authenc-hmac-sha1-cbc-des",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -617,7 +617,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha224),cbc(des))",
+ 			.cra_driver_name =
+-				"authenc(hmac(sha224-eip93),cbc(des-eip93))",
++				"eip93-authenc-hmac-sha224-cbc-des",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -644,7 +644,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha256),cbc(des))",
+ 			.cra_driver_name =
+-				"authenc(hmac(sha256-eip93),cbc(des-eip93))",
++				"eip93-authenc-hmac-256-cbc-des",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -671,7 +671,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(md5),cbc(des3_ede))",
+ 			.cra_driver_name =
+-				"authenc(hmac(md5-eip93),cbc(des3_ede-eip93))",
++				"eip93-authenc-hmac-md5-cbc-des3_ede",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -698,7 +698,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha1),cbc(des3_ede))",
+ 			.cra_driver_name =
+-				"authenc(hmac(sha1-eip93),cbc(des3_ede-eip93))",
++				"eip93-authenc-hmac-sha1-cbc-des3_ede",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -725,7 +725,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha224),cbc(des3_ede))",
+ 			.cra_driver_name =
+-			"authenc(hmac(sha224-eip93),cbc(des3_ede-eip93))",
++				"eip93-authenc-hmac-sha224-cbc-des3_ede",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -752,7 +752,7 @@ struct mtk_alg_template mtk_alg_authenc_
+ 		.base = {
+ 			.cra_name = "authenc(hmac(sha256),cbc(des3_ede))",
+ 			.cra_driver_name =
+-			"authenc(hmac(sha256-eip93),cbc(des3_ede-eip93))",
++				"eip93-authenc-hmac-sha256-cbc-des3_ede",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+--- a/drivers/crypto/mtk-eip93/eip93-cipher.c
++++ b/drivers/crypto/mtk-eip93/eip93-cipher.c
+@@ -280,7 +280,7 @@ struct mtk_alg_template mtk_alg_ecb_aes
+ 		.ivsize	= 0,
+ 		.base = {
+ 			.cra_name = "ecb(aes)",
+-			.cra_driver_name = "ecb(aes-eip93)",
++			.cra_driver_name = "eip93-ecb-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_NEED_FALLBACK |
+@@ -307,7 +307,7 @@ struct mtk_alg_template mtk_alg_cbc_aes
+ 		.ivsize	= AES_BLOCK_SIZE,
+ 		.base = {
+ 			.cra_name = "cbc(aes)",
+-			.cra_driver_name = "cbc(aes-eip93)",
++			.cra_driver_name = "eip93-cbc-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_NEED_FALLBACK |
+@@ -334,7 +334,7 @@ struct mtk_alg_template mtk_alg_ctr_aes
+ 		.ivsize	= AES_BLOCK_SIZE,
+ 		.base = {
+ 			.cra_name = "ctr(aes)",
+-			.cra_driver_name = "ctr(aes-eip93)",
++			.cra_driver_name = "eip93-ctr-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 				     CRYPTO_ALG_NEED_FALLBACK |
+@@ -361,7 +361,7 @@ struct mtk_alg_template mtk_alg_rfc3686_
+ 		.ivsize	= CTR_RFC3686_IV_SIZE,
+ 		.base = {
+ 			.cra_name = "rfc3686(ctr(aes))",
+-			.cra_driver_name = "rfc3686(ctr(aes-eip93))",
++			.cra_driver_name = "eip93-rfc3686-ctr-aes",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_NEED_FALLBACK |
+@@ -389,7 +389,7 @@ struct mtk_alg_template mtk_alg_ecb_des
+ 		.ivsize	= 0,
+ 		.base = {
+ 			.cra_name = "ecb(des)",
+-			.cra_driver_name = "ebc(des-eip93)",
++			.cra_driver_name = "eip93-ecb-des",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -415,7 +415,7 @@ struct mtk_alg_template mtk_alg_cbc_des
+ 		.ivsize	= DES_BLOCK_SIZE,
+ 		.base = {
+ 			.cra_name = "cbc(des)",
+-			.cra_driver_name = "cbc(des-eip93)",
++			.cra_driver_name = "eip93-cbc-des",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -441,7 +441,7 @@ struct mtk_alg_template mtk_alg_ecb_des3
+ 		.ivsize	= 0,
+ 		.base = {
+ 			.cra_name = "ecb(des3_ede)",
+-			.cra_driver_name = "ecb(des3_ede-eip93)",
++			.cra_driver_name = "eip93-ecb-des3_ede",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,
+@@ -467,7 +467,7 @@ struct mtk_alg_template mtk_alg_cbc_des3
+ 		.ivsize	= DES3_EDE_BLOCK_SIZE,
+ 		.base = {
+ 			.cra_name = "cbc(des3_ede)",
+-			.cra_driver_name = "cbc(des3_ede-eip93)",
++			.cra_driver_name = "eip93-cbc-des3_ede",
+ 			.cra_priority = MTK_CRA_PRIORITY,
+ 			.cra_flags = CRYPTO_ALG_ASYNC |
+ 					CRYPTO_ALG_KERN_DRIVER_ONLY,

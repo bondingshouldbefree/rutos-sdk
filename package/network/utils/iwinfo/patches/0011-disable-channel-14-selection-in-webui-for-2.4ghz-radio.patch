@@ -1,0 +1,14 @@
+Index: libiwinfo-2023-05-17-c9f5c3f7/iwinfo_lua.c
+===================================================================
+--- libiwinfo-2023-05-17-c9f5c3f7/iwinfo_lua.c
++++ libiwinfo-2023-05-17-c9f5c3f7/iwinfo_lua.c
+@@ -486,6 +486,9 @@ static int iwinfo_L_freqlist(lua_State *
+ 		{
+ 			e = (struct iwinfo_freqlist_entry *) &rv[i];
+ 
++			if (e->channel == 14 && e->band == IWINFO_BAND_24)
++				continue;
++
+ 			lua_newtable(L);
+ 
+ 			/* MHz */

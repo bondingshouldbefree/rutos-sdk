@@ -1,0 +1,152 @@
+--- a/src/libcharon/plugins/vici/README.md
++++ b/src/libcharon/plugins/vici/README.md
+@@ -270,6 +270,12 @@ Initiates an SA while streaming _control
+ The default timeout of 0 waits indefinitely for a result, and a timeout value
+ of -1 returns a result immediately.
+ 
++### initiate-all() ###
++
++Initiate all inactive child SAs for all IKE SAs configured with start_action = start.
++
++	{} => {}
++
+ ### terminate() ###
+ 
+ Terminates an SA while streaming _control-log_ events.
+--- a/src/libcharon/plugins/vici/vici_control.c
++++ b/src/libcharon/plugins/vici/vici_control.c
+@@ -275,6 +275,84 @@ ret:
+ }
+ 
+ /**
++ * Initiate all inactive child SAs for all IKE SAs
++ */
++
++CALLBACK(initiate_all, vici_message_t*,
++	private_vici_control_t *this, char *name, vici_message_t *request)
++{
++	ike_sa_t *ike_sa;
++	enumerator_t *isas, *configs, *enumerator;
++	child_sa_t *child_sa;
++	peer_cfg_t *cfg;
++	child_cfg_t *current = NULL;
++	task_t *task;
++	action_t action;
++	bool ikesa_active = FALSE;
++
++	configs = charon->backends->create_peer_cfg_enumerator(charon->backends, NULL, NULL, NULL, NULL, IKE_ANY);
++	// iterate through configs
++	while (configs->enumerate(configs, &cfg))
++	{
++		isas = charon->controller->create_ike_sa_enumerator(charon->controller, FALSE);
++		// iterate through IKE SAs
++		while (isas->enumerate(isas, &ike_sa))
++		{
++			ikesa_active = FALSE;
++			// check if the config name matches the IKE SA name
++			if (!streq(cfg->get_name(cfg), ike_sa->get_name(ike_sa)))
++				continue;
++			enumerator = ike_sa->create_task_enumerator(ike_sa, TASK_QUEUE_ACTIVE);
++			// check if there are any active child create tasks in ACTIVE queue
++			// we don't need to initiate the child SA if initiate task is already active
++			while (enumerator->enumerate(enumerator, &task))
++			{
++				if (task->get_type(task) != TASK_CHILD_CREATE)
++					continue;
++				ikesa_active = TRUE;
++				break;
++			}
++			enumerator->destroy(enumerator);
++			enumerator = ike_sa->create_task_enumerator(ike_sa, TASK_QUEUE_QUEUED);
++			// same as ACTIVE queue, but for quick mode tasks
++			while (enumerator->enumerate(enumerator, &task))
++			{
++				if (task->get_type(task) != TASK_QUICK_MODE)
++					continue;
++				ikesa_active = TRUE;
++				break;
++			}
++			enumerator->destroy(enumerator);
++			enumerator = ike_sa->create_child_sa_enumerator(ike_sa);
++			// check if any Child SAs are active
++			if (enumerator->enumerate(enumerator, &child_sa))
++				ikesa_active = TRUE;
++
++			enumerator->destroy(enumerator);
++			if (ikesa_active)
++				break;
++		}
++		isas->destroy(isas);
++		if (!ikesa_active && ike_sa)
++		{
++			enumerator = cfg->create_child_cfg_enumerator(cfg);
++
++			while (enumerator->enumerate(enumerator, &current))
++			{
++				// initiate the child SA if ikesa_active == FALSE and start_action == ACTION_START
++				if (current->get_start_action(current) != ACTION_START)
++					continue;
++				charon->controller->initiate(charon->controller,
++					cfg->get_ref(cfg), current->get_ref(current), NULL, NULL, NULL, NULL, 0, 0, NULL);
++			}
++			enumerator->destroy(enumerator);
++		}
++	}
++	configs->destroy(configs);
++	return send_reply(this, NULL);
++}
++
++/**
+  * Format the given SA filter parameters for logging.
+  */
+ static inline void format_sa_selector(char *buf, size_t len, char *name,
+@@ -759,6 +837,7 @@ static void manage_commands(private_vici
+ 	manage_command(this, "install", install, reg);
+ 	manage_command(this, "uninstall", uninstall, reg);
+ 	manage_command(this, "reload-settings", reload_settings, reg);
++	manage_command(this, "initiate-all", initiate_all, reg);
+ 	this->dispatcher->manage_event(this->dispatcher, "control-log", reg);
+ }
+ 
+--- a/src/swanctl/commands/initiate.c
++++ b/src/swanctl/commands/initiate.c
+@@ -61,7 +61,7 @@ static int initiate(vici_conn_t *conn)
+ 	vici_res_t *res;
+ 	command_format_options_t format = COMMAND_FORMAT_NONE;
+ 	char *arg, *child = NULL, *ike = NULL, *my_host = NULL, *other_host = NULL;
+-	int ret = 0, timeout = 0, level = 1;
++	int ret = 0, timeout = 0, level = 1, all = 0;
+ 
+ 	while (TRUE)
+ 	{
+@@ -75,6 +75,9 @@ static int initiate(vici_conn_t *conn)
+ 			case 'r':
+ 				format |= COMMAND_FORMAT_RAW;
+ 				continue;
++			case 'a':
++				all = 1;
++				continue;
+ 			case 'c':
+ 				child = arg;
+ 				continue;
+@@ -100,6 +103,12 @@ static int initiate(vici_conn_t *conn)
+ 		}
+ 		break;
+ 	}
++	if(all)
++	{
++		req = vici_begin("initiate-all");
++		res = vici_submit(req, conn);
++		return 0;
++	}
+ 
+ 	if (vici_register(conn, "control-log", log_cb, &format) != 0)
+ 	{
+@@ -174,6 +183,7 @@ static void __attribute__ ((constructor)
+ 			{"remote",		'R', 1, "override remote address"},
+ 			{"timeout",		't', 1, "timeout in seconds before detaching"},
+ 			{"raw",			'r', 0, "dump raw response message"},
++			{"all",			'a', 0, "initiate all active connections if configured with start_action=start"},
+ 			{"pretty",		'P', 0, "dump raw response message in pretty print"},
+ 			{"loglevel",	'l', 1, "verbosity of redirected log"},
+ 		}

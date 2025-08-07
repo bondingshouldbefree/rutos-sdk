@@ -1,0 +1,11 @@
+{
+	"user": "ds",
+	"access": {
+		"network.interface*": {
+			"methods": [
+				"status",
+				"dump"
+			]
+		}
+	}
+}

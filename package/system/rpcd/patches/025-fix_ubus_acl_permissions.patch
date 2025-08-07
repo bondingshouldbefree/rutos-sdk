@@ -1,0 +1,29 @@
+Index: rpcd-2021-03-11-ccb75178/plugin.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/plugin.c
++++ rpcd-2021-03-11-ccb75178/plugin.c
+@@ -744,11 +744,6 @@ static int rpc_plugin_intercept(struct u
+ 		if (opipe_rpcd[1] > 2) close(opipe_rpcd[1]);
+ 		if (epipe_rpcd[1] > 2) close(epipe_rpcd[1]);
+ 		if (timeout_pipe[0] > 2) close(timeout_pipe[0]);
+-		struct ubus_context *child_ctx = ubus_connect(NULL);
+-		if (!child_ctx) {
+-			LOG_ERROR("Failed to allocate memory for child context");
+-			_exit(UBUS_STATUS_UNKNOWN_ERROR);
+-		}
+ 
+ 		void *dlh = dlopen(obj->path, RTLD_LAZY | RTLD_LOCAL);
+ 		EXIT_ON_ERROR(!dlh, UBUS_STATUS_UNKNOWN_ERROR, "Failed to load plugin %s", obj->path);
+@@ -777,7 +772,11 @@ static int rpc_plugin_intercept(struct u
+ 		}
+ 
+ 		set_capabilities(plugin->capabilities ? plugin->capabilities : "");
+-
++		struct ubus_context *child_ctx = ubus_connect(NULL);
++		if (!child_ctx) {
++			LOG_ERROR("Failed to allocate memory for child context");
++			_exit(UBUS_STATUS_UNKNOWN_ERROR);
++		}
+ 		struct ubus_object *plugin_obj = plugin->init(&ops, child_ctx);
+ 		EXIT_ON_ERROR(!plugin_obj, UBUS_STATUS_UNKNOWN_ERROR, "Plugin initialization failed");
+ 

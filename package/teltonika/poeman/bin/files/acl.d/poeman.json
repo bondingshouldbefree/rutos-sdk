@@ -1,0 +1,20 @@
+{
+	"user": "poeman",
+	"access": {
+		"gsm.modem*": {
+			"methods": [
+				"exec"
+			]
+		}
+	},
+	"publish": [
+		"poeman"
+	],
+	"listen": [
+		"ubus.object.add"
+	],
+	"send": [
+		"poe_change",
+		"poe_power"
+	]
+}

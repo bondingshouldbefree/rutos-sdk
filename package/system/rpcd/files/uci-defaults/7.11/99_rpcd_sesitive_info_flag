@@ -1,0 +1,23 @@
+#!/bin/sh
+. /lib/functions.sh
+
+CONFIG="rpcd"
+
+add_option() {
+	local section="$1"
+	local value="$2"
+	local hide_sensitive
+
+	config_get hide_sensitive "$section" "hide_sensitive"
+
+	[ -z "$hide_sensitive" ] || return
+	[ "$section" = "root" ] && value="0"
+
+	uci_set "$CONFIG" "$section" "hide_sensitive" "$value"
+}
+
+config_load "$CONFIG"
+config_foreach add_option "group" "1"
+uci_commit "$CONFIG"
+
+exit 0

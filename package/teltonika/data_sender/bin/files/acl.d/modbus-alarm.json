@@ -1,0 +1,6 @@
+{
+	"user": "ds",
+	"listen": [
+		"modbus_client.alarm"
+	]
+}

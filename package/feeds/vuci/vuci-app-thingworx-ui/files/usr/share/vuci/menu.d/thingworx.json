@@ -1,0 +1,8 @@
+{
+	"services/cloud_solutions/thingworx": {
+		"title": "ThingWorx",
+		"index": 60,
+		"view": "services/ThingWorx",
+		"acls": [ "services/cloud_solutions/thingworx" ]
+	}
+}

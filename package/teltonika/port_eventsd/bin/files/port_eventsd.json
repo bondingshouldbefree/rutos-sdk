@@ -1,0 +1,10 @@
+{
+	"user": "port_eventsd",
+	"publish": ["port_events"],
+	"send": ["port_events.*"],
+	"access": {
+		"log": {
+			"methods": ["write_ext"]
+		}
+	}
+}

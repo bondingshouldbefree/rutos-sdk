@@ -1,0 +1,76 @@
+--- a/file.c
++++ b/file.c
+@@ -813,7 +813,6 @@ static void uci_file_commit(struct uci_context *ctx, struct uci_package **packag
+ done:
+ 	free(name);
+ 	free(path);
+-	uci_close_stream(f1);
+ 	if (do_rename) {
+ 		path = realpath(p->path, NULL);
+ 		if (!path || stat(path, &statbuf) || chmod(filename, statbuf.st_mode) || rename(filename, path)) {
+@@ -822,6 +821,7 @@ done:
+ 		}
+ 		free(path);
+ 	}
++	uci_close_stream(f1);
+ 	if (ctx->err)
+ 		UCI_THROW(ctx, ctx->err);
+ }
+--- a/util.c
++++ b/util.c
+@@ -184,7 +184,7 @@ __private void uci_parse_error(struct uci_context *ctx, char *reason)
+  */
+ __private FILE *uci_open_stream(struct uci_context *ctx, const char *filename, const char *origfilename, int pos, bool write, bool create)
+ {
+-	struct stat statbuf;
++	struct stat statbuf1, statbuf2;
+ 	FILE *file = NULL;
+ 	int fd, ret;
+ 	int flags = (write ? O_RDWR : O_RDONLY);
+@@ -202,25 +202,36 @@ __private FILE *uci_open_stream(struct uci_context *ctx, const char *filename, c
+ 		if ((asprintf(&filename2, "%s/%s", ctx->confdir, name) < 0) || !filename2) {
+ 			UCI_THROW(ctx, UCI_ERR_MEM);
+ 		} else {
+-			if (stat(filename2, &statbuf) == 0)
+-				mode = statbuf.st_mode;
++			if (stat(filename2, &statbuf1) == 0)
++				mode = statbuf1.st_mode;
+
+ 			free(filename2);
+ 		}
+ 	}
+
+-	if (!write && ((stat(filename, &statbuf) < 0) ||
+-		((statbuf.st_mode & S_IFMT) != S_IFREG))) {
++	if (!write && ((stat(filename, &statbuf1) < 0) ||
++		((statbuf1.st_mode & S_IFMT) != S_IFREG))) {
+ 		UCI_THROW(ctx, UCI_ERR_NOTFOUND);
+ 	}
+
+-	fd = open(filename, flags, mode);
+-	if (fd < 0)
+-		goto error;
++	while (true) {
++		fd = open(filename, flags, mode);
++		if (fd < 0)
++			goto error;
++
++		ret = flock(fd, (write ? LOCK_EX : LOCK_SH));
++		if ((ret < 0) && (errno != ENOSYS))
++			goto error_close;
++
++		if (stat(filename, &statbuf2) == 0 && statbuf2.st_ino != statbuf1.st_ino) {
++			statbuf1 = statbuf2;
++			flock(fd, LOCK_UN);
++			close(fd);
++			continue;
++		}
+
+-	ret = flock(fd, (write ? LOCK_EX : LOCK_SH));
+-	if ((ret < 0) && (errno != ENOSYS))
+-		goto error_close;
++		break;
++	}
+
+ 	ret = lseek(fd, 0, pos);
+

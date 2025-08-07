@@ -1,0 +1,14 @@
+#
+# Copyright (C) 2021 Teltonika
+#
+
+menu "Target GPL Image"
+
+	config GPL_BUILD
+		default y
+		bool "Mark build as GPL"
+
+	config GPL_INCLUDE_WEB_SOURCES
+		bool "Include WebUI sources"
+
+endmenu

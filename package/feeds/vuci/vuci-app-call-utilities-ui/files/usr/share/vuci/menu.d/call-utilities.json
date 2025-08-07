@@ -1,0 +1,8 @@
+{
+  "services/mobile_utilities/call_utilities": {
+    "view": "services/CallUtilities",
+    "index": 3,
+    "title": "Call Utilities",
+    "acls": ["services/mobile_utilities/call_utilities"]
+  }
+}

@@ -1,0 +1,19 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+fix_lease() {
+	local section="$1"
+	local upnp_lease_file
+
+	config_get upnp_lease_file "$section" upnp_lease_file
+
+	[ "$upnp_lease_file" = "/var/run/miniupnpd.leases" ] &&
+		uci_set upnpd "$section" upnp_lease_file "/var/run/upnpd/miniupnpd.leases"
+}
+
+config_load upnpd
+config_foreach fix_lease "upnpd"
+uci_commit upnpd
+
+exit 0

@@ -1,0 +1,12 @@
+{
+	"user": "relayd",
+	"access": {
+		"network.interface": {
+			"methods": [ "dump" ]
+		},
+		"network.interface.*": {
+			"methods": [ "status" ]
+		}
+	},
+	"listen": [ "network.interface" ]
+}

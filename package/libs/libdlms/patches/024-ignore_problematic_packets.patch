@@ -1,0 +1,104 @@
+index 74a08a6..72b2dc7 100644
+--- a/development/include/bytebuffer.h
++++ b/development/include/bytebuffer.h
+@@ -404,15 +404,9 @@ extern "C" {
+         gxByteBuffer* bb,
+         char ch);
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    void bb_reverse(gxByteBuffer* bb,
+-        uint32_t index,
+-        uint32_t count);
+-#else
+     void bb_reverse(gxByteBuffer* bb,
+-        uint16_t index,
+-        uint16_t count);
+-#endif
++        bb_size_t index,
++        bb_size_t count);
+ 
+ #if defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+     //Print content of byte buffer to cout.
+index bb00eeb..df0cf26 100644
+--- a/development/src/bytebuffer.c
++++ b/development/src/bytebuffer.c
+@@ -1143,15 +1143,9 @@ bb_size_t bb_indexOf(
+     return (bb_size_t)-1;
+ }
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+ void bb_reverse(gxByteBuffer* bb,
+-    uint32_t index,
+-    uint32_t count)
+-#else
+-void bb_reverse(gxByteBuffer* bb,
+-    uint16_t index,
+-    uint16_t count)
+-#endif
++    bb_size_t index,
++    bb_size_t count)
+ {
+     unsigned long pos;
+     unsigned long endPos;
+index 2515230..4e374a8 100644
+--- a/development/src/dlms.c
++++ b/development/src/dlms.c
+@@ -3750,17 +3750,10 @@ unsigned char dlms_isPlcSfskData(gxByteBuffer* buff)
+ }
+ #endif //DLMS_IGNORE_PLC
+ 
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-int dlms_getDataFromBlock(gxByteBuffer* data, uint32_t index)
+-#else
+-int dlms_getDataFromBlock(gxByteBuffer* data, uint16_t index)
+-#endif
++int dlms_getDataFromBlock(gxByteBuffer* data, bb_size_t index)
+ {
+-#if defined(GX_DLMS_BYTE_BUFFER_SIZE_32) || (!defined(GX_DLMS_MICROCONTROLLER) && (defined(_WIN32) || defined(_WIN64) || defined(__linux__)))
+-    uint32_t pos, len = data->position - index;
+-#else
+-    uint16_t pos, len = data->position - index;
+-#endif
++    bb_size_t pos, len = data->position - index;
++
+     if (data->size == data->position)
+     {
+         bb_clear(data);
+@@ -6385,7 +6378,7 @@ void dlms_applyHdlcData(
+         settings->clientAddress = result->source;
+     }
+ 
+-    if (!reply->preEstablished) {
++    if (!reply->preEstablished && *frame != 0x13) {
+         // If U frame.
+         if ((*frame & 0x3) == 3)
+         {
+@@ -6409,7 +6402,6 @@ void dlms_applyHdlcData(
+         {
+             settings->receiverFrame = *frame;
+         }
+-
+     }
+ }
+ 
+@@ -6442,6 +6434,20 @@ int dlms_getData3(
+             result.moreData = reply->moreData;
+             result.packetLength = reply->packetLength;
+             ret = dlms_getHdlcData(settings, recv_data, &result, reply->preEstablished, first);
++
++            // Ignore data unnumbered information packets, because for SOME REASON
++            // they mess up the "Send sequence number" which makes it "desync".
++            //
++            // I couldn't track down the real cause of this "desync", so it is just simpler to ignore
++            // these packets, eithe way DLMS Client isin't using these pacekts in any way, so for you use
++            // case this will be fine.
++            //
++            // Keep the DLMS Client running for long enough until the example tcp server sends data
++            // notification message.
++            if (result.frameType == 0x13) {
++                continue;
++            }
++
+             if (ret == DLMS_ERROR_CODE_OK && result.complete) {
+                 dlms_applyHdlcData(&result, settings, reply, &frame);
+             }

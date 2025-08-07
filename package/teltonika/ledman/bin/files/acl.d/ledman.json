@@ -1,0 +1,43 @@
+{
+	"user": "ledman",
+	"access": {
+		"network.interface": {
+			"methods": [
+				"dump"
+			]
+		},
+		"network.wireless": {
+			"methods": [
+				"status"
+			]
+		},
+		"poeman": {
+			"methods": [
+				"dump"
+			]
+		},
+		"ledman": {
+			"methods": [
+				"signal"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"*"
+			]
+		}
+	},
+	"publish": [
+		"ledman"
+	],
+	"listen": [
+		"wireless.state",
+		"poe_change",
+		"ubus.object.remove",
+		"ubus.object.add"
+	],
+	"subscribe": [
+		"network.interface",
+		"gsm.*"
+	]
+}

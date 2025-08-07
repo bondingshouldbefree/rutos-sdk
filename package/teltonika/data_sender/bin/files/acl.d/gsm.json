@@ -1,0 +1,26 @@
+{
+	"user": "ds",
+	"access": {
+		"gsm": {
+			"methods": [ "info" ]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_ps_att_state",
+				"get_iccid",
+				"get_imsi",
+				"get_pin_state",
+				"get_time",
+				"get_operator_selection",
+				"get_temperature",
+				"get_pin_count",
+				"get_serving_cell",
+				"get_signal_query",
+				"get_net_reg_stat_all",
+				"get_network_info",
+				"send_sms"
+			]
+		}
+	}
+}

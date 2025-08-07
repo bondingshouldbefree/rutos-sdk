@@ -1,0 +1,18 @@
+{
+	"status": {
+	  "title": "Status",
+	  "index": 10
+	},
+	"network": {
+	  "title": "Network",
+	  "index": 20
+	},
+	"services": {
+	  "title": "Services",
+	  "index": 30
+	},
+	"system": {
+	  "title": "System",
+	  "index": 40
+	}
+  }

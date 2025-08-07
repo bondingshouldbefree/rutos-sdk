@@ -1,0 +1,152 @@
+--- a/drivers/pinctrl/core.c
++++ b/drivers/pinctrl/core.c
+@@ -179,6 +179,38 @@ const char *pin_get_name(struct pinctrl_
+ }
+ EXPORT_SYMBOL_GPL(pin_get_name);
+ 
++/*
++ * Verifies if the pin's multiplexing function is set to GPIO.
++ * If not, updates the pin configuration to GPIO mode.
++ */
++int pinctrl_check_gpio(unsigned int pin)
++{
++	struct pinctrl_dev *pctldev;
++	struct pin_desc *pin_desc;
++	int i, ret;
++
++	/* Iterate over all registered pin controllers */
++	list_for_each_entry(pctldev, &pinctrldev_list, node) {
++		struct pinctrl_desc *desc = pctldev->desc;
++		ret = 0;
++
++		/* Check if this controller manages the given pin index */
++		for (i = 0; i < desc->npins; i++) {
++			if (desc->pins[i].number != pin)
++				continue;
++
++			pin_desc = pin_desc_get(pctldev, pin);
++			if (pin_desc && pin_desc->mux_setting && pin_desc->mux_setting->func != 0) {
++				ret = pinmux_request_gpio_tlt(pctldev, pin, pin_desc->mux_setting->group);
++				break;
++			}
++		}
++	}
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(pinctrl_check_gpio);
++
+ /* Deletes a range of pin descriptors */
+ static void pinctrl_free_pindescs(struct pinctrl_dev *pctldev,
+ 				  const struct pinctrl_pin_desc *pins,
+--- a/drivers/pinctrl/core.h
++++ b/drivers/pinctrl/core.h
+@@ -230,6 +230,7 @@ int pinctrl_generic_remove_group(struct
+ 
+ #endif	/* CONFIG_GENERIC_PINCTRL_GROUPS */
+ 
++int pinctrl_check_gpio(unsigned int pin);
+ struct pinctrl_dev *get_pinctrl_dev_from_devname(const char *dev_name);
+ struct pinctrl_dev *get_pinctrl_dev_from_of_node(struct device_node *np);
+ int pin_get_from_name(struct pinctrl_dev *pctldev, const char *name);
+--- a/include/linux/pinctrl/consumer.h
++++ b/include/linux/pinctrl/consumer.h
+@@ -22,9 +22,11 @@ struct device;
+ struct pinctrl;
+ struct pinctrl_state;
+ 
++#define PINMUX_TLT
+ #ifdef CONFIG_PINCTRL
+ 
+ /* External interface to pin control */
++extern int pinctrl_check_gpio(unsigned int pin);
+ extern bool pinctrl_gpio_can_use_line(unsigned gpio);
+ extern int pinctrl_gpio_request(unsigned gpio);
+ extern void pinctrl_gpio_free(unsigned gpio);
+--- a/drivers/pinctrl/pinmux.c
++++ b/drivers/pinctrl/pinmux.c
+@@ -266,6 +266,73 @@ static const char *pin_free(struct pinct
+ }
+ 
+ /**
++ * pinmux_request_gpio_tlt() - request pinmuxing for a GPIO pin
++ * @pctldev: pin controller device affected
++ * @pin: the pin to mux in for GPIO
++ * @mux_group: pin mux group
++ */
++int pinmux_request_gpio_tlt(struct pinctrl_dev *pctldev,
++			int pin, unsigned mux_group)
++{
++	int i, ret;
++	const unsigned *pins = NULL;
++	unsigned num_pins = 0;
++	struct pin_desc *pin_desc;
++	const struct pinmux_ops *ops = pctldev->desc->pmxops;
++	const struct pinctrl_ops *pctlops = pctldev->desc->pctlops;
++	struct pinctrl_setting_mux *mux_set;
++
++	if (pctlops->get_group_pins)
++		ret = pctlops->get_group_pins(pctldev, mux_group,
++						&pins, &num_pins);
++
++	if (ret) {
++		dev_err(pctldev->dev,
++				"failed to retreat %s group pins info\n",
++				pctlops->get_group_name(pctldev, mux_group));
++
++		return -EINVAL;
++	}
++
++	mux_set = devm_kmalloc(pctldev->dev, sizeof(*mux_set), GFP_KERNEL);
++	if (!mux_set) {
++		dev_err(pctldev->dev, "Failed to allocate memory\n");
++		return -ENOMEM;
++	}
++
++	for (i = 0; i < num_pins; i++) {
++		pin_free(pctldev, pins[i], NULL);
++		ret = pin_request(pctldev, pins[i], dev_name(pctldev->dev), NULL);
++		if(ret) {
++			dev_warn(pctldev->dev,
++				"could not change pin owner for pin %d\n",
++				pins[i]);
++		}
++	}
++
++	mux_set->group = mux_group;
++	mux_set->func = 0; //gpio func is always equal to 0
++
++	for (i = 0; i < num_pins; i++) {
++		pin_desc = pin_desc_get(pctldev, pins[i]);
++		if (pin_desc == NULL) {
++			dev_warn(pctldev->dev,
++				"could not get pin desc for pin %d\n",
++				pins[i]);
++			continue;
++		}
++		pin_desc->mux_setting = mux_set;
++	}
++
++	ret = ops->set_mux(pctldev, mux_set->func, mux_set->group);
++	if(!ret)
++		pr_info("switched to GPIO mode for the %s mux group \n",
++				pctlops->get_group_name(pctldev, mux_group));
++
++	return ret;
++}
++
++/**
+  * pinmux_request_gpio() - request pinmuxing for a GPIO pin
+  * @pctldev: pin controller device affected
+  * @pin: the pin to mux in for GPIO
+--- a/drivers/pinctrl/pinmux.h
++++ b/drivers/pinctrl/pinmux.h
+@@ -28,6 +28,8 @@ int pinmux_validate_map(const struct pin
+ 
+ bool pinmux_can_be_used_for_gpio(struct pinctrl_dev *pctldev, unsigned pin);
+ 
++int pinmux_request_gpio_tlt(struct pinctrl_dev *pctldev,
++                        int pin, unsigned mux_group);
+ int pinmux_request_gpio(struct pinctrl_dev *pctldev,
+ 			struct pinctrl_gpio_range *range,
+ 			unsigned pin, unsigned gpio);

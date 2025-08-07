@@ -1,0 +1,28 @@
+Index: tpm2-tools-c55288f0/configure.ac
+===================================================================
+--- tpm2-tools-c55288f0.orig/configure.ac
++++ tpm2-tools-c55288f0/configure.ac
+@@ -304,8 +304,6 @@ AS_IF([test x"$enable_hardening" != x"no
+ 
+   add_hardened_c_flag([-Wformat])
+   add_hardened_c_flag([-Wformat-security])
+-  add_hardened_c_flag([-Wstack-protector])
+-  add_hardened_c_flag([-fstack-protector-all])
+   add_hardened_c_flag([-Wstrict-overflow=5])
+ 
+   add_hardened_c_flag([-O2])
+Index: tpm2-tools-5.7/bootstrap
+===================================================================
+--- tpm2-tools-5.7.orig/bootstrap
++++ tpm2-tools-5.7/bootstrap
+@@ -3,9 +3,7 @@
+ 
+ set -e
+ 
+-# Generate a VERSION file that is included in the dist tarball to avoid needed git
+-# when calling autoreconf in a release tarball.
+-git describe --tags --always --dirty > VERSION
++echo "$PKG_VERSION" > VERSION
+ 
+ # generate list of source files for use in Makefile.am
+ # if you add new source files, you must run ./bootstrap again

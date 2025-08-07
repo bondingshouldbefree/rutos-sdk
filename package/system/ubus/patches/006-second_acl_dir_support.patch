@@ -1,0 +1,31 @@
+--- a/ubusd_acl.c
++++ b/ubusd_acl.c
+@@ -68,6 +68,7 @@ struct ubusd_acl_file {
+ };
+ 
+ const char *ubusd_acl_dir = "/usr/share/acl.d";
++const char *ubusd_acl_dir2 = "/usr/local/usr/share/acl.d";
+ static struct blob_buf bbuf;
+ static struct avl_tree ubusd_acls;
+ static int ubusd_acl_seq;
+@@ -442,10 +443,18 @@ ubusd_acl_load(void)
+ 	size_t j;
+ 	const char *suffix = "/*.json";
+ 	char *path = alloca(strlen(ubusd_acl_dir) + strlen(suffix) + 1);
+-
+ 	sprintf(path, "%s%s", ubusd_acl_dir, suffix);
+-	if (glob(path, GLOB_NOESCAPE | GLOB_MARK, NULL, &gl))
++
++	char *path2 = alloca(strlen(ubusd_acl_dir2) + strlen(suffix) + 1);
++	sprintf(path2, "%s%s", ubusd_acl_dir2, suffix);
++
++	int ret1 = glob(path, GLOB_NOESCAPE | GLOB_MARK, NULL, &gl);
++	int ret2 = glob(path2, GLOB_NOESCAPE | GLOB_MARK | GLOB_APPEND, NULL, &gl);
++
++	if (ret1 != 0 && ret2 != 0) {
++		globfree(&gl);
+ 		return;
++	}
+ 
+ 	vlist_update(&ubusd_acl_files);
+ 	for (j = 0; j < gl.gl_pathc; j++) {

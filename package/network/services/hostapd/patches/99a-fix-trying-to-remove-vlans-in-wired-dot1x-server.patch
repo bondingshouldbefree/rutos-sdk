@@ -1,0 +1,26 @@
+From 620c3e700d0ef71b94c2547440316a65b6e61a75 Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Wed, 22 Jan 2025 17:37:10 +0200
+Subject: [PATCH 1/1] fix trying to remove vlans in wired .1x server
+
+---
+ src/ap/vlan_full.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/vlan_full.c b/src/ap/vlan_full.c
+index 053d633..9e62705 100644
+--- a/src/ap/vlan_full.c
++++ b/src/ap/vlan_full.c
+@@ -621,7 +621,8 @@ void vlan_dellink(const char *ifname, struct hostapd_data *hapd)
+ 	 * Ensure this VLAN interface is actually removed even if
+ 	 * NEWLINK message is only received later.
+ 	 */
+-	if (if_nametoindex(vlan->ifname) && vlan_if_remove(hapd, vlan))
++	if (!hapd->conf->wired_vlans && if_nametoindex(vlan->ifname) &&
++			vlan_if_remove(hapd, vlan))
+ 		wpa_printf(MSG_ERROR,
+ 			   "VLAN: Could not remove VLAN iface: %s: %s",
+ 			   vlan->ifname, strerror(errno));
+-- 
+2.47.0
+

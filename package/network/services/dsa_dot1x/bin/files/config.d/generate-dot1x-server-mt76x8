@@ -1,0 +1,49 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+generate_dot1x_server() {
+	local poe port keys cfg bridge name
+
+	touch /etc/config/dot1x
+
+	json_select switch
+	json_select switch0
+	json_get_keys keys ports
+	json_select ports
+
+	for i in $keys; do
+		json_select "$i"
+		json_get_var role "role"
+		json_get_var index "index"
+		json_get_var num "num"
+		[ -z "$index" ]  && index="$num"
+		[ -z "$role" ] && continue
+		port="_$role$num"
+		ifname=$role$index
+		[ "$role" = "wan" ] && ifname="wan"
+		uci -q batch <<-EOF
+			set dot1x.$port='port'
+			set dot1x.$port.radius='example'
+			set dot1x.$port.role='server'
+			set dot1x.$port.enabled='0'
+			set dot1x.$port.reject_vlan='disabled'
+			set dot1x.$port.accept_vlan=1
+			set dot1x.$port.port_index="$num"
+			set dot1x.$port.iface="1x_$ifname"
+		EOF
+		json_select ..
+	done
+	json_select ..
+	json_select ..
+	json_select ..
+
+	uci -q batch <<-EOF
+			set dot1x.example='radius'
+			set dot1x.example.port='1812'
+			set dot1x.example.secret='-'
+			set dot1x.example.address='0.0.0.0'
+	EOF
+}
+
+conf_file_register_hook generate_dot1x_server /etc/config/dot1x

@@ -1,0 +1,27 @@
+--- a/Makefile
++++ b/Makefile
+@@ -1,11 +1,11 @@
+-SR_PLUGIN_LUA:=0
++SR_PLUGIN_LUA:=1
+ SR_PROTO_HTTP_VERSION:=1.1
+ SR_SOCK_RXBUF_SIZE:=1024
+ SR_AGENT_VAL:=5
+ SR_REPORTER_NUM:=512
+ SR_REPORTER_VAL:=400
+ SR_REPORTER_RETRIES:=9
+-SR_CURL_SIGNAL:=1
++SR_CURL_SIGNAL:=0
+ SR_SSL_VERIFYCERT:=1
+ SR_FILEBUF_PAGE_SCALE:=3
+ 
+@@ -39,8 +39,8 @@ CPPFLAGS+=-DSR_SSL_VERIFYCERT=$(SR_SSL_V
+ CPPFLAGS+=-DSR_FILEBUF_PAGE_SCALE=$(SR_FILEBUF_PAGE_SCALE)
+ CFLAGS+=-fPIC -pipe -MMD
+ CXXFLAGS+=-std=c++11 -fPIC -pipe -pthread -MMD
+-LDFLAGS+=-Wl,-soname,$(SONAME) -Wl,--no-undefined -shared -ldl
+-LDLIBS+=-pthread
++LDFLAGS+=-Wl,-soname,$(SONAME) -Wl,--no-undefined -shared -ldl -fPIC
++LDLIBS+=-pthread -lcurl -llua
+ 
+ ifeq ($(SR_PLUGIN_LUA), 0)
+ SRC:=$(filter-out src/srluapluginmanager.cc,$(SRC))

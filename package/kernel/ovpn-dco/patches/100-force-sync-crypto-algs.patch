@@ -1,0 +1,27 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Tue May 27 10:39:14 2025 +0300
+Subject: force using synchronous Crypto API algorithms
+
+Current ovpn-dco implementation handles async crypto implementations with
+crypto_wait_req, which offers bad performance for hw/pcrypt implementations
+compared to a completely sync handle. Forcing ovpn-dco to pick sync algorithms
+improves in all cases I've checked.
+
+Ideally, DCO would be able to use async algs efficiently...
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/net/ovpn-dco/crypto_aead.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/drivers/net/ovpn-dco/crypto_aead.c
++++ b/drivers/net/ovpn-dco/crypto_aead.c
+@@ -224,7 +224,7 @@ struct crypto_aead *ovpn_aead_init(const
+ 	struct crypto_aead *aead;
+ 	int ret;
+ 
+-	aead = crypto_alloc_aead(alg_name, 0, 0);
++	aead = crypto_alloc_aead(alg_name, 0, CRYPTO_ALG_ASYNC);
+ 	if (IS_ERR(aead)) {
+ 		ret = PTR_ERR(aead);
+ 		pr_err("%s crypto_alloc_aead failed, err=%d\n", title, ret);

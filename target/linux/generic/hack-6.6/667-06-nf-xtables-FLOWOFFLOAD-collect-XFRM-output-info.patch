@@ -1,0 +1,123 @@
+net: netfilter: xtables: FLOWOFFLOAD: XFRM output fastpath integration
+
+Collect XFRM bundle info on FLOWOFFLOAD target.
+
+'nf_dev_forward_xfrm' walks the dst_entry until it encounters the first
+non-XFRM child dst_entry, splitting 'dst' into 'dst' and 'xfrm_route.bundle'
+fields.
+
+--- a/net/netfilter/nf_flow_table_xfrm_output.c
++++ b/net/netfilter/nf_flow_table_xfrm_output.c
+@@ -714,3 +714,30 @@ int nf_flow_xmit_xfrm_direct(struct sk_b
+ 	return nf_flow_xfrm_direct_one(skb, tuple, x);
+ }
+ EXPORT_SYMBOL_GPL(nf_flow_xmit_xfrm_direct);
++
++static enum flow_offload_xmit_type nf_xmit_type(struct dst_entry *dst)
++{
++	if (dst_xfrm(dst))
++		return FLOW_OFFLOAD_XMIT_XFRM;
++
++	return FLOW_OFFLOAD_XMIT_NEIGH;
++}
++
++void nf_dev_forward_xfrm(struct nf_flow_route *route) {
++	struct dst_entry *dst = route->dst;
++
++	if (!nf_flow_xfrm_direct_eval(dst))
++		return;
++
++	route->out.xfrm_route.bundle = dst;
++
++	do {
++		struct xfrm_dst* xdst = (struct xfrm_dst *)dst;
++		dst = xdst->child;
++	} while (nf_flow_xfrm_direct_eval(dst));
++
++	dst_hold(dst);
++	route->dst = dst;\
++	route->xmit_type = nf_xmit_type(dst);
++}
++EXPORT_SYMBOL_GPL(nf_dev_forward_xfrm);
+--- a/include/net/netfilter/nf_flow_table_xfrm.h
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -162,4 +162,10 @@ static inline bool nf_flow_route_has_bun
+ }
+ #endif
+ 
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++void nf_dev_forward_xfrm(struct nf_flow_route *route);
++#else
++static inline void nf_dev_forward_xfrm(struct nf_flow_route *route) {};
++#endif
++
+ #endif /* _NF_FLOW_TABLE_XFRM_H */
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -506,12 +506,20 @@ static int nf_dev_input_path(struct nf_f
+ 	return 0;
+ }
+ #endif
++
++static void nf_flow_route_release(struct nf_flow_route *route) {
++	dst_release(route->dst);
++	dst_release(route->dst_reverse);
++	nf_flow_xfrm_route_release(&route->out.xfrm_route);
++}
++
+ static int
+ xt_flowoffload_route(struct sk_buff *skb, const struct nf_conn *ct,
+ 		     const struct xt_action_param *par,
+ 		     struct nf_flow_route *route, enum ip_conntrack_dir dir,
+ 		     struct net_device **indev)
+ {
++	const struct xt_flowoffload_target_info *info = par->targinfo;
+ 	struct dst_entry *this_dst = skb_dst(skb);
+ 	struct dst_entry *other_dst = NULL;
+ 	struct flowi fl;
+@@ -556,6 +564,9 @@ xt_flowoffload_route(struct sk_buff *skb
+ 	nf_default_forward_path(route, this_dst, dir, *indev);
+ 	route->dst_reverse = other_dst;
+ 
++	if (info->flags & XT_FLOWOFFLOAD_XFRM)
++		nf_dev_forward_xfrm(route);
++
+ #ifndef CONFIG_NETFILTER_XT_LEGACY_OFFLOAD_FORWARD_PATH
+ 	if (this_dst->lwtstate || (other_dst && other_dst->lwtstate))
+ 		return 0;
+@@ -563,12 +574,17 @@ xt_flowoffload_route(struct sk_buff *skb
+ 	if (route->xmit_type == FLOW_OFFLOAD_XMIT_NEIGH) {
+ 		ret = nf_dev_forward_path(route, daddr);
+ 		if (ret)
+-			return ret;
++			goto err_route_free;
+ 
+ 		ret = nf_dev_input_path(route, skb, indev);
+ 		if (ret)
+-			return ret;
++			goto err_route_free;
+ 	}
++	return 0;
++
++err_route_free:
++	nf_flow_route_release(route);
++	return ret;
+ #endif
+ 	return 0;
+ }
+@@ -663,14 +679,8 @@ flowoffload_tg(struct sk_buff *skb, cons
+ 
+ 	xt_flowoffload_check_device(table, indev);
+ 
+-	dst_release(route.dst);
+-	dst_release(route.dst_reverse);
+-
+-	return XT_CONTINUE;
+-
+ err_route_free:
+-	dst_release(route.dst);
+-	dst_release(route.dst_reverse);
++	nf_flow_route_release(&route);
+ 
+ 	return XT_CONTINUE;
+ }

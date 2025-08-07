@@ -1,0 +1,302 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed Oct 30 10:50:39 2024 +0200
+Subject: crypto: mtk-eip93: rework RDR handling worker
+
+Reworked RDR descriptor handling loop, mostly cosmetic changes (brain couldn't deal with the
+goto spaghetti). Moved to unbounded workqueue task, bounded execution time between rescheduling.
+Removed redundant register/descriptor reads/writes. Tweaked ring size, interrupt Threshold/timeout values.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/crypto/mtk-eip93/eip93-main.c |  158 ++++++++++++++++++++--------------
+ drivers/crypto/mtk-eip93/eip93-main.h |    6 -
+ 2 files changed, 98 insertions(+), 66 deletions(-)
+
+--- a/drivers/crypto/mtk-eip93/eip93-main.c
++++ b/drivers/crypto/mtk-eip93/eip93-main.c
+@@ -125,81 +125,105 @@ fail:
+ 	return err;
+ }
+ 
+-static void mtk_handle_result_descriptor(struct mtk_device *mtk)
++static void mtk_request_complete(struct crypto_async_request *async, int err, u32 flags)
++{
++#if IS_ENABLED(CONFIG_CRYPTO_DEV_EIP93_SKCIPHER)
++	if (flags & MTK_DESC_SKCIPHER)
++		return mtk_skcipher_handle_result(async, err);
++#endif
++#if IS_ENABLED(CONFIG_CRYPTO_DEV_EIP93_AEAD)
++	if (flags & MTK_DESC_AEAD)
++		return mtk_aead_handle_result(async, err);
++#endif
++}
++
++static int mtk_handle_result_descriptor(struct mtk_device *mtk, int budget)
+ {
+ 	struct crypto_async_request *async;
+ 	struct eip93_descriptor_s *rdesc;
+-	bool last_entry;
+ 	u32 flags;
+-	int handled, ready, err;
++	int ready, err;
++	int done = 0;
++	int n_descs = 0;
+ 	union peCrtlStat_w done1;
+ 	union peLength_w done2;
+ 
+-get_more:
+-	handled = 0;
+-
+-	ready = readl(mtk->base + EIP93_REG_PE_RD_COUNT) & GENMASK(10, 0);
+-
+-	if (!ready) {
+-		mtk_irq_clear(mtk, EIP93_INT_PE_RDRTHRESH_REQ);
+-		mtk_irq_enable(mtk, EIP93_INT_PE_RDRTHRESH_REQ);
+-		return;
+-	}
++	ready = readl_relaxed(mtk->base + EIP93_REG_PE_RD_COUNT) & GENMASK(10, 0);
++	// process at most 255 descriptors at a time, that's the most we can ack at a time.
++	ready = min(ready, 0xff);
+ 
+-	last_entry = false;
++	/* make sure DMA is finished writing */
++	rmb();
+ 
+ 	while (ready) {
+ 		rdesc = mtk_get_descriptor(mtk);
+-		if (IS_ERR(rdesc)) {
+-			dev_err(mtk->dev, "Ndesc: %d nreq: %d\n",
+-				handled, ready);
+-			err = -EIO;
++		if (unlikely(IS_ERR(rdesc))) {
++			// If we end up here, it means we messed up ring ptrs on our side.
++			WARN_ON_ONCE(1);
+ 			break;
+ 		}
+-		/* make sure DMA is finished writing */
+-		do {
+-			done1.word = READ_ONCE(rdesc->peCrtlStat.word);
+-			done2.word = READ_ONCE(rdesc->peLength.word);
+-		} while ((!done1.bits.peReady) || (!done2.bits.peReady));
+ 
+-		err = rdesc->peCrtlStat.bits.errStatus;
++		// TODO: remove this check once we're sure this can't happen.
++		done1.word = READ_ONCE(rdesc->peCrtlStat.word);
++		done2.word = READ_ONCE(rdesc->peLength.word);
++		WARN_ON_ONCE((!done1.bits.peReady) || (!done2.bits.peReady));
++
++		n_descs++;
++		ready--;
+ 
+ 		flags = rdesc->userId;
+-		async = (struct crypto_async_request *)rdesc->arc4Addr;
+ 
+-		writel(1, mtk->base + EIP93_REG_PE_RD_COUNT);
+-		mtk_irq_clear(mtk, EIP93_INT_PE_RDRTHRESH_REQ);
++		if (!(flags & MTK_DESC_LAST))
++			continue;
+ 
+-		handled++;
+-		ready--;
++		err = rdesc->peCrtlStat.bits.errStatus;
++		async = (struct crypto_async_request *)rdesc->arc4Addr;
++
++		mtk_request_complete(async, err, flags);
++		done++;
+ 
+-		if (flags & MTK_DESC_LAST) {
+-			last_entry = true;
++		if (done == budget)
+ 			break;
+-		}
+ 	}
+ 
+-	if (!last_entry)
+-		goto get_more;
+-#if IS_ENABLED(CONFIG_CRYPTO_DEV_EIP93_SKCIPHER)
+-	if (flags & MTK_DESC_SKCIPHER)
+-		mtk_skcipher_handle_result(async, err);
+-#endif
+-#if IS_ENABLED(CONFIG_CRYPTO_DEV_EIP93_AEAD)
+-	if (flags & MTK_DESC_AEAD)
+-		mtk_aead_handle_result(async, err);
+-#endif
+-	goto get_more;
++	writel(n_descs, mtk->base + EIP93_REG_PE_RD_COUNT);
++	return done;
+ }
+ 
+-static void mtk_done_task(unsigned long data)
++static void mtk_rdr_wake_queues(struct mtk_device *mtk, bool last)
+ {
+-	struct mtk_device *mtk = (struct mtk_device *)data;
++	int free;
+ 
+-	mtk_handle_result_descriptor(mtk);
++	// Avoid waking request_work if we didn't free up many descriptors
++	free = atomic_read(&mtk->ring->free);
++	if (free && (last || free > MTK_BURST_SIZE))
++		queue_work(mtk->request_workqueue, &mtk->request_work);
++}
++
++static void mtk_rdr_work(struct work_struct *work)
++{
++	struct mtk_device *mtk = container_of(work, struct mtk_device, rdr_work);
++	int done = 0;
+ 
+-	// Always wake up the request task, see `mtk_enqueue_req`
+-	queue_work(mtk->request_workqueue, &mtk->request_work);
++	while (true) {
++		mtk_irq_clear(mtk, EIP93_INT_PE_RDRTHRESH_REQ);
++
++		done += mtk_handle_result_descriptor(mtk, MTK_BURST_SIZE - done);
++		mtk_rdr_wake_queues(mtk, false);
++
++		if (!(readl(mtk->base + EIP93_REG_INT_MASK_STAT) &
++		      EIP93_INT_PE_RDRTHRESH_REQ))
++			break;
++
++		if (done == MTK_BURST_SIZE) {
++			cond_resched();
++			done = 0;
++			continue;
++		}
++	}
++
++	mtk_rdr_wake_queues(mtk, true);
++	mtk_irq_enable(mtk, EIP93_INT_PE_RDRTHRESH_REQ);
+ }
+ 
+ static irqreturn_t mtk_irq_handler(int irq, void *dev_id)
+@@ -211,7 +235,7 @@ static irqreturn_t mtk_irq_handler(int i
+ 
+ 	if (irq_status & EIP93_INT_PE_RDRTHRESH_REQ) {
+ 		mtk_irq_disable(mtk, EIP93_INT_PE_RDRTHRESH_REQ);
+-		tasklet_schedule(&mtk->ring->done_task);
++		queue_work(mtk->rdr_workqueue, &mtk->rdr_work);
+ 		return IRQ_HANDLED;
+ 	}
+ 
+@@ -283,8 +307,8 @@ static void mtk_initialize(struct mtk_de
+ 	/* Config Ring Threshold */
+ 	peRingThresh.word = 0;
+ 	peRingThresh.bits.CDRThresh = MTK_RING_SIZE - MTK_RING_BUSY;
+-	peRingThresh.bits.RDRThresh = 0;
+-	peRingThresh.bits.RDTimeout = 5;
++	peRingThresh.bits.RDRThresh = MTK_BURST_SIZE;
++	peRingThresh.bits.RDTimeout = 6;
+ 	peRingThresh.bits.enTimeout = 1;
+ 
+ 	writel(peRingThresh.word, mtk->base + EIP93_REG_PE_RING_THRESH);
+@@ -364,17 +388,13 @@ static int mtk_desc_init(struct mtk_devi
+ 	return 0;
+ }
+ 
+-static void mtk_cleanup(struct mtk_device *mtk)
++static void mtk_stop(struct mtk_device *mtk)
+ {
+-	tasklet_kill(&mtk->ring->done_task);
+-
+ 	/* Clear/ack all interrupts before disable all */
+ 	mtk_irq_clear(mtk, 0xFFFFFFFF);
+ 	mtk_irq_disable(mtk, 0xFFFFFFFF);
+ 
+ 	writel(0, mtk->base + EIP93_REG_PE_CLOCK_CTRL);
+-
+-	mtk_desc_free(mtk);
+ }
+ 
+ static int mtk_crypto_probe(struct platform_device *pdev)
+@@ -413,8 +433,6 @@ static int mtk_crypto_probe(struct platf
+ 	if (err)
+ 		return err;
+ 
+-	tasklet_init(&mtk->ring->done_task, mtk_done_task, (unsigned long)mtk);
+-
+ 	spin_lock_init(&mtk->ring->read_lock);
+ 	spin_lock_init(&mtk->ring->write_lock);
+ 
+@@ -424,7 +442,14 @@ static int mtk_crypto_probe(struct platf
+ 	mtk->request_workqueue = alloc_ordered_workqueue("eip93-req", 0);
+ 	if (!mtk->request_workqueue) {
+ 		err = -ENOMEM;
+-		goto err_cleanup;
++		goto err_desc_free;
++	}
++
++	INIT_WORK(&mtk->rdr_work, mtk_rdr_work);
++	mtk->rdr_workqueue = alloc_ordered_workqueue("eip93-rdr", 0);
++	if (!mtk->rdr_workqueue) {
++		err = -ENOMEM;
++		goto err_req_workqueue;
+ 	}
+ 
+ 	mtk_initialize(mtk);
+@@ -434,16 +459,19 @@ static int mtk_crypto_probe(struct platf
+ 
+ 	err = mtk_register_algs(mtk);
+ 	if (err)
+-		goto err_req_queue;
++		goto err_stop;
+ 
+ 	dev_info(mtk->dev, "EIP93 Crypto Engine Initialized.");
+ 
+ 	return 0;
+ 
+-err_req_queue:
++err_stop:
++	mtk_stop(mtk);
++	destroy_workqueue(mtk->rdr_workqueue);
++err_req_workqueue:
+ 	destroy_workqueue(mtk->request_workqueue);
+-err_cleanup:
+-	mtk_cleanup(mtk);
++err_desc_free:
++	mtk_desc_free(mtk);
+ 	return err;
+ }
+ 
+@@ -451,9 +479,11 @@ static int mtk_crypto_remove(struct plat
+ {
+ 	struct mtk_device *mtk = platform_get_drvdata(pdev);
+ 
++	mtk_stop(mtk);
++	destroy_workqueue(mtk->rdr_workqueue);
+ 	destroy_workqueue(mtk->request_workqueue);
+ 	mtk_unregister_algs(ARRAY_SIZE(mtk_algs));
+-	mtk_cleanup(mtk);
++	mtk_desc_free(mtk);
+ 	dev_info(mtk->dev, "EIP93 removed.\n");
+ 
+ 	return 0;
+--- a/drivers/crypto/mtk-eip93/eip93-main.h
++++ b/drivers/crypto/mtk-eip93/eip93-main.h
+@@ -14,7 +14,7 @@
+ #include <linux/device.h>
+ #include <linux/interrupt.h>
+ 
+-#define MTK_RING_SIZE			512
++#define MTK_RING_SIZE			256
+ #define MTK_RING_BUSY			32
+ #define MTK_CRA_PRIORITY		1500
+ #define MTK_REQUEST_QLEN		256
+@@ -100,8 +100,11 @@ struct mtk_device {
+ 	struct crypto_queue	request_queue;
+ 	spinlock_t		request_lock;
+ 	struct workqueue_struct	*request_workqueue;
++	/* rdr handler */
++	struct workqueue_struct	*rdr_workqueue;
+ 	/* workqueue tasks */
+ 	struct work_struct	request_work;
++	struct work_struct	rdr_work;
+ };
+ 
+ struct mtk_desc_ring {
+@@ -121,7 +124,6 @@ struct mtk_state_pool {
+ };
+ 
+ struct mtk_ring {
+-	struct tasklet_struct		done_task;
+ 	/* command/result rings */
+ 	struct mtk_desc_ring		cdr;
+ 	struct mtk_desc_ring		rdr;

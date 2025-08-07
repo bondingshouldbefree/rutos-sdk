@@ -1,0 +1,256 @@
+net: netfilter: flowtables: implement fastpath for XFRM flow type
+
+XFRM flow type implements an XFRM input fastpath. It applies similar restrictions
+to ESP GRO offloads (ESP packets bypass PREROUTING, INPUT hooks), but does work
+properly with virtual interfaces, and allows easier future implementation for UDP
+encapsulation.
+
+Patch add support for disecting ESP headers, and fastpath implementation of XFRM
+flow type (shamelessly stolen from ESP GRO implementation)
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -166,9 +166,12 @@ struct flow_offload_tuple {
+ 		struct in_addr		dst_v4;
+ 		struct in6_addr		dst_v6;
+ 	};
+-	struct {
+-		__be16			src_port;
+-		__be16			dst_port;
++	union {
++		struct {
++			__be16		src_port;
++			__be16		dst_port;
++		};
++		__be32			spi;
+ 	};
+ 
+ 	int				iifidx;
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -16,6 +16,7 @@
+ #include <net/netfilter/nf_flow_table.h>
+ #include <net/netfilter/nf_flow_table_xfrm.h>
+ #include <net/netfilter/nf_conntrack_acct.h>
++#include <net/esp.h>
+ /* For layer 4 checksum field offset. */
+ #include <linux/tcp.h>
+ #include <linux/udp.h>
+@@ -204,6 +205,11 @@ static int nf_flow_tuple_ip(struct nf_fl
+ 		ctx->hdrsize = sizeof(struct gre_base_hdr);
+ 		break;
+ #endif
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	case IPPROTO_ESP:
++		ctx->hdrsize = sizeof(struct ip_esp_hdr);
++		break;
++#endif
+ 	default:
+ 		return -1;
+ 	}
+@@ -229,6 +235,14 @@ static int nf_flow_tuple_ip(struct nf_fl
+ 			return -1;
+ 		break;
+ 	}
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	case IPPROTO_ESP: {
++		struct ip_esp_hdr *esph;
++		esph = (struct ip_esp_hdr *)(skb_network_header(skb) + thoff);
++		tuple->spi = esph->spi;
++		break;
++	}
++#endif
+ 	}
+ 
+ 	iph = (struct iphdr *)(skb_network_header(skb) + ctx->offset);
+@@ -476,6 +490,69 @@ nf_flow_offload_ip_hook_route(struct nf_
+ 	return nf_flow_offload_ip_hook_tail(skb, flow, &tuplehash->tuple);
+ }
+ 
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++static inline unsigned int
++nf_flow_offload_ip_hook_xfrm(struct nf_flowtable_ctx *ctx,
++			     struct nf_flowtable *flow_table,
++			     struct sk_buff *skb, struct flow_offload *flow)
++{
++	struct flow_offload_tuple *tuple = &flow->tuplehash[0].tuple;
++	struct xfrm_offload *xo;
++	struct xfrm_state *x;
++
++	flow_offload_refresh(flow_table, flow, false);
++
++	skb_set_network_header(skb, skb_network_offset(skb) + ctx->offset);
++	if (!pskb_pull(skb, skb_network_offset(skb) + (ip_hdr(skb)->ihl * 4)))
++		return NF_DROP;
++
++	skb_reset_transport_header(skb);
++
++	xo = xfrm_offload(skb);
++	if (!xo || !(xo->flags & CRYPTO_DONE)) {
++		struct sec_path *sp = secpath_set(skb);
++
++		if (!sp)
++			goto out;
++
++		if (sp->len == XFRM_MAX_DEPTH)
++			goto out_reset;
++
++		x = tuple->xfrm.x;
++		xfrm_state_hold(x);
++
++		skb->mark = xfrm_smark_get(skb->mark, x);
++
++		sp->xvec[sp->len++] = x;
++		sp->olen++;
++
++		xo = xfrm_offload(skb);
++		if (!xo) {
++			xfrm_state_put(x);
++			goto out_reset;
++		}
++	}
++
++	xo->flags |= XFRM_GRO;
++
++	XFRM_TUNNEL_SKB_CB(skb)->tunnel.ip4 = NULL;
++	XFRM_SPI_SKB_CB(skb)->family = AF_INET;
++	XFRM_SPI_SKB_CB(skb)->daddroff = offsetof(struct iphdr, daddr);
++	XFRM_SPI_SKB_CB(skb)->seq = ip_esp_hdr(skb)->seq_no;
++
++	/* We don't need to handle errors from xfrm_input, it does all
++	 * the error handling and frees the resources on error. */
++	xfrm_input(skb, IPPROTO_ESP, ip_esp_hdr(skb)->spi, -2);
++
++	return NF_STOLEN;
++out_reset:
++	secpath_reset(skb);
++out:
++	skb_push(skb, skb_transport_offset(skb));
++	return NF_ACCEPT;
++}
++#endif
++
+ static unsigned int
+ nf_flow_offload_ip_hook_action(struct nf_flowtable_ctx *ctx,
+ 			       struct nf_flowtable *flow_table,
+@@ -486,6 +563,10 @@ nf_flow_offload_ip_hook_action(struct nf
+ 	case NF_FLOW_OFFLOAD_ROUTE:
+ 		return nf_flow_offload_ip_hook_route(ctx, flow_table, skb, flow,
+ 						     dir);
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	case NF_FLOW_OFFLOAD_XFRM:
++		return nf_flow_offload_ip_hook_xfrm(ctx, flow_table, skb, flow);
++#endif
+ 	default:
+ 		return NF_ACCEPT;
+ 	}
+@@ -645,6 +726,11 @@ static int nf_flow_tuple_ipv6(struct nf_
+ 		ctx->hdrsize = sizeof(struct gre_base_hdr);
+ 		break;
+ #endif
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	case IPPROTO_ESP:
++		ctx->hdrsize = sizeof(struct ip_esp_hdr);
++		break;
++#endif
+ 	default:
+ 		return -1;
+ 	}
+@@ -670,6 +756,14 @@ static int nf_flow_tuple_ipv6(struct nf_
+ 			return -1;
+ 		break;
+ 	}
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	case IPPROTO_ESP: {
++		struct ip_esp_hdr *esph;
++		esph = (struct ip_esp_hdr *)(skb_network_header(skb) + thoff);
++		tuple->spi = esph->spi;
++		break;
++	}
++#endif
+ 	}
+ 
+ 	ip6h = (struct ipv6hdr *)(skb_network_header(skb) + ctx->offset);
+@@ -786,6 +880,70 @@ unsigned int nf_flow_offload_ipv6_hook_t
+ 	return ret;
+ }
+ 
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++static inline unsigned int
++nf_flow_offload_ipv6_hook_xfrm(struct nf_flowtable_ctx *ctx,
++			       struct nf_flowtable *flow_table,
++			       struct sk_buff *skb, struct flow_offload *flow)
++{
++	struct flow_offload_tuple *tuple = &flow->tuplehash[0].tuple;
++	struct xfrm_offload *xo;
++	struct xfrm_state *x;
++
++	flow_offload_refresh(flow_table, flow, false);
++
++	skb_set_network_header(skb, skb_network_offset(skb) + ctx->offset);
++	if (!pskb_pull(skb, skb_network_offset(skb) + sizeof(struct ipv6hdr)))
++		return NF_DROP;
++
++	skb_reset_transport_header(skb);
++
++	xo = xfrm_offload(skb);
++	if (!xo || !(xo->flags & CRYPTO_DONE)) {
++		struct sec_path *sp = secpath_set(skb);
++
++		if (!sp)
++			goto out;
++
++		if (sp->len == XFRM_MAX_DEPTH)
++			goto out_reset;
++
++		x = tuple->xfrm.x;
++		xfrm_state_hold(x);
++
++		skb->mark = xfrm_smark_get(skb->mark, x);
++
++		sp->xvec[sp->len++] = x;
++		sp->olen++;
++
++		xo = xfrm_offload(skb);
++		if (!xo) {
++			xfrm_state_put(x);
++			goto out_reset;
++		}
++	}
++
++	xo->flags |= XFRM_GRO;
++
++	IP6CB(skb)->nhoff = offsetof(struct ipv6hdr, nexthdr);
++	XFRM_TUNNEL_SKB_CB(skb)->tunnel.ip6 = NULL;
++	XFRM_SPI_SKB_CB(skb)->family = AF_INET6;
++	XFRM_SPI_SKB_CB(skb)->daddroff = offsetof(struct ipv6hdr, daddr);
++	XFRM_SPI_SKB_CB(skb)->seq = ip_esp_hdr(skb)->seq_no;
++
++	/* We don't need to handle errors from xfrm_input, it does all
++	 * the error handling and frees the resources on error. */
++	xfrm_input(skb, IPPROTO_ESP, ip_esp_hdr(skb)->spi, -2);
++
++	return NF_STOLEN;
++out_reset:
++	secpath_reset(skb);
++out:
++	skb_push(skb, skb_transport_offset(skb));
++	return NF_ACCEPT;
++}
++#endif
++
+ static unsigned int
+ nf_flow_offload_ipv6_hook_route(struct nf_flowtable_ctx *ctx,
+ 				struct nf_flowtable *flow_table,
+@@ -823,6 +981,11 @@ nf_flow_offload_ipv6_hook_action(struct
+ 	case NF_FLOW_OFFLOAD_ROUTE:
+ 		return nf_flow_offload_ipv6_hook_route(ctx, flow_table, skb,
+ 						       flow, dir);
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	case NF_FLOW_OFFLOAD_XFRM:
++		return nf_flow_offload_ipv6_hook_xfrm(ctx, flow_table, skb,
++						      flow);
++#endif
+ 	default:
+ 		return NF_ACCEPT;
+ 	}

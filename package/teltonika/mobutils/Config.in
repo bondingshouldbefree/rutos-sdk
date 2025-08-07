@@ -1,0 +1,11 @@
+
+menu "Advanced settings"
+	depends on PACKAGE_mobutils
+
+config MOBILE_UTILS_TEST
+	bool "Test mode"
+	default n
+    help
+        Compile with test mode
+
+endmenu

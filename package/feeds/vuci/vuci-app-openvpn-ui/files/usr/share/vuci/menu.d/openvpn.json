@@ -1,0 +1,12 @@
+{
+	"services/vpn": {
+		"title": "VPN",
+		"index": 20
+	},
+	"services/vpn/openvpn": {
+		"title": "OpenVPN",
+		"index": 40,
+		"view": "services/OpenVPN",
+		"acls": [ "services/vpn/openvpn" ]
+	}
+}

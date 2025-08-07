@@ -1,0 +1,184 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+fix_clients() {
+    local sid="$1"
+    local server_id="$2"
+    config_get instance "$sid" "instance" ""
+    [ -z "$instance" ] && uci_set "openvpn" "$sid" "instance" "$server_id"
+}
+
+fix_ovpn_conf() {
+    local sid="$1"
+    local askpass_new config_mod tls_cipher_mod
+    config_get configuration "$sid" "configuration" ""
+    [ -n "$configuration" ] && return
+
+    config_get name "$sid" "name" ""
+    config_get type "$sid" "type" ""
+    config_get dev "$sid" "dev" ""
+    config_get tls_cipher_list "$sid" "tls_cipher_list" ""
+    config_get network_ip "$sid" "network_ip" ""
+    config_get network_mask "$sid" "network_mask" ""
+    config_get route_ipv6 "$sid" "route_ipv6" ""
+    config_get enable_external "$sid" "enable_external" ""
+    config_get enable_custom "$sid" "enable_custom" ""
+    config_get remote "$sid" "remote" ""
+    config_get decrypt "$sid" "decrypt" ""
+    config_get key_encrypted "$sid" "key_encrypted" ""
+    config_get tls_cipher "$sid" "tls_cipher" ""
+    config_get tls_cipher_list "$sid" "tls_cipher_list" ""
+    config_get cipher_custom "$sid" "cipher_custom" ""
+    config_get config "$sid" "config" ""
+    config_get askpass "$sid" "askpass" ""
+    config_get key_direction "$sid" "key_direction" ""
+    config_get auth_user_pass "$sid" "auth_user_pass" ""
+    config_get upload_files "$sid" "upload_files" ""
+    config_get auth_mode "$sid" "auth_mode" ""
+    config_get to_bridge "$sid" "to_bridge" ""
+
+    [ -z "$name" ] && uci_set "openvpn" "$sid" "name" "$sid"
+
+    if [ "$type" = "client" ] && [ "$auth_mode" != "skey" ] && [ "${dev%%_*}" = "tun" ]; then
+        uci_set "openvpn" "$sid" "persist_tun" "0"
+    fi
+
+    if [ "$type" = "server" ]; then
+        config_foreach fix_clients 'client' "$sid"
+    fi
+
+    [ -n "$tls_cipher_list" ] && uci_remove "openvpn" "$sid" "tls_cipher_list"
+
+    if [ -n "$network_ip" ] && [ -n "$network_mask" ]; then
+        eval "$(ipcalc.sh "$network_ip" "$network_mask")"
+        uci_add_list "openvpn" "$sid" "network" "$NETWORK/$PREFIX"
+        uci_remove "openvpn" "$sid" "network_ip"
+        uci_remove "openvpn" "$sid" "network_mask"
+    fi
+
+    if [ -n "$route_ipv6" ]; then
+        uci_add_list "openvpn" "$sid" "network" "$route_ipv6"
+        uci_remove "openvpn" "$sid" "route_ipv6"
+    fi
+
+    if [ -n "$remote" ]; then
+        uci_remove "openvpn" "$sid" "remote"
+        uci_add_list "openvpn" "$sid" "remote" "$remote"
+    fi
+
+    if [ -n "$decrypt" ]; then
+        timestamp=$(date +%s)
+        echo -n "$decrypt" > /etc/openvpn/askpass_${sid}_${timestamp}
+        uci_remove "openvpn" "$sid" "decrypt"
+        askpass_new="/etc/openvpn/askpass_${sid}_${timestamp}"
+        uci_set "openvpn" "$sid" "askpass" "$askpass_new"
+    fi
+    [ -n "$key_encrypted" ] && uci_remove "openvpn" "$sid" "key_encrypted"
+
+    if [ -n "$tls_cipher" ]; then
+        tls_cipher_mod="$(echo "$tls_cipher" | sed "s/ /:/g")"
+        uci_add_list "openvpn" "$sid" "extra" "tls-cipher $tls_cipher_mod"
+        uci_remove "openvpn" "$sid" "tls_cipher"
+    fi
+
+    if [ -n "$cipher_custom" ]; then
+        uci_add_list "openvpn" "$sid" "data_ciphers" "$cipher_custom"
+        uci_remove "openvpn" "$sid" "$cipher_custom"
+    fi
+
+    config_get ca "$sid" "ca" ""
+    config_get cert "$sid" "cert" ""
+    config_get key "$sid" "key" ""
+    config_get dh "$sid" "dh" ""
+    config_get secret "$sid" "secret" ""
+    config_get crl_verify "$sid" "crl_verify" ""
+    config_get tls_auth "$sid" "tls_auth" ""
+    config_get tls_crypt "$sid" "tls_crypt" ""
+    config_get pkcs12 "$sid" "pkcs12" ""
+    config_get userpass "$sid" "userpass" ""
+
+    if [ -n "$enable_custom" ] && [ "$enable_custom" = "1" ]; then
+        uci_set "openvpn" "$sid" "configuration" "custom"
+        uci_set "openvpn" "$sid" "parse" "0"
+        [ -n "$config" ] && config_mod="${config%.*}mod.${config##*.}" && cp "$config" "$config_mod"
+        if [ -n "$config_mod" ]; then
+            if [ "$upload_files" = "1" ]; then
+                {
+                    [ -n "$ca" ] && echo "ca $ca"
+                    [ -n "$cert" ] && echo "cert $cert"
+                    [ -n "$key" ] && echo "key $key"
+                    [ -n "$pkcs12" ] && {
+                        echo "pkcs12 $pkcs12"
+                        [ -n "$askpass" ] && echo "askpass $askpass"
+                    }
+                    [ -n "$tls_auth" ] && echo "tls-auth $tls_auth $key_direction"
+                    [ -n "$tls_crypt" ] && echo "tls-crypt $tls_crypt"
+                    [ -n "$secret" ] && echo "secret $secret"
+                    [ -n "$userpass" ] && [ "$type" = "server" ] && echo "auth-user-pass-verify /etc/openvpn/auth-pam-fixed.sh via-file"
+                    if [ -n "$dh" ]; then
+                        echo "dh $dh"
+                    fi
+                    [ -n "$crl_verify" ] && echo "crl-verify $crl_verify"
+                    [ "$type" = "server" ] && [ "$auth_mode" = "pass" ] && echo "verify-client-cert none"
+                } >> "$config_mod"
+            fi
+            {
+                [ -n "$askpass_new" ] && echo "askpass $askpass_new"
+                [ -n "$auth_user_pass" ] && echo "auth-user-pass $auth_user_pass"
+            } >> "$config_mod"
+            uci_set "openvpn" "$sid" "config" "$config_mod"
+        fi
+    elif [ -n "$enable_external" ] && [ "$enable_external" = "1" ];then
+        uci_set "openvpn" "$sid" "configuration" "external"
+    else
+        uci_set "openvpn" "$sid" "configuration" "manual"
+    fi
+
+    if [ "$enable_custom" = "1" ] || [ "$enable_external" = "1" ]; then
+        [ -n "$ca" ] && uci_remove "openvpn" "$sid" "ca"
+        [ -n "$cert" ] && uci_remove "openvpn" "$sid" "cert"
+        [ -n "$key" ] && uci_remove "openvpn" "$sid" "key"
+        [ -n "$dh" ] && uci_remove "openvpn" "$sid" "dh"
+        [ -n "$userpass" ] && uci_remove "openvpn" "$sid" "userpass"
+        [ -n "$pkcs12" ] && uci_remove "openvpn" "$sid" "pkcs12"
+        [ -n "$tls_auth" ] && uci_remove "openvpn" "$sid" "tls_auth"
+        [ -n "$tls_crypt" ] && uci_remove "openvpn" "$sid" "tls_crypt"
+        [ -n "$key_direction" ] && uci_remove "openvpn" "$sid" "key_direction"
+        [ "$enable_external" != "1" ] && [ -n "$auth_user_pass" ] && uci_remove "openvpn" "$sid" "auth_user_pass"
+        [ -n "$secret" ] && uci_remove "openvpn" "$sid" "secret"
+        [ -n "$crl_verify" ] && uci_remove "openvpn" "$sid" "crl_verify"
+        [ -n "$auth_mode" ] && uci_remove "openvpn" "$sid" "auth_mode"
+        [ -n "$askpass" ] && uci_remove "openvpn" "$sid" "askpass"
+
+        [ -n "$(config_get "$sid" "tls_security")" ] && uci_remove "openvpn" "$sid" "tls_security"
+        [ -n "$(config_get "$sid" "persist_key")" ] && uci_remove "openvpn" "$sid" "persist_key"
+        [ -n "$(config_get "$sid" "persist_tun")" ] && uci_remove "openvpn" "$sid" "persist_tun"
+        [ -n "$(config_get "$sid" "verb")" ] && uci_remove "openvpn" "$sid" "verb"
+        [ -n "$(config_get "$sid" "mode")" ] && uci_remove "openvpn" "$sid" "mode"
+        [ -n "$(config_get "$sid" "script_security")" ] && uci_remove "openvpn" "$sid" "script_security"
+        [ -n "$(config_get "$sid" "proto")" ] && uci_remove "openvpn" "$sid" "proto"
+        [ -n "$(config_get "$sid" "device_files")" ] && uci_remove "openvpn" "$sid" "device_files"
+        [ -n "$(config_get "$sid" "tls_server")" ] && uci_remove "openvpn" "$sid" "tls_server"
+        [ -n "$(config_get "$sid" "use_pkcs")" ] && uci_remove "openvpn" "$sid" "use_pkcs"
+        [ -n "$(config_get "$sid" "ifconfig_pool_start")" ] && uci_remove "openvpn" "$sid" "ifconfig_pool_start"
+        [ -n "$(config_get "$sid" "ifconfig_pool_end")" ] && uci_remove "openvpn" "$sid" "ifconfig_pool_end"
+        [ -n "$(config_get "$sid" "nobind")" ] && uci_remove "openvpn" "$sid" "nobind"
+        [ -n "$(config_get "$sid" "client")" ] && uci_remove "openvpn" "$sid" "client"
+        [ -n "$(config_get "$sid" "tls_client")" ] && uci_remove "openvpn" "$sid" "tls_client"
+        [ -n "$(config_get "$sid" "pull")" ] && uci_remove "openvpn" "$sid" "pull"
+        [ -n "$(config_get "$sid" "verify_client_cert")" ] && uci_remove "openvpn" "$sid" "verify_client_cert"
+
+    fi
+
+    [ -n "$enable_custom" ] && uci_remove "openvpn" "$sid" "enable_custom"
+    [ -n "$enable_external" ] && uci_remove "openvpn" "$sid" "enable_external"
+    [ -n "$upload_files" ] && uci_remove "openvpn" "$sid" "upload_files"
+
+    [ -n "$(config_get "$sid" "auth_user_pass_verify")" ] && uci_remove "openvpn" "$sid" "auth_user_pass_verify"
+}
+
+config_load "openvpn"
+config_foreach fix_ovpn_conf "openvpn"
+[ -n "$(uci -q get openvpn.webui)" ] && uci_remove "openvpn" "webui"
+uci_commit openvpn

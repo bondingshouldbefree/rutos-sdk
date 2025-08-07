@@ -1,0 +1,116 @@
+-- Port --
+
+portGroup OBJECT-GROUP
+	OBJECTS { portCount,
+		  pIndex,
+		  pName,
+		  pState,
+		  pSpeed,
+		  pDuplex,
+		  pRxBytes,
+		  pTxBytes,
+		  pRxRate,
+		  pTxRate }
+	STATUS current
+	DESCRIPTION "Port SNMP group defined according to RFC 2580"
+	::= { teltonikaSnmpGroups 12 }
+
+portCount OBJECT-TYPE
+	SYNTAX		Integer32
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"Number of ports on the device"
+	::= { port 1 }
+
+-- Port table
+
+portTable OBJECT-TYPE
+	SYNTAX		SEQUENCE OF PortEntry
+	MAX-ACCESS	not-accessible
+	STATUS		current
+	DESCRIPTION	"A list of port entries. The number of entries is given by the value of portCount"
+	::= { port 2 }
+
+portEntry OBJECT-TYPE
+	SYNTAX		PortEntry
+	MAX-ACCESS	not-accessible
+	STATUS		current
+	DESCRIPTION	"An entry containing information of a particular port"
+	INDEX		{ pIndex }
+	::= { portTable 1 }
+
+PortEntry ::=
+	SEQUENCE {
+	pIndex	  	INTEGER,
+	pName	  	DisplayString,
+	pState	  	DisplayString,
+	pSpeed	  	INTEGER,
+	pDuplex		DisplayString,
+	pRxBytes 	Counter64,
+	pTxBytes	Counter64,
+	pRxRate 	INTEGER,
+	pTxRate		INTEGER
+	}
+
+pIndex OBJECT-TYPE
+	SYNTAX		INTEGER (0..65535)
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"A unique value, greater than zero, for each port"
+	::= { portEntry 1 }
+
+pName OBJECT-TYPE
+	SYNTAX		DisplayString (SIZE (0..255))
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"Port's name"
+	::= { portEntry 2 }
+
+pState OBJECT-TYPE
+	SYNTAX		DisplayString (SIZE (0..255))
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"Port's state"
+	::= { portEntry 5 }
+
+pSpeed OBJECT-TYPE
+	SYNTAX		INTEGER
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"Port's speed"
+	::= { portEntry 6 }
+
+pDuplex OBJECT-TYPE
+	SYNTAX		DisplayString (SIZE (0..255))
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"Boolean value whether port is duplex or not"
+	::= { portEntry 7 }
+
+pRxBytes OBJECT-TYPE
+	SYNTAX		Counter64
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"Port's total bytes received"
+	::= { portEntry 8 }
+
+pTxBytes OBJECT-TYPE
+	SYNTAX		Counter64
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"Port's total bytes transmitted"
+	::= { portEntry 9 }
+
+pRxRate OBJECT-TYPE
+	SYNTAX		INTEGER
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"Port's current rate of bytes per second received"
+	::= { portEntry 10 }
+
+pTxRate OBJECT-TYPE
+	SYNTAX		INTEGER
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"Port's current rate of bytes per second transmitted"
+	::= { portEntry 11 }

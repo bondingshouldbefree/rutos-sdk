@@ -1,0 +1,24 @@
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -4245,6 +4245,10 @@ void hostapd_ctrl_iface_deinit(struct ho
+ 				wpa_printf(MSG_DEBUG, "Control interface "
+ 					   "directory not empty - leaving it "
+ 					   "behind");
++			} else if (errno == EACCES) {
++				wpa_printf(MSG_DEBUG, " Do not have permissions "
++					   "to remove control interface "
++					   " - leaving it behind");
+ 			} else {
+ 				wpa_printf(MSG_ERROR,
+ 					   "rmdir[ctrl_interface=%s]: %s",
+@@ -5002,6 +5006,10 @@ void hostapd_global_ctrl_iface_deinit(st
+ 				wpa_printf(MSG_DEBUG, "Control interface "
+ 					   "directory not empty - leaving it "
+ 					   "behind");
++			} else if (errno == EACCES) {
++				wpa_printf(MSG_DEBUG, " Do not have permissions "
++					   "to remove control interface "
++					   " - leaving it behind");
+ 			} else {
+ 				wpa_printf(MSG_ERROR,
+ 					   "rmdir[ctrl_interface=%s]: %s",

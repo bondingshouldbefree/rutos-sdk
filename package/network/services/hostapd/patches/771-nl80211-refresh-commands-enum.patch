@@ -1,0 +1,27 @@
+Index: hostapd-2023-09-08-e5ccbfc6/src/drivers/nl80211_copy.h
+===================================================================
+--- hostapd-2023-09-08-e5ccbfc6/src/drivers/nl80211_copy.h
++++ hostapd-2023-09-08-e5ccbfc6/src/drivers/nl80211_copy.h
+@@ -1309,6 +1309,11 @@
+  *	The number of peers that HW timestamping can be enabled for concurrently
+  *	is indicated by %NL80211_ATTR_MAX_HW_TIMESTAMP_PEERS.
+  *
++ * @NL80211_CMD_LINKS_REMOVED: Notify userspace about the removal of STA MLD
++ *	setup links due to AP MLD removing the corresponding affiliated APs with
++ *	Multi-Link reconfiguration. %NL80211_ATTR_MLO_LINKS is used to provide
++ *	information about the removed STA MLD setup links.
++ *
+  * @NL80211_CMD_MAX: highest used command number
+  * @__NL80211_CMD_AFTER_LAST: internal use
+  */
+@@ -1563,6 +1568,10 @@ enum nl80211_commands {
+ 
+ 	NL80211_CMD_SET_HW_TIMESTAMP,
+ 
++	NL80211_CMD_LINKS_REMOVED,
++
++	NL80211_CMD_UNREGISTER_FRAME,
++
+ 	/* add new commands above here */
+ 
+ 	/* used to define NL80211_CMD_MAX below */

@@ -1,0 +1,68 @@
+--- a/src/ap/ieee802_1x.c
++++ b/src/ap/ieee802_1x.c
+@@ -118,6 +118,8 @@ static void ieee802_1x_set_authorized(struct hostapd_data *hapd,
+ 	if (sta->flags & WLAN_STA_PREAUTH)
+ 		return;
+ 
++	hostapd_ubus_notify_ieee802_1x(hapd, sta->addr, authorized, sta->vlan_id);
++
+ 	ap_sta_set_authorized(hapd, sta, authorized);
+ 	res = hostapd_set_authorized(hapd, sta, authorized);
+ 	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE8021X,
+--- a/src/ap/ubus.c
++++ b/src/ap/ubus.c
+@@ -1948,6 +1948,7 @@ int hostapd_ubus_handle_event(struct hos
+ 
+ void hostapd_ubus_notify(struct hostapd_data *hapd, const char *type, const u8 *addr)
+ {
++	
+ 	if (!hapd->ubus.obj.has_subscribers)
+ 		return;
+ 
+@@ -1960,6 +1961,24 @@ void hostapd_ubus_notify(struct hostapd_
+ 	ubus_notify(ctx, &hapd->ubus.obj, type, b.head, -1);
+ }
+ 
++
++void hostapd_ubus_notify_ieee802_1x(struct hostapd_data *hapd, const u8 *addr, int authorized, int vid)
++{
++	if (!hapd->ubus.obj.has_subscribers)
++		return;
++
++	if (!addr)
++		return;
++
++	blob_buf_init(&b, 0);
++	blobmsg_add_u8(&b, "authorized", !!authorized); blobmsg_add_u32(&b, "vid", vid);
++	blobmsg_add_macaddr(&b, "address", addr);
++	blobmsg_add_string(&b, "iface", strlen(hapd->iface->phy) > 0 ? hapd->iface->phy : hapd->conf->iface);
++	ubus_notify(ctx, &hapd->ubus.obj, "ieee802_1x", b.head, -1);
++
++}
++
++
+ void hostapd_ubus_notify_beacon_report(
+ 	struct hostapd_data *hapd, const u8 *addr, u8 token, u8 rep_mode,
+ 	struct rrm_measurement_beacon_report *rep, size_t len)
+--- a/src/ap/ubus.h
++++ b/src/ap/ubus.h
+@@ -66,6 +66,8 @@ int hostapd_ubus_notify_bss_transition_q
+ 	struct hostapd_data *hapd, const u8 *addr, u8 dialog_token, u8 reason,
+ 	const u8 *candidate_list, u16 candidate_list_len);
+ 
++void hostapd_ubus_notify_ieee802_1x(struct hostapd_data *hapd, const u8 *addr, int authorized, int vid);	
++
+ #else
+ 
+ struct hostapd_ubus_bss {};
+@@ -107,6 +109,10 @@ static inline void hostapd_ubus_notify(s
+ {
+ }
+ 
++static inline void hostapd_ubus_notify_ieee802_1x(struct hostapd_data *hapd, const u8 *addr, int authorised, int vid)
++{
++}
++
+ static inline void hostapd_ubus_notify_beacon_report(struct hostapd_data *hapd,
+ 						     const u8 *addr, u8 token,
+ 						     u8 rep_mode,

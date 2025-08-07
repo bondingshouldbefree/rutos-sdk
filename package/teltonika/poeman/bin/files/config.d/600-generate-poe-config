@@ -1,0 +1,73 @@
+#!/bin/sh
+
+set_poe_ports() {
+	json_select "$1"
+		json_get_vars name class budget
+		uci -q batch <<-EOF
+			set poe.port$1='port'
+			set poe.port$1.name='$name'
+			set poe.port$1.poe_enable='1'
+			set poe.port$1.class='$class'
+			set poe.port$1.budget='$budget'
+		EOF
+	json_select ..
+}
+
+set_poe_chips(){
+	local keys key
+	uci -q set poe.chip$1='chip'
+	json_get_keys keys "$1"
+	json_select "$1"
+		for key in $keys; do
+			json_get_var var "$key"
+			uci -q set poe.chip$1.$key="$var"
+		done
+	json_select ..
+}
+
+generate_poe_config(){
+	local conf="/etc/config/poe"
+
+	touch "$conf"
+	chmod 0666 "$conf"
+	chown poeman:poeman "$conf" 2>/dev/null
+
+	[ -n "$(cat $conf)" ] && return
+
+	if json_is_a poe object; then
+		json_select poe
+			json_get_vars chip_count poe_ports high_load_lo_thresh high_load_hi_thresh
+			uci -q batch <<-EOF
+				set poe.poe='poe'
+				set poe.poe.enable='1'
+				set poe.poe.chip_count='$chip_count'
+				set poe.poe.poe_ports='$poe_ports'
+				set poe.poe.high_load_lo_thresh='$high_load_lo_thresh'
+				set poe.poe.high_load_hi_thresh='$high_load_hi_thresh'
+			EOF
+			if json_is_a ports array; then
+				#json_for_each_item "set_poe_ports" ports
+				json_select ports
+					idx=1
+					while json_is_a ${idx} object
+					do
+						"set_poe_ports" $idx
+						idx=$(( idx + 1 ))
+					done
+				json_select ..
+			fi
+			if json_is_a poe_chips array; then
+				json_select poe_chips
+					idx=1
+					while json_is_a ${idx} object
+					do
+						"set_poe_chips" $idx
+						idx=$(( idx + 1 ))
+					done
+				json_select ..
+			fi
+		json_select ..
+	fi
+}
+
+conf_register_hook generate_poe_config

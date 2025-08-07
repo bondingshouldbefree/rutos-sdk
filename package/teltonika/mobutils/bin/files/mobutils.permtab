@@ -1,0 +1,3 @@
+/etc/config/sms_gateway		mobutils:mobutils	664
+/etc/config/call_utils		mobutils:mobutils	664
+/etc/config/sms_utils		mobutils:mobutils	664

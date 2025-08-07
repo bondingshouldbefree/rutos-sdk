@@ -1,0 +1,46 @@
+{
+  "status/realtime": {
+    "title": "Realtime Data",
+    "index": 50
+  },
+  "status/realtime/load": {
+    "title": "Load",
+    "acls": ["status/realtime/load"],
+    "index": 10,
+    "view": "status/LoadRealtime"
+  },
+  "status/realtime/bandwidth": {
+    "view": "status/TrafficRealtime",
+    "title": "Traffic",
+    "acls": ["status/realtime/bandwidth"],
+    "index": 20
+  },
+  "status/realtime/connections": {
+    "title": "Connections",
+    "index": 60,
+    "view": "status/ConnectionsRealtime",
+    "acls": ["status/realtime/connections"]
+  },
+  "status/realtime/wireless": {
+    "title": "Wireless",
+    "index": 40,
+    "view": "status/WirelessRealtime",
+    "acls": ["status/realtime/wireless"],
+    "depends": {
+      "board": {
+        "allOf": ["has_wifi"]
+      }
+    }
+  },
+  "status/realtime/mobile": {
+    "title": "Mobile Signal",
+    "index": 50,
+    "view": "status/MobileRealtime",
+    "acls": ["status/realtime/mobile_signal"],
+    "depends": {
+      "board": {
+        "allOf": ["has_mobile"]
+      }
+    }
+  }
+}

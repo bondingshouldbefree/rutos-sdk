@@ -1,0 +1,17 @@
+Index: netifd-2024-01-04-c18cc79d/system-linux.c
+===================================================================
+--- netifd-2024-01-04-c18cc79d.orig/system-linux.c
++++ netifd-2024-01-04-c18cc79d/system-linux.c
+@@ -2573,8 +2573,10 @@ int system_bridge_vlan_check(struct devi
+ 	struct nl_msg *msg;
+ 	int i;
+ 
+-	if (!data.ifindex)
+-		return 0;
++	if (!data.ifindex) {
++                nl_cb_put(cb);
++                return 0;
++        }
+ 
+ 	msg = nlmsg_alloc_simple(RTM_GETLINK, NLM_F_DUMP);
+ 

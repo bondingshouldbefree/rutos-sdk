@@ -1,0 +1,17 @@
+Index: igmpproxy-0.2.1/src/igmpproxy.c
+===================================================================
+--- igmpproxy-0.2.1.orig/src/igmpproxy.c
++++ igmpproxy-0.2.1/src/igmpproxy.c
+@@ -113,12 +113,6 @@ int main( int ArgCn, char *ArgVc[] ) {
+     }
+     char *configFilePath = ArgVc[optind];
+ 
+-    // Chech that we are root
+-    if (geteuid() != 0) {
+-       fprintf(stderr, "igmpproxy: must be root\n");
+-       exit(1);
+-    }
+-
+     openlog("igmpproxy", LOG_PID, LOG_USER);
+ 
+     // Write debug notice with file path...

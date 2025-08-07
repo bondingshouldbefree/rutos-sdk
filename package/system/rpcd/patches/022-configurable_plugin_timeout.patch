@@ -1,0 +1,66 @@
+Index: rpcd-2021-03-11-ccb75178/include/rpcd/plugin.h
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/include/rpcd/plugin.h
++++ rpcd-2021-03-11-ccb75178/include/rpcd/plugin.h
+@@ -76,6 +76,7 @@ struct rpc_plugin {
+     struct ubus_object *(*init)(const struct rpc_daemon_ops *ops, struct ubus_context *ctx);
+     const char *user;
+     const char *capabilities;
++    int timeout;
+ };
+ 
+ struct rpc_shared_plugin {
+Index: rpcd-2021-03-11-ccb75178/plugin.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/plugin.c
++++ rpcd-2021-03-11-ccb75178/plugin.c
+@@ -709,6 +709,7 @@ static int rpc_plugin_intercept(struct u
+ 	int devnull;
+ 	int opipe_rpcd[2];
+ 	int epipe_rpcd[2];
++	int timeout_pipe[2];
+ 	struct rpc_plugin *plugin;
+ 	blob_buf_init(&buf, 0);
+ 	struct rpc_lib_plugin_context *c;
+@@ -716,6 +717,7 @@ static int rpc_plugin_intercept(struct u
+ 	c = calloc(1, sizeof(*c));
+ 	pipe(opipe_rpcd);
+ 	pipe(epipe_rpcd);
++	pipe(timeout_pipe);
+ 	switch ((pid = fork()))
+ 	{
+ 	case -1:
+@@ -741,6 +743,7 @@ static int rpc_plugin_intercept(struct u
+ 		if (epipe_rpcd[0] > 2) close(epipe_rpcd[0]);
+ 		if (opipe_rpcd[1] > 2) close(opipe_rpcd[1]);
+ 		if (epipe_rpcd[1] > 2) close(epipe_rpcd[1]);
++		if (timeout_pipe[0] > 2) close(timeout_pipe[0]);
+ 		struct ubus_context *child_ctx = ubus_connect(NULL);
+ 		if (!child_ctx) {
+ 			LOG_ERROR("Failed to allocate memory for child context");
+@@ -778,6 +781,11 @@ static int rpc_plugin_intercept(struct u
+ 		struct ubus_object *plugin_obj = plugin->init(&ops, child_ctx);
+ 		EXIT_ON_ERROR(!plugin_obj, UBUS_STATUS_UNKNOWN_ERROR, "Plugin initialization failed");
+ 
++		if (plugin->timeout) {
++  			write(timeout_pipe[1], &plugin->timeout, sizeof(plugin->timeout));
++		}
++		close(timeout_pipe[1]);
++
+ 		int result = UBUS_STATUS_NOT_FOUND;
+ 		for (int i = 0; i < plugin_obj->n_methods; i++) {
+ 			if (strcmp(plugin_obj->methods[i].name, method) == 0) {
+@@ -803,7 +811,12 @@ static int rpc_plugin_intercept(struct u
+ 		uloop_process_add(&c->process);
+ 
+ 		c->timeout.cb = rpc_timeout_cb;
+-		uloop_timeout_set(&c->timeout, *ops.exec_timeout);
++		close(timeout_pipe[1]);
++		int timeout;
++		if (read(timeout_pipe[0], &timeout, sizeof(timeout)) != sizeof(timeout))
++			timeout = *ops.exec_timeout;
++		close(timeout_pipe[0]);
++		uloop_timeout_set(&c->timeout, timeout);
+ 		close(opipe_rpcd[1]);
+ 		close(epipe_rpcd[1]);
+ 		c->context = ctx;

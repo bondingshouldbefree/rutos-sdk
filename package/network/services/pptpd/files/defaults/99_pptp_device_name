@@ -1,0 +1,16 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+add_device_name() {
+	local section="$1" username ifname_hash device_name
+	config_get "username" "$section" "username"
+	config_get "device_name" "$section" "device_name"
+	[ -z "$username" ] || [ -n "$device_name" ] && return
+	ifname_hash="$(printf '%s' "${username}" | md5sum | cut -c1-8)"
+	uci_set "pptpd" "$section" "device_name" "pptp-${ifname_hash}"
+}
+
+config_load "pptpd"
+config_foreach "add_device_name" "login"
+uci_commit "pptpd"

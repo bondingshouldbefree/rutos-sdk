@@ -1,0 +1,1 @@
+obj-y += libscan.o libubigen.o ubiformat.o

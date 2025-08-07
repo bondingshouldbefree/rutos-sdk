@@ -1,0 +1,20 @@
+--- a/letsencrypt.sh
++++ b/letsencrypt.sh
+@@ -133,7 +133,7 @@ s/eo/\\034/g; s/ei/\\035/g; s/fo/\\036/g
+ }
+ 
+ hex2bin() {
+-    xxd -r -p
++    printf "$(printf '\\x%s' $(sed 's/../& /g'))"
+     # echo $ECHOESCFLAG "`HexadecimalStringToOctalEscapeSequence`"
+ }
+ 
+@@ -165,7 +165,7 @@ err_exit() {
+ }
+ 
+ required_commands() {
+-    REQUIRED_COMMANDS="basename cat cp rm sed grep egrep fgrep tr mktemp expr tail xxd openssl"
++    REQUIRED_COMMANDS="basename cat cp rm sed grep egrep fgrep tr mktemp expr tail openssl"
+ 
+     if [ "$USE_WGET" = yes ] ;then
+         REQUIRED_COMMANDS="$REQUIRED_COMMANDS wget"

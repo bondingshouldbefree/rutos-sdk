@@ -1,0 +1,22 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+GPS_CONF="gps"
+
+add_serial_forwarding_section() {
+	local SECTION_NAME="nmea_serial_forwarding"
+	local SECTION_TYPE="section"
+
+	if uci_get -q "$GPS_CONF" "$SECTION_NAME"; then
+		return
+	fi
+
+	uci_add "$GPS_CONF" "$SECTION_TYPE" "$SECTION_NAME"
+}
+
+add_serial_forwarding_section
+
+uci_commit "$GPS_CONF"
+
+exit 0

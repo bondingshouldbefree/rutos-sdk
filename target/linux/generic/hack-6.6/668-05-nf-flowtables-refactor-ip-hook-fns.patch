@@ -1,0 +1,162 @@
+net: netfilter: flowtables: refactor ip hook fn's to allow new flow types
+
+Split route type action code into separate functions. Add easy suuport
+for adding implementation for new flow types.
+
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -449,24 +449,16 @@ unsigned int nf_flow_offload_ip_hook_tai
+ 	return ret;
+ }
+ 
+-unsigned int
+-nf_flow_offload_ip_hook(void *priv, struct sk_buff *skb,
+-			const struct nf_hook_state *state)
++static unsigned int
++nf_flow_offload_ip_hook_route(struct nf_flowtable_ctx *ctx,
++			      struct nf_flowtable *flow_table,
++			      struct sk_buff *skb, struct flow_offload *flow,
++			      enum flow_offload_tuple_dir dir)
+ {
+-	struct flow_offload_tuple_rhash *tuplehash;
+-	struct nf_flowtable *flow_table = priv;
+-	enum flow_offload_tuple_dir dir;
+-	struct nf_flowtable_ctx ctx = {
+-		.in	= state->in,
+-	};
+-	struct flow_offload *flow;
++	struct flow_offload_tuple_rhash *tuplehash = &flow->tuplehash[dir];
+ 	int ret;
+ 
+-	tuplehash = nf_flow_offload_lookup(&ctx, flow_table, skb);
+-	if (!tuplehash)
+-		return NF_ACCEPT;
+-
+-	ret = nf_flow_offload_forward(&ctx, flow_table, tuplehash, skb);
++	ret = nf_flow_offload_forward(ctx, flow_table, tuplehash, skb);
+ 	if (ret < 0)
+ 		return NF_DROP;
+ 	else if (ret == 0)
+@@ -481,10 +473,44 @@ nf_flow_offload_ip_hook(void *priv, stru
+ 	IPCB(skb)->iif = skb->dev->ifindex;
+ 	IPCB(skb)->flags = IPSKB_FORWARDED;
+ 
++	return nf_flow_offload_ip_hook_tail(skb, flow, &tuplehash->tuple);
++}
++
++static unsigned int
++nf_flow_offload_ip_hook_action(struct nf_flowtable_ctx *ctx,
++			       struct nf_flowtable *flow_table,
++			       struct sk_buff *skb, struct flow_offload *flow,
++			       enum flow_offload_tuple_dir dir)
++{
++	switch (flow->type) {
++	case NF_FLOW_OFFLOAD_ROUTE:
++		return nf_flow_offload_ip_hook_route(ctx, flow_table, skb, flow,
++						     dir);
++	default:
++		return NF_ACCEPT;
++	}
++}
++
++unsigned int
++nf_flow_offload_ip_hook(void *priv, struct sk_buff *skb,
++			const struct nf_hook_state *state)
++{
++	struct flow_offload_tuple_rhash *tuplehash;
++	struct nf_flowtable *flow_table = priv;
++	enum flow_offload_tuple_dir dir;
++	struct nf_flowtable_ctx ctx = {
++		.in	= state->in,
++	};
++	struct flow_offload *flow;
++
++	tuplehash = nf_flow_offload_lookup(&ctx, flow_table, skb);
++	if (!tuplehash)
++		return NF_ACCEPT;
++
+ 	dir = tuplehash->tuple.dir;
+ 	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
+ 
+-	return nf_flow_offload_ip_hook_tail(skb, flow, &tuplehash->tuple);
++	return nf_flow_offload_ip_hook_action(&ctx, flow_table, skb, flow, dir);
+ }
+ EXPORT_SYMBOL_GPL(nf_flow_offload_ip_hook);
+ 
+@@ -760,24 +786,16 @@ unsigned int nf_flow_offload_ipv6_hook_t
+ 	return ret;
+ }
+ 
+-unsigned int
+-nf_flow_offload_ipv6_hook(void *priv, struct sk_buff *skb,
+-			  const struct nf_hook_state *state)
++static unsigned int
++nf_flow_offload_ipv6_hook_route(struct nf_flowtable_ctx *ctx,
++				struct nf_flowtable *flow_table,
++				struct sk_buff *skb, struct flow_offload *flow,
++				enum flow_offload_tuple_dir dir)
+ {
+-	struct flow_offload_tuple_rhash *tuplehash;
+-	struct nf_flowtable *flow_table = priv;
+-	enum flow_offload_tuple_dir dir;
+-	struct nf_flowtable_ctx ctx = {
+-		.in	= state->in,
+-	};
+-	struct flow_offload *flow;
++	struct flow_offload_tuple_rhash *tuplehash = &flow->tuplehash[dir];
+ 	int ret;
+ 
+-	tuplehash = nf_flow_offload_ipv6_lookup(&ctx, flow_table, skb);
+-	if (tuplehash == NULL)
+-		return NF_ACCEPT;
+-
+-	ret = nf_flow_offload_ipv6_forward(&ctx, flow_table, tuplehash, skb);
++	ret = nf_flow_offload_ipv6_forward(ctx, flow_table, tuplehash, skb);
+ 	if (ret < 0)
+ 		return NF_DROP;
+ 	else if (ret == 0)
+@@ -792,9 +810,43 @@ nf_flow_offload_ipv6_hook(void *priv, st
+ 	IP6CB(skb)->iif = skb->dev->ifindex;
+ 	IP6CB(skb)->flags = IP6SKB_FORWARDED;
+ 
++	return nf_flow_offload_ipv6_hook_tail(skb, flow, &tuplehash->tuple);
++}
++
++static unsigned int
++nf_flow_offload_ipv6_hook_action(struct nf_flowtable_ctx *ctx,
++				 struct nf_flowtable *flow_table,
++				 struct sk_buff *skb, struct flow_offload *flow,
++				 enum flow_offload_tuple_dir dir)
++{
++	switch (flow->type) {
++	case NF_FLOW_OFFLOAD_ROUTE:
++		return nf_flow_offload_ipv6_hook_route(ctx, flow_table, skb,
++						       flow, dir);
++	default:
++		return NF_ACCEPT;
++	}
++}
++
++unsigned int
++nf_flow_offload_ipv6_hook(void *priv, struct sk_buff *skb,
++			  const struct nf_hook_state *state)
++{
++	struct flow_offload_tuple_rhash *tuplehash;
++	struct nf_flowtable *flow_table = priv;
++	enum flow_offload_tuple_dir dir;
++	struct nf_flowtable_ctx ctx = {
++		.in	= state->in,
++	};
++	struct flow_offload *flow;
++
++	tuplehash = nf_flow_offload_ipv6_lookup(&ctx, flow_table, skb);
++	if (tuplehash == NULL)
++		return NF_ACCEPT;
++
+ 	dir = tuplehash->tuple.dir;
+ 	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
+ 
+-	return nf_flow_offload_ipv6_hook_tail(skb, flow, &tuplehash->tuple);
++	return nf_flow_offload_ipv6_hook_action(&ctx, flow_table, skb, flow, dir);
+ }
+ EXPORT_SYMBOL_GPL(nf_flow_offload_ipv6_hook);

@@ -1,0 +1,132 @@
+net: netfilter: flowtables: update dest IP when using XFRM output fastpath
+
+An XFRM transformation will usually set the dest IP field of the resulting
+packet to a different address (tunnel peer address) from the conntrack entry
+(inner packet dest IP).
+
+This patch makes sure that the correct IP address is used in neighbour and
+nexthop lookups.
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -167,6 +167,7 @@ struct flow_offload_tuple {
+ 		struct {
+ 			struct dst_entry *dst_cache;
+ 			u32		dst_cookie;
++			union nf_inet_addr xmit_dst_ip;
+ 		};
+ 		struct {
+ 			u32		ifidx;
+@@ -259,6 +260,7 @@ struct nf_flow_route {
+ 		u8			num_encaps:2,
+ 					ingress_vlans:2;
+ 		struct flow_xfrm_route	xfrm_route;
++		union nf_inet_addr 	xmit_dst_ip;
+ 	} out;
+ 	enum flow_offload_xmit_type	xmit_type;
+ };
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -160,6 +160,7 @@ static int flow_offload_fill_route(struc
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+ 		flow_tuple->dst_cache = dst;
+ 		flow_tuple->dst_cookie = flow_offload_dst_cookie(flow_tuple);
++		flow_tuple->xmit_dst_ip = route->out.xmit_dst_ip;
+ 		break;
+ 	default:
+ 		WARN_ON_ONCE(1);
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -434,7 +434,7 @@ unsigned int nf_flow_offload_ip_hook_tai
+ 		outdev = rt->dst.dev;
+ 		skb->dev = outdev;
+ 		nexthop = rt_nexthop(
+-			rt, flow->tuplehash[!tuple->dir].tuple.src_v4.s_addr);
++			rt, flow->tuplehash[tuple->dir].tuple.xmit_dst_ip.ip);
+ 		skb_dst_set_noref(skb, &rt->dst);
+ 		neigh_xmit(NEIGH_ARP_TABLE, outdev, &nexthop, skb);
+ 		ret = NF_STOLEN;
+@@ -745,7 +745,7 @@ unsigned int nf_flow_offload_ipv6_hook_t
+ 		outdev = rt->dst.dev;
+ 		skb->dev = outdev;
+ 		nexthop = rt6_nexthop(
+-			rt, &flow->tuplehash[!tuple->dir].tuple.src_v6);
++			rt, &flow->tuplehash[tuple->dir].tuple.xmit_dst_ip.in6);
+ 		skb_dst_set_noref(skb, &rt->dst);
+ 		neigh_xmit(NEIGH_ND_TABLE, outdev, nexthop, skb);
+ 		ret = NF_STOLEN;
+--- a/net/netfilter/nf_flow_table_xfrm_output.c
++++ b/net/netfilter/nf_flow_table_xfrm_output.c
+@@ -733,6 +733,7 @@ void nf_dev_forward_xfrm(struct nf_flow_
+ 
+ 	do {
+ 		struct xfrm_dst* xdst = (struct xfrm_dst *)dst;
++		route->out.xmit_dst_ip = *(union nf_inet_addr*)&dst->xfrm->id.daddr;
+ 		dst = xdst->child;
+ 	} while (nf_flow_xfrm_direct_eval(dst));
+ 
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -295,12 +295,16 @@ static enum flow_offload_xmit_type nf_xm
+ 
+ static void nf_default_forward_path(struct nf_flow_route *route,
+ 				    struct dst_entry *dst_cache,
++				    struct dst_entry *dst_reverse,
++				    const struct nf_conn *ct,
+ 				    enum ip_conntrack_dir dir,
+ 				    struct net_device *indev)
+ {
+ 	route->in.ifindex	= indev->ifindex;
+ 	route->dst		= dst_cache;
++	route->dst_reverse	= dst_reverse;
+ 	route->xmit_type	= nf_xmit_type(dst_cache);
++	route->out.xmit_dst_ip	= ct->tuplehash[!dir].tuple.src.u3;
+ }
+ #ifndef CONFIG_NETFILTER_XT_LEGACY_OFFLOAD_FORWARD_PATH
+ static bool nf_is_valid_ether_device(const struct net_device *dev)
+@@ -414,8 +418,7 @@ out:
+ 	return dev_fill_forward_path(dev, ha, stack);
+ }
+ 
+-static int nf_dev_forward_path(struct nf_flow_route *route,
+-			       const void *daddr)
++static int nf_dev_forward_path(struct nf_flow_route *route)
+ {
+ 	const struct dst_entry *dst = route->dst;
+ 	struct net_device_path_stack stack;
+@@ -424,7 +427,7 @@ static int nf_dev_forward_path(struct nf
+ 	int ret;
+ 	int i;
+ 
+-	ret = nf_dev_fill_forward_path(dst, daddr, ha, &stack);
++	ret = nf_dev_fill_forward_path(dst, &route->out.xmit_dst_ip, ha, &stack);
+ 	if (ret == -EAGAIN)
+ 		return ret;
+ 	if (ret < 0)
+@@ -524,7 +527,6 @@ xt_flowoffload_route(struct sk_buff *skb
+ 	struct dst_entry *other_dst = NULL;
+ 	struct flowi fl;
+ #ifndef CONFIG_NETFILTER_XT_LEGACY_OFFLOAD_FORWARD_PATH
+-	const void *daddr = &ct->tuplehash[!dir].tuple.src.u3;
+ 	int ret;
+ #endif
+ 
+@@ -561,8 +563,7 @@ xt_flowoffload_route(struct sk_buff *skb
+ 
+ 	nf_route(xt_net(par), &other_dst, &fl, false, xt_family(par));
+ 
+-	nf_default_forward_path(route, this_dst, dir, *indev);
+-	route->dst_reverse = other_dst;
++	nf_default_forward_path(route, this_dst, other_dst, ct, dir, *indev);
+ 
+ 	if (info->flags & XT_FLOWOFFLOAD_XFRM)
+ 		nf_dev_forward_xfrm(route);
+@@ -572,7 +573,7 @@ xt_flowoffload_route(struct sk_buff *skb
+ 		return 0;
+ 
+ 	if (route->xmit_type == FLOW_OFFLOAD_XMIT_NEIGH) {
+-		ret = nf_dev_forward_path(route, daddr);
++		ret = nf_dev_forward_path(route);
+ 		if (ret)
+ 			goto err_route_free;
+ 

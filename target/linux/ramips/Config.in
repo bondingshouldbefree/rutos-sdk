@@ -1,0 +1,12 @@
+menu "Target options and settings"
+depends on TARGET_ramips_mt7621
+
+config DEFAULT_TARGET_OPTIONS
+	bool
+	default y
+	select KERNEL_MTD_UBI
+	select KERNEL_MTD_UBI_BLOCK
+	select PACKAGE_crconf
+	select PACKAGE_kmod-crypto-user
+
+endmenu

@@ -1,0 +1,17 @@
+Index: mt76-2022-12-22-5b509e80/mt7615/eeprom.c
+===================================================================
+--- mt76-2022-12-22-5b509e80.orig/mt7615/eeprom.c	2023-11-08 08:25:11.039792374 +0200
++++ mt76-2022-12-22-5b509e80/mt7615/eeprom.c	2023-11-08 08:26:09.407424881 +0200
+@@ -339,9 +339,9 @@
+ 		return ret;
+ 
+ 	ret = mt7615_check_eeprom(&dev->mt76);
+-	if (ret && dev->mt76.otp.data) {
+-		memcpy(dev->mt76.eeprom.data, dev->mt76.otp.data,
+-		       dev->mt76.otp.size);
++
++	if (ret) {
++		return ret;
+ 	} else {
+ 		dev->flash_eeprom = true;
+ 		mt7615_cal_free_data(dev);

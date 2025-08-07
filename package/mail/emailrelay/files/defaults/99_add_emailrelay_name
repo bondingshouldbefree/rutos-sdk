@@ -1,0 +1,12 @@
+#!/bin/sh
+. /lib/functions.sh
+
+migrate_name() {
+	local name
+	config_get name "$1" name
+	[ -z "$name" ] && uci_set emailrelay "$1" name "$1"
+}
+config_load emailrelay
+config_foreach "migrate_name" "emailrelay"
+uci_commit "emailrelay"
+exit 0

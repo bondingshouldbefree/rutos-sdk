@@ -1,0 +1,8 @@
+{
+    "network/igmp_proxy": {
+        "title": "IGMP Proxy",
+        "index": 140,
+        "view": "services/IgmpProxy",
+        "acls": [ "network/igmp_proxy" ]
+    }
+}

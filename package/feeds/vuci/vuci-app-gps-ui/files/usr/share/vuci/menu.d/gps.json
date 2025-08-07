@@ -1,0 +1,74 @@
+{
+  "services/gps": {
+    "title": "GPS",
+    "index": 80,
+    "depends": {
+      "board": {
+        "allOf": ["has_gps"]
+      }
+    }
+  },
+  "services/gps/general": {
+    "title": "General",
+    "index": 1,
+    "view": "services/General",
+    "acls": ["services/gps/general"]
+  },
+  "services/gps/map": {
+    "title": "Map",
+    "index": 2,
+    "view": "services/Map",
+    "acls": ["services/gps/map"]
+  },
+  "services/gps/nmea": {
+    "title": "NMEA",
+    "index": 3
+  },
+  "services/gps/nmea/forwarding": {
+    "title": "NMEA Forwarding",
+    "index": 1,
+    "view": "services/NMEAForwarding",
+    "acls": ["services/gps/nmea_forwarding"]
+  },
+  "services/gps/nmea/collecting": {
+    "title": "NMEA Collecting",
+    "index": 2,
+    "view": "services/NMEACollecting",
+    "acls": ["services/gps/nmea_collecting"]
+  },
+  "services/gps/nmea/sentences": {
+    "title": "NMEA Sentences",
+    "index": 3,
+    "view": "services/NMEASentences",
+    "acls": ["services/gps/nmea_sentences"]
+  },
+  "services/gps/https": {
+    "title": "HTTPS",
+    "index": 4,
+    "view": "services/HTTPS",
+    "acls": ["services/gps/https"]
+  },
+  "services/gps/avl": {
+    "title": "AVL",
+    "index": 5,
+    "view": "services/AVL",
+    "acls": ["services/gps/avl"]
+  },
+  "services/gps/input": {
+    "title": "AVL I/O",
+    "index": 6,
+    "view": "services/AvlInput",
+    "acls": ["services/gps/input"],
+    "depends": {
+      "board": {
+        "allOf": ["has_ios"]
+      }
+    }
+  },
+  "services/gps/geofencing": {
+    "title": "GPS Geofencing",
+    "index": 7,
+    "view": "services/GPSGeofencing",
+    "acls": ["services/gps/geofencing"]
+  }
+}

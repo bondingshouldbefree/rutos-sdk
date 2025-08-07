@@ -1,0 +1,52 @@
+net: netfilter: flowtables: check XFRM secpath in GC loop
+
+Check the state of XFRM bundle SA's in GC loop. This allows for quicker 
+cleanup after the SA's are destroyed.
+
+--- a/include/net/netfilter/nf_flow_table_xfrm.h
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -108,17 +108,39 @@ static inline void nf_flow_xfrm_route_re
+ #endif
+ }
+ 
++static inline bool nf_flow_xfrm_route_expired(struct flow_xfrm_route *xroute)
++{
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	if (xroute->bundle) {
++		if (!dst_check(xroute->bundle, 0))
++			return true;
++	}
++#endif
++	return false;
++}
++
++static inline bool
++__flow_offload_route_xfrm_expired_tuple(struct flow_offload_tuple *tuple)
++{
++	if (nf_flow_xfrm_tuple_expired(&tuple->xfrm_tuple))
++		return true;
++
++	if (nf_flow_xfrm_route_expired(&tuple->xfrm_route))
++		return true;
++
++	return false;
++}
++
+ static inline bool flow_offload_route_xfrm_expired(struct flow_offload *flow)
+ {
+ 	if (flow_offload_has_orig(flow) &&
+-	    nf_flow_xfrm_tuple_expired(
+-		    &flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL]
+-			     .tuple.xfrm_tuple))
++	    __flow_offload_route_xfrm_expired_tuple(
++		    &flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].tuple))
+ 		return true;
+ 
+ 	if (flow_offload_has_reply(flow) &&
+-	    nf_flow_xfrm_tuple_expired(
+-		    &flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].tuple.xfrm_tuple))
++	    __flow_offload_route_xfrm_expired_tuple(
++		    &flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].tuple))
+ 		return true;
+ 
+ 	return false;

@@ -1,0 +1,1 @@
+{"system/info":{"description":"device info","read":{"api":{"/system/device/status/*":["*"],"/system/device/usage/*":["*"],"/system/device/load/*":["*"]}},"write":{"api":["/system/device/status/*","/system/device/usage/*","/system/device/load/*"]}}}

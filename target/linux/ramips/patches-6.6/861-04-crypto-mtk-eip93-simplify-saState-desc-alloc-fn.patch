@@ -1,0 +1,208 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed Oct 30 10:50:39 2024 +0200
+Subject: crypto: mtk-eip93: simplify saSate descriptor allocation
+
+Since we can guarantee the upper bound of active saState descriptors and that
+they are free'd in the same order as they are allocated, we can greatly simplify
+and speedup the process by just incrementing a pointer instead. 
+
+Though, honestly, it might be better to replace this with the dma_pool mechanism
+in the future, as this current method is a bit fragile.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/crypto/mtk-eip93/eip93-cipher.h |    1 
+ drivers/crypto/mtk-eip93/eip93-common.c |   64 +++++++++++---------------------
+ drivers/crypto/mtk-eip93/eip93-common.h |    2 -
+ drivers/crypto/mtk-eip93/eip93-main.c   |    3 +
+ drivers/crypto/mtk-eip93/eip93-main.h   |    3 -
+ 5 files changed, 26 insertions(+), 47 deletions(-)
+
+--- a/drivers/crypto/mtk-eip93/eip93-cipher.h
++++ b/drivers/crypto/mtk-eip93/eip93-cipher.h
+@@ -38,7 +38,6 @@ struct mtk_cipher_reqctx {
+ 	dma_addr_t			saRecord_base;
+ 	struct saState_s		*saState;
+ 	dma_addr_t			saState_base;
+-	uint32_t			saState_idx;
+ 	struct eip93_descriptor_s	*cdesc;
+ 	struct scatterlist		*sg_src;
+ 	struct scatterlist		*sg_dst;
+--- a/drivers/crypto/mtk-eip93/eip93-common.c
++++ b/drivers/crypto/mtk-eip93/eip93-common.c
+@@ -113,21 +113,25 @@ inline void *mtk_get_descriptor(struct m
+ 	return ptr;
+ }
+ 
+-inline int mtk_get_free_saState(struct mtk_device *mtk)
++inline struct mtk_state_pool *mtk_get_free_saState(struct mtk_device *mtk)
+ {
+-	struct mtk_state_pool *saState_pool;
+ 	int i;
+ 
+-	for (i = 0; i < MTK_RING_SIZE; i++) {
+-		saState_pool = &mtk->ring->saState_pool[i];
+-		if (saState_pool->in_use == false) {
+-			saState_pool->in_use = true;
+-			return i;
+-		}
++	// there should only be at most one saState descriptor per command descriptor,
++	// and saStates should be allocated and free'd in the same order,
++	// so it should be safe to just increment a pointer here and not check anything.
++	i = mtk->ring->saState_ptr;
++	mtk->ring->saState_ptr = (i + 1) & (MTK_RING_SIZE - 1);
+ 
+-	}
++	return &mtk->ring->saState_pool[i];
++}
+ 
+-	return -ENOENT;
++inline void mtk_rollback_saState(struct mtk_device *mtk)
++{
++	int i;
++
++	i = mtk->ring->saState_ptr;
++	mtk->ring->saState_ptr = (i - 1) & (MTK_RING_SIZE - 1);
+ }
+ 
+ static inline void mtk_free_sg_copy(const int len, struct scatterlist **sg)
+@@ -295,6 +299,7 @@ int check_valid_request(struct mtk_ciphe
+ 
+ 	return 0;
+ }
++
+ /*
+  * Set saRecord function:
+  * Even saRecord is set to "0", keep " = 0" for readability.
+@@ -528,7 +533,6 @@ int mtk_send_req(struct crypto_async_req
+ 	struct mtk_state_pool *saState_pool;
+ 	struct eip93_descriptor_s cdesc;
+ 	u32 flags = rctx->flags;
+-	int idx;
+ 	int offsetin = 0, err = -ENOMEM;
+ 	u32 datalen = rctx->assoclen + rctx->textsize;
+ 	u32 split = datalen;
+@@ -551,11 +555,7 @@ int mtk_send_req(struct crypto_async_req
+ 	if (IS_DMA_IV(flags)) {
+ 		rctx->saState = (void *)reqiv;
+ 	} else  {
+-		idx = mtk_get_free_saState(mtk);
+-		if (idx < 0)
+-			goto send_err;
+-		saState_pool = &mtk->ring->saState_pool[idx];
+-		rctx->saState_idx = idx;
++		saState_pool = mtk_get_free_saState(mtk);
+ 		rctx->saState = saState_pool->base;
+ 		rctx->saState_base = saState_pool->base_dma;
+ 		memcpy(rctx->saState->stateIv, iv, rctx->ivsize);
+@@ -583,11 +583,7 @@ int mtk_send_req(struct crypto_async_req
+ 			 */
+ 			iv[3] = 0xffffffff;
+ 			crypto_inc((u8 *)iv, AES_BLOCK_SIZE);
+-			idx = mtk_get_free_saState(mtk);
+-			if (idx < 0)
+-				goto free_state;
+-			saState_pool = &mtk->ring->saState_pool[idx];
+-			rctx->saState_ctr_idx = idx;
++			saState_pool = mtk_get_free_saState(mtk);
+ 			rctx->saState_ctr = saState_pool->base;
+ 			rctx->saState_base_ctr = saState_pool->base_dma;
+ 
+@@ -625,16 +621,12 @@ skip_iv:
+ 	return err;
+ 
+ free_state:
+-	if (rctx->saState) {
+-		saState_pool = &mtk->ring->saState_pool[rctx->saState_idx];
+-		saState_pool->in_use = false;
+-	}
++	if (rctx->saState)
++		mtk_rollback_saState(mtk);
++
++	if (rctx->saState_ctr)
++		mtk_rollback_saState(mtk);
+ 
+-	if (rctx->saState_ctr) {
+-		saState_pool = &mtk->ring->saState_pool[rctx->saState_ctr_idx];
+-		saState_pool->in_use = false;
+-	}
+-send_err:
+ 	return err;
+ }
+ 
+@@ -815,24 +807,12 @@ process_tag:
+ void mtk_handle_result(struct mtk_device *mtk, struct mtk_cipher_reqctx *rctx,
+ 			u8 *reqiv)
+ {
+-	struct mtk_state_pool *saState_pool;
+-
+ 	if (IS_DMA_IV(rctx->flags))
+ 		dma_unmap_single(mtk->dev, rctx->saState_base, rctx->ivsize,
+ 						DMA_TO_DEVICE);
+ 
+ 	if (!IS_ECB(rctx->flags))
+ 		memcpy(reqiv, rctx->saState->stateIv, rctx->ivsize);
+-
+-	if ((rctx->saState) && !(IS_DMA_IV(rctx->flags))) {
+-		saState_pool = &mtk->ring->saState_pool[rctx->saState_idx];
+-		saState_pool->in_use = false;
+-	}
+-
+-	if (rctx->saState_ctr) {
+-		saState_pool = &mtk->ring->saState_pool[rctx->saState_ctr_idx];
+-		saState_pool->in_use = false;
+-	}
+ }
+ 
+ #if IS_ENABLED(CONFIG_CRYPTO_DEV_EIP93_HMAC)
+--- a/drivers/crypto/mtk-eip93/eip93-common.h
++++ b/drivers/crypto/mtk-eip93/eip93-common.h
+@@ -18,7 +18,7 @@ inline int mtk_put_descriptor(struct mtk
+ 
+ inline void *mtk_get_descriptor(struct mtk_device *mtk);
+ 
+-inline int mtk_get_free_saState(struct mtk_device *mtk);
++inline struct mtk_state_pool *mtk_get_free_saState(struct mtk_device *mtk);
+ 
+ void mtk_req_free_sg_copies(struct mtk_cipher_reqctx *rctx,
+ 			    struct scatterlist *reqsrc,
+--- a/drivers/crypto/mtk-eip93/eip93-main.c
++++ b/drivers/crypto/mtk-eip93/eip93-main.c
+@@ -357,9 +357,10 @@ static int mtk_desc_init(struct mtk_devi
+ 		saState_pool = &mtk->ring->saState_pool[i];
+ 		saState_pool->base = mtk->ring->saState + (i * RingOffset);
+ 		saState_pool->base_dma = mtk->ring->saState_dma + (i * RingOffset);
+-		saState_pool->in_use = false;
+ 	}
+ 
++	mtk->ring->saState_ptr = 0;
++
+ 	return 0;
+ }
+ 
+--- a/drivers/crypto/mtk-eip93/eip93-main.h
++++ b/drivers/crypto/mtk-eip93/eip93-main.h
+@@ -96,7 +96,6 @@ struct mtk_device {
+ 	struct clk		*clk;
+ 	int			irq;
+ 	struct mtk_ring		*ring;
+-	struct mtk_state_pool	*saState_pool;
+ 	/* request queue */
+ 	struct crypto_queue	request_queue;
+ 	spinlock_t		request_lock;
+@@ -119,7 +118,6 @@ struct mtk_desc_ring {
+ struct mtk_state_pool {
+ 	void			*base;
+ 	dma_addr_t		base_dma;
+-	bool			in_use;
+ };
+ 
+ struct mtk_ring {
+@@ -132,6 +130,7 @@ struct mtk_ring {
+ 	atomic_t			free;
+ 	/* saState */
+ 	struct mtk_state_pool		*saState_pool;
++	int	 			saState_ptr;
+ 	void				*saState;
+ 	dma_addr_t			saState_dma;
+ };

@@ -1,0 +1,61 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+set -e
+
+config_load certificates
+
+set_certificate() {
+	local section="$1" cert_name="$2" enddate="$3" scep_url="$4" password="$5" fullname
+
+	config_get fullname "$section" fullname
+	[ "$fullname" != "$cert_name" ] && return 0
+	enddate="${enddate#notAfter=}"
+	enddate="${enddate// /T}"
+	enddate="${enddate%Z}"
+	enddate="${enddate//T/ }"
+	enddate="$(date -u -D "%Y-%m-%d %H:%M:%S" -d "$enddate" +%s 2>/dev/null)"
+
+	uci_set certificates "$section" datetime "$enddate"
+	uci_set certificates "$section" scep_url "$scep_url"
+	uci_set certificates "$section" password "$password"
+}
+
+##############################################################################
+# Set local paths 
+#
+
+# Path to the Vuci certificate folder 
+CERT_PATH="/etc/certificates"
+
+##############################################################################
+# Change into the certificates directory
+#
+cd "$CERTDIR"
+
+##############################################################################
+# Install the private key and certificate
+#
+ln -sf "$CERTDIR/$HOSTKEY" "$CERT_PATH/$FQDN.key.pem"
+ln -sf "$CERTDIR/$HOSTCERT" "$CERT_PATH/$FQDN.cert.pem"
+ln -sf "$CERTDIR/$ROOTCA" "$CERT_PATH/ca-$FQDN.cert.pem"
+
+enddate_cert=$(openssl x509 -enddate -noout -dateopt iso_8601 -in "$CERTDIR/$HOSTCERT")
+enddate_ca=$(openssl x509 -enddate -noout -dateopt iso_8601 -in "$CERTDIR/$ROOTCA")
+
+FQDN="${FQDN//\`/\\\`}"
+FQDN="${FQDN//\'/\\\'}"
+FQDN="${FQDN//\"/\\\"}"
+
+config_foreach set_certificate "certificate" "$FQDN.cert.pem" "$enddate_cert" "$SCEP_URL" "$PASSWORD"
+config_foreach set_certificate "certificate" "ca-$FQDN.cert.pem" "$enddate_ca" "$SCEP_URL"
+uci_commit "certificates"
+
+cron="0 0 * * 0 FQDN=$FQDN SCEP_URL=$SCEP_URL ${PASSWORD:+PASSWORD=$PASSWORD} cert-enroll.sh"
+if ! crontab -l | grep -q "$(echo "$cron" | cut -d' ' -f 6-)"; then
+	(crontab -l ; echo "${cron}")| crontab -
+	logger "Updated crontab with new entry: \'${cron}\'"
+fi
+
+exit 0

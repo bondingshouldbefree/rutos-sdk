@@ -1,0 +1,19 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+[ -f "/etc/config/tinc" ] || exit 0
+
+config_cb() {
+	local type="$1"
+	local name="$2"
+	local net
+	if [ "$type" = "tinc-host" ]; then
+		net="$(uci_get tinc "$name" net)"
+		[ -z "$net" ] && return
+		uci_add tinc "${type}_${net}" "$name"
+	fi
+}
+
+config_load "tinc"
+uci_commit tinc

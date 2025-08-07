@@ -1,0 +1,48 @@
+#!/bin/sh /etc/rc.common
+
+START=54
+STOP=10
+USE_PROCD=1
+
+WDIR="/var/run/preboot"
+EXEC_DIR="/usr/libexec/reboot_utils"
+CRONTAB_FILE='/etc/crontabs/preboot'
+IDENTIFYING_STRING='# periodic_reboot'
+ENABLED=0
+
+check_if_enabled() {
+    local enable
+    config_get enable "$1" enable 0
+    [ "$enable" -eq 1 ] && ENABLED=1
+}
+
+start_service() {
+    sed -i "/$IDENTIFYING_STRING/d" "$CRONTAB_FILE" 2>/dev/null
+
+    config_load periodic_reboot
+    config_foreach check_if_enabled "reboot_instance"
+
+    [ "$ENABLED" -eq 0 ] && return
+    #Remove once preinit is fixed on TSWOS.
+    [ -d ${WDIR} ] || {
+        mkdir -p ${WDIR}
+        chown preboot:preboot ${WDIR}
+    }
+
+    ${EXEC_DIR}/periodic_reboot_init.sh &
+}
+
+stop_service() {
+    pid=$(pgrep -f "${EXEC_DIR}/periodic_reboot_init.sh")
+    [ "$pid" != "" ] && kill -9 "$pid"
+    sed -i "/$IDENTIFYING_STRING/d" "$CRONTAB_FILE"
+}
+
+service_triggers() {
+    procd_add_reload_trigger "periodic_reboot"
+}
+
+reload_service(){
+    stop
+    start
+}

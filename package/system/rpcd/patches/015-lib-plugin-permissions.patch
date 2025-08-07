@@ -1,0 +1,1158 @@
+Index: rpcd-2021-03-11-ccb75178/file.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/file.c
++++ rpcd-2021-03-11-ccb75178/file.c
+@@ -32,11 +32,13 @@
+ #include <libubus.h>
+ #include <libubox/blobmsg.h>
+ #include <libubox/md5.h>
+-#include <libubox/ustream.h>
++#include <poll.h>
+ #include <libubox/utils.h>
+ 
+ #include <rpcd/plugin.h>
+ 
++#define INITIAL_CAPACITY 32768
++#define TMP_BUFFER_SIZE 16384
+ /* limit of sys & proc files */
+ #define RPC_FILE_MIN_SIZE		(4096)
+ 
+@@ -46,32 +48,8 @@
+ /* limit of command line length for exec acl checks */
+ #define RPC_CMDLINE_MAX_SIZE	(1024)
+ 
+-#define ustream_for_each_read_buffer(stream, ptr, len) \
+-	for (ptr = ustream_get_read_buf(stream, &len);     \
+-	     ptr != NULL && len > 0;                       \
+-	     ustream_consume(stream, len), ptr = ustream_get_read_buf(stream, &len))
+-
+-#define ustream_declare(us, fd, name)                     \
+-	us.stream.string_data   = true;                       \
+-	us.stream.r.buffer_len  = 4096;                       \
+-	us.stream.r.max_buffers = RPC_FILE_MAX_SIZE / 4096;   \
+-	us.stream.notify_read   = rpc_file_##name##_read_cb;  \
+-	us.stream.notify_state  = rpc_file_##name##_state_cb; \
+-	ustream_fd_init(&us, fd);
+-
+ static const struct rpc_daemon_ops *ops;
+ 
+-struct rpc_file_exec_context {
+-	struct ubus_context *context;
+-	struct ubus_request_data request;
+-	struct uloop_timeout timeout;
+-	struct uloop_process process;
+-	struct ustream_fd opipe;
+-	struct ustream_fd epipe;
+-	int stat;
+-};
+-
+-
+ static struct blob_buf buf;
+ static char *canonpath;
+ static char cmdstr[RPC_CMDLINE_MAX_SIZE];
+@@ -666,302 +644,192 @@ rpc_file_exec_lookup(const char *cmd)
+ 	return NULL;
+ }
+ 
++#define INITIAL_CAPACITY 32768
++#define TMP_BUFFER_SIZE 16384
+ 
+-static void
+-rpc_ustream_to_blobmsg(struct ustream *s, const char *name)
++static int expand_buffer(char **buf, size_t *used, size_t *capacity, size_t additional)
+ {
+-	int len;
+-	char *rbuf, *wbuf;
+-
+-	if ((len = ustream_pending_data(s, false)) > 0)
+-	{
+-		wbuf = blobmsg_alloc_string_buffer(&buf, name, len + 1);
+-
+-		if (!wbuf)
+-			return;
+-
+-		ustream_for_each_read_buffer(s, rbuf, len)
+-		{
+-			memcpy(wbuf, rbuf, len);
+-			wbuf += len;
+-		}
+-
+-		*wbuf = 0;
+-		blobmsg_add_string_buffer(&buf);
+-	}
++	if (*used + additional < *capacity)
++		return 0;
++	while (*used + additional >= *capacity)
++		*capacity *= 2;
++	char *new_buf = realloc(*buf, *capacity);
++	if (!new_buf)
++		return -1;
++	*buf = new_buf;
++	return 0;
+ }
+ 
+-static void
+-rpc_file_exec_reply(struct rpc_file_exec_context *c, int rv)
++static char *read_all_from_fd(int fd, int timeout_ms)
+ {
+-	uloop_timeout_cancel(&c->timeout);
+-	uloop_process_delete(&c->process);
+-
+-	if (rv == UBUS_STATUS_OK)
+-	{
+-		blob_buf_init(&buf, 0);
+-
+-		blobmsg_add_u32(&buf, "code", WEXITSTATUS(c->stat));
+-
+-		rpc_ustream_to_blobmsg(&c->opipe.stream, "stdout");
+-		rpc_ustream_to_blobmsg(&c->epipe.stream, "stderr");
++	size_t capacity = INITIAL_CAPACITY, used = 0;
++	char *buf = malloc(capacity);
++	if (!buf)
++		return NULL;
++	struct pollfd pfd = { .fd = fd, .events = POLLIN | POLLHUP };
++	char tmp[TMP_BUFFER_SIZE];
+ 
+-		ubus_send_reply(c->context, &c->request, buf.head);
+-		blob_buf_free(&buf);
++	while (1) {
++		int ret = poll(&pfd, 1, timeout_ms);
++		if (ret < 0) {
++			free(buf);
++			return NULL;
++		} else if (ret == 0) {
++			break;
++		}
++		if (pfd.revents & (POLLIN | POLLHUP)) {
++			ssize_t n = read(fd, tmp, sizeof(tmp));
++			if (n <= 0) {
++				if (errno == EAGAIN || errno == EWOULDBLOCK)
++					continue;
++				break;
++			}
++			if (expand_buffer(&buf, &used, &capacity, n) < 0) {
++				free(buf);
++				return NULL;
++			}
++			memcpy(buf + used, tmp, n);
++			used += n;
++		}
+ 	}
+-
+-	ubus_complete_deferred_request(c->context, &c->request, rv);
+-
+-	ustream_free(&c->opipe.stream);
+-	ustream_free(&c->epipe.stream);
+-
+-	close(c->opipe.fd.fd);
+-	close(c->epipe.fd.fd);
+-
+-	free(c);
++	char *new_buf = realloc(buf, used + 1);
++	if (new_buf)
++		buf = new_buf;
++	buf[used] = '\0';
++	return buf;
+ }
+ 
+-static void
+-rpc_file_exec_timeout_cb(struct uloop_timeout *t)
+-{
+-	struct rpc_file_exec_context *c =
+-		container_of(t, struct rpc_file_exec_context, timeout);
+-
+-	kill(c->process.pid, SIGKILL);
+-	rpc_file_exec_reply(c, UBUS_STATUS_TIMEOUT);
+-}
+-
+-static void
+-rpc_file_exec_process_cb(struct uloop_process *p, int stat)
++static char **build_args(const char *executable, const struct blob_attr *arg)
+ {
+-	struct rpc_file_exec_context *c =
+-		container_of(p, struct rpc_file_exec_context, process);
+-
+-	c->stat = stat;
+-
+-	ustream_poll(&c->opipe.stream);
+-	ustream_poll(&c->epipe.stream);
+-}
+-
+-static void
+-rpc_file_exec_opipe_read_cb(struct ustream *s, int bytes)
+-{
+-	struct rpc_file_exec_context *c =
+-		container_of(s, struct rpc_file_exec_context, opipe.stream);
+-
+-	if (ustream_read_buf_full(s))
+-		rpc_file_exec_reply(c, UBUS_STATUS_NOT_SUPPORTED);
+-}
+-
+-static void
+-rpc_file_exec_epipe_read_cb(struct ustream *s, int bytes)
+-{
+-	struct rpc_file_exec_context *c =
+-		container_of(s, struct rpc_file_exec_context, epipe.stream);
+-
+-	if (ustream_read_buf_full(s))
+-		rpc_file_exec_reply(c, UBUS_STATUS_NOT_SUPPORTED);
+-}
+-
+-static void
+-rpc_file_exec_opipe_state_cb(struct ustream *s)
+-{
+-	struct rpc_file_exec_context *c =
+-		container_of(s, struct rpc_file_exec_context, opipe.stream);
++	uint8_t arglen = 2;
++	char **args = malloc(sizeof(char *) * arglen);
++	if (!args)
++		return NULL;
++	args[0] = (char *)executable;
++	args[1] = NULL;
++	if (!arg)
++		return args;
+ 
+-	if (c->opipe.stream.eof && c->epipe.stream.eof)
+-		rpc_file_exec_reply(c, UBUS_STATUS_OK);
++	int rem;
++	struct blob_attr *cur;
++	blobmsg_for_each_attr(cur, arg, rem) {
++		if (blobmsg_type(cur) != BLOBMSG_TYPE_STRING)
++			continue;
++		if (arglen == 255) {
++			free(args);
++			return NULL;
++		}
++		arglen++;
++		char **tmp = realloc(args, sizeof(char *) * arglen);
++		if (!tmp) {
++			free(args);
++			return NULL;
++		}
++		args = tmp;
++		args[arglen - 2] = blobmsg_data(cur);
++		args[arglen - 1] = NULL;
++	}
++	return args;
+ }
+ 
+-static void
+-rpc_file_exec_epipe_state_cb(struct ustream *s)
++static void process_env(const struct blob_attr *env)
+ {
+-	struct rpc_file_exec_context *c =
+-		container_of(s, struct rpc_file_exec_context, epipe.stream);
+-
+-	if (c->opipe.stream.eof && c->epipe.stream.eof)
+-		rpc_file_exec_reply(c, UBUS_STATUS_OK);
+-}
++	if (!env)
++		return;
+ 
+-static void
+-rpc_fdclose(int fd)
+-{
+-	if (fd > 2)
+-		close(fd);
++	int rem;
++	struct blob_attr *cur;
++	blobmsg_for_each_attr(cur, env, rem) {
++		if (blobmsg_type(cur) != BLOBMSG_TYPE_STRING)
++			continue;
++		setenv(blobmsg_name(cur), blobmsg_data(cur), 1);
++	}
+ }
+ 
+-static int
+-rpc_file_exec_run(const char *cmd, const struct blob_attr *sid,
+-                  const struct blob_attr *arg, const struct blob_attr *env,
+-                  struct ubus_context *ctx, struct ubus_request_data *req)
++static int rpc_file_exec_run(const char *cmd, const struct blob_attr *sid,
++    const struct blob_attr *arg, const struct blob_attr *env,
++    struct ubus_context *ctx, struct ubus_request_data *req)
+ {
+ 	pid_t pid;
+-
+ 	int devnull;
+-	int opipe[2];
+-	int epipe[2];
+-
+-	int rem;
+-	struct blob_attr *cur;
+-
+-	uint8_t arglen;
+-	char *executable, **args, **tmp, *p;
+-
+-	struct rpc_file_exec_context *c;
+-
++	int opipe[2], epipe[2];
++	int ret_status = UBUS_STATUS_OK;
++	char *executable;
++	char **args;
+ 	cmd = rpc_file_exec_lookup(cmd);
+-
+ 	if (!cmd)
+ 		return UBUS_STATUS_NOT_FOUND;
+-
+ 	executable = rpc_canonicalize_path(cmd);
+-
+-	if (executable == NULL)
++	if (!executable)
+ 		return UBUS_STATUS_UNKNOWN_ERROR;
+-
+-	if (!rpc_file_access(sid, executable, "exec"))
+-	{
+-		if (arg == NULL || strlen(executable) >= sizeof(cmdstr))
++	if (!rpc_file_access(sid, executable, "exec")) {
++		if (!arg || strlen(executable) >= sizeof(cmdstr))
+ 			return UBUS_STATUS_PERMISSION_DENIED;
+-
+-		arglen = 0;
+-		p = cmdstr + sprintf(cmdstr, "%s", executable);
+-
+-		blobmsg_for_each_attr(cur, arg, rem)
+-		{
++		uint8_t arglen = 0;
++		char *p = cmdstr + sprintf(cmdstr, "%s", executable);
++		int rem;
++		struct blob_attr *cur;
++		blobmsg_for_each_attr(cur, arg, rem) {
+ 			if (blobmsg_type(cur) != BLOBMSG_TYPE_STRING)
+ 				continue;
+-
+-			if (arglen == 255 ||
+-			    p + blobmsg_data_len(cur) >= cmdstr + sizeof(cmdstr))
++			if (arglen == 255 || (p + blobmsg_data_len(cur)) >= (cmdstr + sizeof(cmdstr)))
+ 				break;
+-
+ 			p += sprintf(p, " %s", blobmsg_get_string(cur));
+ 			arglen++;
+ 		}
+-
+ 		if (!rpc_file_access(sid, cmdstr, "exec"))
+ 			return UBUS_STATUS_PERMISSION_DENIED;
+ 	}
+-
+-	c = malloc(sizeof(*c));
+-
+-	if (!c)
+-		return UBUS_STATUS_UNKNOWN_ERROR;
+-
+-	if (pipe(opipe))
+-		goto fail_opipe;
+-
+-	if (pipe(epipe))
+-		goto fail_epipe;
+-
+-	switch ((pid = fork()))
+-	{
++	if (pipe(opipe) < 0)
++		return rpc_errno_status();
++	if (pipe(epipe) < 0) {
++		close(opipe[0]); close(opipe[1]);
++		return rpc_errno_status();
++	}
++	switch(pid = fork()){
+ 	case -1:
+-		goto fail_fork;
+-
++		close(opipe[0]); close(opipe[1]);
++		close(epipe[0]); close(epipe[1]);
++		return rpc_errno_status();
+ 	case 0:
+-		uloop_done();
+-
+ 		devnull = open("/dev/null", O_RDWR);
+-
+-		if (devnull == -1)
+-			return UBUS_STATUS_UNKNOWN_ERROR;
+-
++		if (devnull < 0)
++			_exit(UBUS_STATUS_UNKNOWN_ERROR);
+ 		dup2(devnull, 0);
+ 		dup2(opipe[1], 1);
+ 		dup2(epipe[1], 2);
+-
+-		rpc_fdclose(devnull);
+-		rpc_fdclose(opipe[0]);
+-		rpc_fdclose(opipe[1]);
+-		rpc_fdclose(epipe[0]);
+-		rpc_fdclose(epipe[1]);
+-
+-		arglen = 2;
+-		args = malloc(sizeof(char *) * arglen);
+-
++		close(devnull);
++		close(opipe[0]); close(opipe[1]);
++		close(epipe[0]); close(epipe[1]);
++		args = build_args(executable, arg);
+ 		if (!args)
+-			return UBUS_STATUS_UNKNOWN_ERROR;
+-
+-		args[0] = (char *)executable;
+-		args[1] = NULL;
+-
+-		if (arg)
+-		{
+-			blobmsg_for_each_attr(cur, arg, rem)
+-			{
+-				if (blobmsg_type(cur) != BLOBMSG_TYPE_STRING)
+-					continue;
+-
+-				if (arglen == 255)
+-				{
+-					free(args);
+-					return UBUS_STATUS_INVALID_ARGUMENT;
+-				}
+-
+-				arglen++;
+-				tmp = realloc(args, sizeof(char *) * arglen);
+-
+-				if (!tmp)
+-				{
+-					free(args);
+-					return UBUS_STATUS_UNKNOWN_ERROR;
+-				}
+-
+-				args = tmp;
+-				args[arglen-2] = blobmsg_data(cur);
+-				args[arglen-1] = NULL;
+-			}
+-		}
+-
+-		if (env)
+-		{
+-			blobmsg_for_each_attr(cur, env, rem)
+-			{
+-				if (blobmsg_type(cur) != BLOBMSG_TYPE_STRING)
+-					continue;
+-
+-				setenv(blobmsg_name(cur), blobmsg_data(cur), 1);
+-			}
+-		}
+-
+-		if (execv(executable, args))
+-			return rpc_errno_status();
+-
+-	default:
+-		memset(c, 0, sizeof(*c));
+-
+-		ustream_declare(c->opipe, opipe[0], exec_opipe);
+-		ustream_declare(c->epipe, epipe[0], exec_epipe);
+-
+-		c->process.pid = pid;
+-		c->process.cb = rpc_file_exec_process_cb;
+-		uloop_process_add(&c->process);
+-
+-		c->timeout.cb = rpc_file_exec_timeout_cb;
+-		uloop_timeout_set(&c->timeout, *ops->exec_timeout);
+-
++			_exit(UBUS_STATUS_UNKNOWN_ERROR);
++		process_env(env);
++		execv(executable, args);
++		_exit(rpc_errno_status());
++	default: {
+ 		close(opipe[1]);
+ 		close(epipe[1]);
+-
+-		c->context = ctx;
+-		ubus_defer_request(ctx, req, &c->request);
++		char *stdout_str = read_all_from_fd(opipe[0], *ops->exec_timeout);
++		char *stderr_str = read_all_from_fd(epipe[0], *ops->exec_timeout);
++		int status;
++		waitpid(pid, &status, 0);
++		blob_buf_init(&buf, 1048576);
++		blobmsg_add_u32(&buf, "code", WEXITSTATUS(status));
++		if (stdout_str && stdout_str[0] != '\0')
++			blobmsg_add_string(&buf, "stdout", stdout_str);
++		if (stderr_str && stderr_str[0] != '\0')
++			blobmsg_add_string(&buf, "stderr", stderr_str);
++		ubus_send_reply(ctx, req, buf.head);
++		blob_buf_free(&buf);
++		ret_status = UBUS_STATUS_OK;
++		free(stdout_str);
++		free(stderr_str);
++	}
+ 	}
+-
+-	return UBUS_STATUS_OK;
+-
+-fail_fork:
+-	close(epipe[0]);
+-	close(epipe[1]);
+-
+-fail_epipe:
+ 	close(opipe[0]);
+-	close(opipe[1]);
+-
+-fail_opipe:
+-	free(c);
+-	return rpc_errno_status();
++	close(epipe[0]);
++	return ret_status;
+ }
+ 
+ static int
+@@ -982,8 +850,8 @@ rpc_file_exec(struct ubus_context *ctx,
+ }
+ 
+ 
+-static int
+-rpc_file_api_init(const struct rpc_daemon_ops *o, struct ubus_context *ctx)
++static struct ubus_object
++*rpc_file_api_init(const struct rpc_daemon_ops *o, struct ubus_context *ctx)
+ {
+ 	static const struct ubus_method file_methods[] = {
+ 		UBUS_METHOD("read",    rpc_file_read,   rpc_file_RB_policy),
+@@ -998,16 +866,18 @@ rpc_file_api_init(const struct rpc_daemo
+ 	static struct ubus_object_type file_type =
+ 		UBUS_OBJECT_TYPE("luci-rpc-file", file_methods);
+ 
+-	static struct ubus_object obj = {
+-		.name = "file",
+-		.type = &file_type,
+-		.methods = file_methods,
+-		.n_methods = ARRAY_SIZE(file_methods),
+-	};
++	struct ubus_object *obj = calloc(1, sizeof(*obj));
++	if (!obj) {
++		return NULL;
++	}
+ 
++	obj->name = "file";
++	obj->type = &file_type;
++	obj->methods = file_methods;
++	obj->n_methods = ARRAY_SIZE(file_methods);
+ 	ops = o;
+ 
+-	return ubus_add_object(ctx, &obj);
++	return obj;
+ }
+ 
+ struct rpc_plugin rpc_plugin = {
+Index: rpcd-2021-03-11-ccb75178/include/rpcd/plugin.h
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/include/rpcd/plugin.h
++++ rpcd-2021-03-11-ccb75178/include/rpcd/plugin.h
+@@ -21,6 +21,17 @@
+ 
+ #define _GNU_SOURCE /* asprintf() */
+ 
++#define LOG_ERROR(msg, ...) fprintf(stderr, "RPCD ERROR: " msg "\n", ##__VA_ARGS__)
++#define EXIT_ON_ERROR(cond, err_code, msg, ...) \
++    do { \
++        if (cond) { \
++            fprintf(stderr, "Error: %s | " msg "\n", #cond, ##__VA_ARGS__); \
++            _exit(err_code); \
++        } \
++    } WHILE_FALSE
++
++#define WHILE_FALSE while(0)
++
+ #include <dlfcn.h>
+ #include <stdio.h>
+ #include <fcntl.h>
+@@ -44,6 +55,9 @@
+ /* location of plugin libraries */
+ #define RPC_LIBRARY_DIRECTORY	"/usr/lib/rpcd"
+ 
++/* shared library */
++#define RPC_SHARED_DIRECTORY	"/usr/lib/rpcd/shared"
++
+ struct rpc_daemon_ops {
+     bool (*session_access)(const char *sid, const char *scope,
+                            const char *object, const char *function);
+@@ -59,9 +73,17 @@ struct rpc_daemon_ops {
+ 
+ struct rpc_plugin {
+     struct list_head list;
++    struct ubus_object *(*init)(const struct rpc_daemon_ops *ops, struct ubus_context *ctx);
++    const char *user;
++    const char *capabilities;
++};
++
++struct rpc_shared_plugin {
++    struct list_head list;
+     int (*init)(const struct rpc_daemon_ops *ops, struct ubus_context *ctx);
+ };
+ 
++
+ int rpc_plugin_api_init(struct ubus_context *ctx);
+ 
+ #endif
+Index: rpcd-2021-03-11-ccb75178/iwinfo.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/iwinfo.c
++++ rpcd-2021-03-11-ccb75178/iwinfo.c
+@@ -530,7 +530,7 @@ rpc_iwinfo_scan(struct ubus_context *ctx
+ 			if (e->ht_chan_info.primary_chan) {
+ 				t = blobmsg_open_table(&buf, "ht_operation");
+ 				blobmsg_add_u32(&buf, "primary_channel", e->ht_chan_info.primary_chan);
+-			
++
+ 				blobmsg_add_string(&buf, "secondary_channel_offset", e->ht_chan_info.secondary_chan_off > ARRAY_SIZE(ht_secondary_offset) ?
+ 				"unknown" : ht_secondary_offset[e->ht_chan_info.secondary_chan_off]);
+ 
+@@ -1033,8 +1033,8 @@ rpc_iwinfo_scanlist(struct ubus_context
+ }
+ 
+ 
+-static int
+-rpc_iwinfo_api_init(const struct rpc_daemon_ops *o, struct ubus_context *ctx)
++static struct ubus_object
++*rpc_iwinfo_api_init(const struct rpc_daemon_ops *o, struct ubus_context *ctx)
+ {
+ 	static const struct ubus_method iwinfo_methods[] = {
+ 		UBUS_METHOD_NOARG("devices", rpc_iwinfo_devices),
+@@ -1052,16 +1052,19 @@ rpc_iwinfo_api_init(const struct rpc_dae
+ 	static struct ubus_object_type iwinfo_type =
+ 		UBUS_OBJECT_TYPE("luci-rpc-iwinfo", iwinfo_methods);
+ 
+-	static struct ubus_object obj = {
+-		.name = "iwinfo",
+-		.type = &iwinfo_type,
+-		.methods = iwinfo_methods,
+-		.n_methods = ARRAY_SIZE(iwinfo_methods),
+-	};
++	struct ubus_object *obj = calloc(1, sizeof(*obj));
++	if (!obj)
++		return NULL;
++
++	obj->name = "iwinfo";
++	obj->type = &iwinfo_type;
++	obj->methods = iwinfo_methods;
++	obj->n_methods = ARRAY_SIZE(iwinfo_methods);
+ 
+-	return ubus_add_object(ctx, &obj);
++	return obj;
+ }
+ 
+ struct rpc_plugin rpc_plugin = {
+-	.init = rpc_iwinfo_api_init
++	.init = rpc_iwinfo_api_init,
++	.capabilities = "cap_net_admin=ep"
+ };
+Index: rpcd-2021-03-11-ccb75178/plugin.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/plugin.c
++++ rpcd-2021-03-11-ccb75178/plugin.c
+@@ -18,8 +18,14 @@
+ 
+ #include <rpcd/plugin.h>
+ #include <pwd.h>
++#include <grp.h>
++#include <libubox/ustream.h>
++#include <sys/capability.h>
++
++#define RPC_FILE_MAX_SIZE		(4096 * 64)
+ 
+ static struct blob_buf buf;
++static bool child_process = false;
+ 
+ struct rpc_plugin_lookup_context {
+ 	uint32_t id;
+@@ -27,6 +33,62 @@ struct rpc_plugin_lookup_context {
+ 	bool found;
+ };
+ 
++struct rpc_lib_plugin_context {
++	struct ubus_context *context;
++	struct ubus_request_data request;
++	struct uloop_timeout timeout;
++	struct uloop_process process;
++	struct ustream_fd opipe_rpcd;
++	struct ustream_fd epipe_rpcd;
++	struct blob_buf std_buf;
++	struct blob_buf err_buf;
++	int stat;
++};
++
++typedef int (*ubus_send_reply_fn_t)(struct ubus_context *ctx,
++                                   struct ubus_request_data *req,
++                                   struct blob_attr *msg);
++
++static ubus_send_reply_fn_t orig_ubus_send_reply = NULL;
++
++int ubus_send_reply(struct ubus_context *ctx,
++	struct ubus_request_data *req,
++	struct blob_attr *msg)
++{
++	int ret = 0;
++
++	if (orig_ubus_send_reply) {
++		ret = orig_ubus_send_reply(ctx, req, msg);
++	}
++
++	// If it is a child process it would additionally write the output to the stdout
++	if (child_process && msg) {
++		write(STDOUT_FILENO, blob_data(msg), blob_len(msg));
++		fsync(STDOUT_FILENO);
++		return 0;
++	}
++
++return ret;
++}
++
++__attribute__((constructor)) static void init_ubus_hooks(void)
++{
++    orig_ubus_send_reply = (ubus_send_reply_fn_t)dlsym(RTLD_NEXT, "ubus_send_reply");
++}
++
++#define ustream_for_each_read_buffer(stream, ptr, len) \
++	for (ptr = ustream_get_read_buf(stream, &len);     \
++	     ptr != NULL && len > 0;                       \
++	     ustream_consume(stream, len), ptr = ustream_get_read_buf(stream, &len))
++
++#define ustream_declare(us, fd, name)                     \
++	us.stream.string_data   = true;                       \
++	us.stream.r.buffer_len  = 4096;                       \
++	us.stream.r.max_buffers = RPC_FILE_MAX_SIZE / 4096;   \
++	us.stream.notify_read   = rpc_##name##_read_cb;  \
++	us.stream.notify_state  = rpc_##name##_state_cb; \
++	ustream_fd_init(&us, fd);
++
+ static void
+ rpc_plugin_lookup_plugin_cb(struct ubus_context *ctx,
+                             struct ubus_object_data *obj, void *priv)
+@@ -474,9 +536,6 @@ out:
+ 	}
+ }
+ 
+-
+-static LIST_HEAD(plugins);
+-
+ static const struct rpc_daemon_ops ops = {
+ 	.session_access     = rpc_session_access,
+ 	.session_create_cb  = rpc_session_create_cb,
+@@ -485,24 +544,335 @@ static const struct rpc_daemon_ops ops =
+ 	.exec_timeout       = &rpc_exec_timeout,
+ };
+ 
+-static int
+-rpc_plugin_register_library(struct ubus_context *ctx, const char *path)
++static void rpc_ustream_to_blobmsg(struct ustream *s, char *name, struct rpc_lib_plugin_context *c)
++{
++	const char *rbuf;
++	int len;
++
++	ustream_for_each_read_buffer(s, rbuf, len) {
++		if (strcmp(name, "stdout") == 0) {
++			blob_put_raw(&c->std_buf, rbuf, len);
++			continue;
++		}
++		blobmsg_add_string(&c->err_buf, name, rbuf);
++	}
++}
++
++static void rpc_file_exec_reply(struct rpc_lib_plugin_context *c, int rv)
++{
++	int exit_status = WEXITSTATUS(c->stat);
++	uloop_timeout_cancel(&c->timeout);
++	uloop_process_delete(&c->process);
++
++	ustream_poll(&c->opipe_rpcd.stream);
++	ustream_poll(&c->epipe_rpcd.stream);
++
++	if (blob_len(c->std_buf.head) > 0) {
++		ubus_send_reply(c->context, &c->request, c->std_buf.head);
++	} else if (blob_len(c->err_buf.head) > 0 && exit_status != 0) {
++		ubus_send_reply(c->context, &c->request, c->err_buf.head);
++	}
++
++	ubus_complete_deferred_request(c->context, &c->request, exit_status);
++
++	ustream_free(&c->opipe_rpcd.stream);
++	ustream_free(&c->epipe_rpcd.stream);
++	close(c->opipe_rpcd.fd.fd);
++	close(c->epipe_rpcd.fd.fd);
++	blob_buf_free(&c->std_buf);
++	blob_buf_free(&c->err_buf);
++
++	free(c);
++}
++
++static void
++rpc_exec_opipe_read_cb(struct ustream *s, int bytes) {
++	struct rpc_lib_plugin_context *c = container_of(s, struct rpc_lib_plugin_context, opipe_rpcd.stream);
++	rpc_ustream_to_blobmsg(s, "stdout", c);
++	if (ustream_read_buf_full(s))
++		rpc_file_exec_reply(c, UBUS_STATUS_NOT_SUPPORTED);
++}
++
++static void
++rpc_exec_epipe_read_cb(struct ustream *s, int bytes) {
++	struct rpc_lib_plugin_context *c = container_of(s, struct rpc_lib_plugin_context, epipe_rpcd.stream);
++	rpc_ustream_to_blobmsg(s, "stderr", c);
++	if (ustream_read_buf_full(s))
++		rpc_file_exec_reply(c, UBUS_STATUS_NOT_SUPPORTED);
++}
++
++static void
++rpc_exec_opipe_state_cb(struct ustream *s)
++{
++	struct rpc_lib_plugin_context *c =
++		container_of(s, struct rpc_lib_plugin_context, opipe_rpcd.stream);
++
++	if (c->opipe_rpcd.stream.eof && c->epipe_rpcd.stream.eof)
++		rpc_file_exec_reply(c, UBUS_STATUS_OK);
++}
++
++static void rpc_exec_epipe_state_cb(struct ustream *s)
++{
++	struct rpc_lib_plugin_context *c =
++		container_of(s, struct rpc_lib_plugin_context, epipe_rpcd.stream);
++
++	if (c->opipe_rpcd.stream.eof && c->epipe_rpcd.stream.eof)
++		rpc_file_exec_reply(c, UBUS_STATUS_OK);
++}
++
++
++static void
++rpc_timeout_cb(struct uloop_timeout *t)
++{
++	struct rpc_lib_plugin_context *c =
++		container_of(t, struct rpc_lib_plugin_context, timeout);
++
++	kill(c->process.pid, SIGKILL);
++	rpc_file_exec_reply(c, UBUS_STATUS_TIMEOUT);
++}
++
++
++static void
++rpc_process_cb(struct uloop_process *p, int stat)
++{
++	struct rpc_lib_plugin_context *c =
++		container_of(p, struct rpc_lib_plugin_context, process);
++
++	c->stat = stat;
++
++	ustream_poll(&c->opipe_rpcd.stream);
++	ustream_poll(&c->epipe_rpcd.stream);
++}
++
++static void set_capabilities(const char *cap_str) {
++	cap_t caps;
++
++	if (!cap_str || !*cap_str) {
++		caps = cap_init();
++		if (!caps) {
++			LOG_ERROR("cap_init failed");
++			return;
++		}
++		if (cap_set_proc(caps) != 0) {
++			LOG_ERROR("cap_set_proc failed: %s", strerror(errno));
++			cap_free(caps);
++			return;
++		}
++		cap_free(caps);
++		return;
++	} else {
++		caps = cap_from_text(cap_str);
++		if (!caps) {
++			LOG_ERROR("cap_from_text failed for string: %s", cap_str);
++			return;
++		}
++	}
++
++	cap_value_t cap_list[CAP_LAST_CAP + 1];
++	int cap_count = 0;
++	for (int cap = 0; cap <= CAP_LAST_CAP; cap++) {
++		cap_flag_value_t flag_value;
++		if (cap_get_flag(caps, cap, CAP_EFFECTIVE, &flag_value) == 0 && flag_value == CAP_SET) {
++			cap_list[cap_count++] = cap;
++		}
++	}
++
++	if (cap_set_flag(caps, CAP_INHERITABLE, cap_count, cap_list, CAP_SET) != 0) {
++		LOG_ERROR("Failed to set inheritable capabilities: %s", strerror(errno));
++		cap_free(caps);
++		return;
++	}
++
++	if (cap_set_proc(caps) != 0) {
++		LOG_ERROR("cap_set_proc failed: %s", strerror(errno));
++		cap_free(caps);
++		return;
++	}
++
++	cap_free(caps);
++}
++
++static int rpc_plugin_intercept(struct ubus_context *ctx, struct ubus_object *obj,
++                                struct ubus_request_data *req, const char *method,
++                                struct blob_attr *msg)
++{
++	pid_t pid;
++	int devnull;
++	int opipe_rpcd[2];
++	int epipe_rpcd[2];
++	struct rpc_plugin *plugin;
++	blob_buf_init(&buf, 0);
++	struct rpc_lib_plugin_context *c;
++
++	c = calloc(1, sizeof(*c));
++	pipe(opipe_rpcd);
++	pipe(epipe_rpcd);
++	switch ((pid = fork()))
++	{
++	case -1:
++		return UBUS_STATUS_UNKNOWN_ERROR;
++
++	case 0: {
++		child_process = true;
++		INIT_LIST_HEAD(&ctx->requests);
++		INIT_LIST_HEAD(&ctx->pending);
++		memset(&ctx->objects, 0, sizeof(ctx->objects));
++		uloop_done();
++		devnull = open("/dev/null", O_RDWR);
++
++		if (devnull == -1)
++			return UBUS_STATUS_UNKNOWN_ERROR;
++
++		dup2(devnull, 0);
++		dup2(opipe_rpcd[1], 1);
++		dup2(epipe_rpcd[1], 2);
++
++		if (devnull>2) close(devnull);
++		if (opipe_rpcd[0] > 2) close(opipe_rpcd[0]);
++		if (epipe_rpcd[0] > 2) close(epipe_rpcd[0]);
++		if (opipe_rpcd[1] > 2) close(opipe_rpcd[1]);
++		if (epipe_rpcd[1] > 2) close(epipe_rpcd[1]);
++		struct ubus_context *child_ctx = ubus_connect(NULL);
++		if (!child_ctx) {
++			LOG_ERROR("Failed to allocate memory for child context");
++			_exit(UBUS_STATUS_UNKNOWN_ERROR);
++		}
++
++		void *dlh = dlopen(obj->path, RTLD_LAZY | RTLD_LOCAL);
++		EXIT_ON_ERROR(!dlh, UBUS_STATUS_UNKNOWN_ERROR, "Failed to load plugin %s", obj->path);
++
++		plugin = dlsym(dlh, "rpc_plugin");
++		EXIT_ON_ERROR(!plugin, UBUS_STATUS_UNKNOWN_ERROR, "Failed to find symbol 'rpc_plugin' in %s", obj->path);
++
++		if (plugin->user) {
++			struct passwd *pw = getpwnam(plugin->user);
++			EXIT_ON_ERROR(!pw, UBUS_STATUS_UNKNOWN_ERROR, "Failed to find user %s", plugin->user);
++
++			if (initgroups(plugin->user, pw->pw_gid) != 0) {
++     		   LOG_ERROR("Failed to set supplementary groups for user %s", plugin->user);
++			}
++
++			if (setgid(pw->pw_gid) != 0 || setuid(pw->pw_uid) != 0) {
++				LOG_ERROR("Failed to change user for user %s", plugin->user);
++			}
++		} else {
++			// This else needs to be removed after all plugins have droped root
++			if (initgroups("root", 0) != 0) {
++				LOG_ERROR("Failed to set supplementary groups for root");
++			}
++			setgid(0);
++			setuid(0);
++		}
++
++		set_capabilities(plugin->capabilities ? plugin->capabilities : "");
++
++		struct ubus_object *plugin_obj = plugin->init(&ops, child_ctx);
++		EXIT_ON_ERROR(!plugin_obj, UBUS_STATUS_UNKNOWN_ERROR, "Plugin initialization failed");
++
++		int result = UBUS_STATUS_NOT_FOUND;
++		for (int i = 0; i < plugin_obj->n_methods; i++) {
++			if (strcmp(plugin_obj->methods[i].name, method) == 0) {
++				result = plugin_obj->methods[i].handler(child_ctx, obj, req, method, msg);
++			}
++		}
++
++		ubus_free(child_ctx);
++		free(plugin_obj);
++		dlclose(dlh);
++		_exit(result);
++	}
++
++	default:
++		memset(c, 0, sizeof(*c));
++		blob_buf_init(&c->std_buf, 0);
++		blob_buf_init(&c->err_buf, 0);
++
++		ustream_declare(c->opipe_rpcd, opipe_rpcd[0], exec_opipe);
++		ustream_declare(c->epipe_rpcd, epipe_rpcd[0], exec_epipe);
++		c->process.pid = pid;
++		c->process.cb = rpc_process_cb;
++		uloop_process_add(&c->process);
++
++		c->timeout.cb = rpc_timeout_cb;
++		uloop_timeout_set(&c->timeout, *ops.exec_timeout);
++		close(opipe_rpcd[1]);
++		close(epipe_rpcd[1]);
++		c->context = ctx;
++		ubus_defer_request(ctx, req, &c->request);
++	}
++	return UBUS_STATUS_OK;
++}
++
++static int rpc_plugin_register_library(struct ubus_context *ctx, const char *path)
+ {
+ 	struct rpc_plugin *p;
+ 	void *dlh;
+ 
+ 	dlh = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+-
+ 	if (!dlh)
+ 		return UBUS_STATUS_UNKNOWN_ERROR;
+ 
+ 	p = dlsym(dlh, "rpc_plugin");
+-
+-	if (!p)
++	if (!p) {
++		dlclose(dlh);
+ 		return UBUS_STATUS_NOT_FOUND;
++	}
++
++	struct ubus_object *obj = p->init(&ops, ctx);
++	if (!obj) {
++		LOG_ERROR("Failed to initialize plugin %s", path);
++		dlclose(dlh);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++
++	obj->path = strdup(path);
++	if (!obj->path) {
++		LOG_ERROR("Failed to allocate memory for plugin path");
++		free(obj);
++		dlclose(dlh);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++
++	struct ubus_method *methods = calloc(obj->n_methods, sizeof(*methods));
++	if (!methods) {
++		LOG_ERROR("Failed to allocate memory for plugin methods");
++		free((char *)obj->path);
++		free(obj);
++		dlclose(dlh);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
+ 
+-	list_add(&p->list, &plugins);
++	for (int i = 0; i < obj->n_methods; i++) {
++		methods[i].name = strdup(obj->methods[i].name);
++		methods[i].handler = rpc_plugin_intercept;
++	}
++
++	obj->methods = methods;
++	int res = ubus_add_object(ctx, obj);
++	dlclose(dlh);
++	return res;
++}
++
++static LIST_HEAD(shared_plugins);
+ 
++static int
++rpc_plugin_load_library(struct ubus_context *ctx, const char *path)
++{
++	struct rpc_shared_plugin *p;
++	void *dlh;
++
++	dlh = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
++	if (!dlh)
++		return UBUS_STATUS_UNKNOWN_ERROR;
++
++	p = dlsym(dlh, "rpc_shared_plugin");
++
++	if (!p) {
++		dlclose(dlh);
++		return UBUS_STATUS_NOT_FOUND;
++	}
++
++	list_add(&p->list, &shared_plugins);
+ 	return p->init(&ops, ctx);
+ }
+ 
+@@ -528,6 +898,22 @@ int rpc_plugin_api_init(struct ubus_cont
+ 		}
+ 
+ 		closedir(d);
++	}
++
++	if ((d = opendir(RPC_SHARED_DIRECTORY)) != NULL)
++	{
++		while ((e = readdir(d)) != NULL)
++		{
++			snprintf(path, sizeof(path) - 1,
++			         RPC_SHARED_DIRECTORY "/%s", e->d_name);
++
++			if (stat(path, &s) || !S_ISREG(s.st_mode))
++				continue;
++
++			rv |= rpc_plugin_load_library(ctx, path);
++		}
++
++		closedir(d);
+ 	}
+ 
+ 	if ((d = opendir(RPC_LIBRARY_DIRECTORY)) != NULL)
+Index: rpcd-2021-03-11-ccb75178/sys.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/sys.c
++++ rpcd-2021-03-11-ccb75178/sys.c
+@@ -340,8 +340,8 @@ rpc_sys_reboot(struct ubus_context *ctx,
+ 	return 0;
+ }
+ 
+-static int
+-rpc_sys_api_init(const struct rpc_daemon_ops *o, struct ubus_context *ctx)
++static struct ubus_object
++*rpc_sys_api_init(const struct rpc_daemon_ops *o, struct ubus_context *ctx)
+ {
+ 	static const struct ubus_method sys_methods[] = {
+ 		UBUS_METHOD("packagelist", rpc_sys_packagelist, rpc_packagelist_policy),
+@@ -357,16 +357,19 @@ rpc_sys_api_init(const struct rpc_daemon
+ 	static struct ubus_object_type sys_type =
+ 		UBUS_OBJECT_TYPE("luci-rpc-sys", sys_methods);
+ 
+-	static struct ubus_object obj = {
+-		.name = "rpc-sys",
+-		.type = &sys_type,
+-		.methods = sys_methods,
+-		.n_methods = ARRAY_SIZE(sys_methods),
+-	};
++	struct ubus_object *obj = calloc(1, sizeof(*obj));
++	if (!obj) {
++		return NULL;
++	}
++
++	obj->name = "rpc-sys";
++	obj->type = &sys_type;
++	obj->methods = sys_methods;
++	obj->n_methods = ARRAY_SIZE(sys_methods);
+ 
+ 	ops = o;
+ 
+-	return ubus_add_object(ctx, &obj);
++	return obj;
+ }
+ 
+ struct rpc_plugin rpc_plugin = {
+Index: rpcd-2021-03-11-ccb75178/CMakeLists.txt
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/CMakeLists.txt
++++ rpcd-2021-03-11-ccb75178/CMakeLists.txt
+@@ -33,6 +33,7 @@ FIND_LIBRARY(ubox NAMES ubox)
+ FIND_LIBRARY(blobmsg_json NAMES blobmsg_json)
+ FIND_LIBRARY(json NAMES json-c json)
+ FIND_LIBRARY(crypt NAMES crypt)
++FIND_LIBRARY(cap NAMES cap)
+ IF(crypt STREQUAL "crypt-NOTFOUND")
+   SET(crypt "")
+ ENDIF()
+@@ -43,8 +44,11 @@ INCLUDE_DIRECTORIES(${ubus_include_dir})
+ FIND_PATH(ubox_include_dir libubox/blobmsg_json.h)
+ INCLUDE_DIRECTORIES(${ubox_include_dir})
+ 
++FIND_PATH(pcap_include_dir sys/capability.h)
++INCLUDE_DIRECTORIES(${pcap_include_dir})
++
+ ADD_EXECUTABLE(rpcd main.c exec.c session.c uci.c rc.c plugin.c)
+-TARGET_LINK_LIBRARIES(rpcd ${ubox} ${ubus} ${uci} ${blobmsg_json} ${json} ${crypt} dl)
++TARGET_LINK_LIBRARIES(rpcd ${ubox} ${ubus} ${uci} ${blobmsg_json} ${json} ${crypt} ${cap} dl)
+ 
+ SET(PLUGINS "")
+ 

@@ -1,0 +1,94 @@
+--- a/system.c
++++ b/system.c
+@@ -1236,6 +1236,83 @@ static int system_firstboot(struct ubus_
+ 	return 0;
+ }
+ 
++enum { TS_PASS, __TS_MAX };
++
++static const struct blobmsg_policy ts_policy[__TS_MAX] = {
++	[TS_PASS] = { .name = "pass", .type = BLOBMSG_TYPE_STRING },
++};
++
++static int troubleshoot(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_request_data *req,
++			const char *method, struct blob_attr *msg)
++{
++	struct blob_attr *tb[__TS_MAX];
++	struct backup_req *breq;
++	int fd;
++	char *argv[3] = { "/sbin/troubleshoot.sh", NULL };
++
++	if (!msg)
++		return UBUS_STATUS_INVALID_ARGUMENT;
++
++	breq = calloc(1, sizeof(*breq));
++	if (!breq) {
++		backup_error(ctx, req, "Failed to allocate troublehoot request");
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++
++	if (pipe(breq->fds)) {
++		backup_error(ctx, req, "pipe() failed: %s (%d)", strerror(errno), errno);
++		free(breq);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++
++	breq->proc.pid = fork();
++
++	switch (breq->proc.pid) {
++	case -1:
++		backup_error(ctx, req, "fork() failed: %s (%d)", strerror(errno), errno);
++
++		close(breq->fds[0]);
++		close(breq->fds[1]);
++		free(breq);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	case 0:
++		/* Set stdin to /dev/null */
++		fd = open("/dev/null", O_RDWR);
++		if (fd >= 0) {
++			dup2(fd, 0);
++			close(fd);
++		}
++
++		/* Set stdout and stderr to the shared pipe */
++		dup2(breq->fds[1], 1);
++		dup2(breq->fds[1], 2);
++		close(breq->fds[0]);
++		close(breq->fds[1]);
++
++		blobmsg_parse(ts_policy, __TS_MAX, tb, blob_data(msg), blob_len(msg));
++		if (tb[TS_PASS])
++			argv[1] = blobmsg_get_string(tb[TS_PASS]);
++
++		execv(argv[0], argv);
++		exit(errno);
++	}
++
++	/* Parent process */
++	close(breq->fds[1]);
++
++	breq->ufd.fd = breq->fds[0];
++	breq->ufd.cb = backup_output_handler;
++
++	breq->proc.cb = backup_process_handler;
++
++	uloop_fd_add(&breq->ufd, ULOOP_READ);
++	uloop_process_add(&breq->proc);
++
++	ubus_defer_request(ctx, req, &breq->req);
++
++	return UBUS_STATUS_OK;
++}
++
+ static void
+ procd_subscribe_cb(struct ubus_context *ctx, struct ubus_object *obj)
+ {
+@@ -1262,6 +1339,7 @@ static const struct ubus_method system_m
+ 	UBUS_METHOD_NOARG("userdefaults", system_userdefaults),
+ 	UBUS_METHOD("firstboot", system_firstboot, firstboot_policy),
+ 	UBUS_METHOD("backup", backup, backup_policy),
++	UBUS_METHOD("troubleshoot", troubleshoot, ts_policy),
+ };
+ 
+ static struct ubus_object_type system_object_type =

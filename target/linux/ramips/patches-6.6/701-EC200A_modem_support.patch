@@ -1,0 +1,17 @@
+--- a/drivers/usb/serial/option.c
++++ b/drivers/usb/serial/option.c
+@@ -2559,6 +2559,14 @@ static int option_probe(struct usb_seria
+ 	if (device_flags & NUMEP2 && iface_desc->bNumEndpoints != 2)
+ 		return -ENODEV;
+ 
++#if 1 //Added by Quectel
++	if (serial->dev->descriptor.idVendor == cpu_to_le16(0x2C7C)) {
++		//Quectel module's some interfaces can be used as USB Network device (ecm, rndis, mbim)
++		if (serial->interface->cur_altsetting->desc.bInterfaceClass != 0xFF)
++			return -ENODEV;
++	}
++#endif
++
+ 	/* Store the device flags so we can use them during attach. */
+ 	usb_set_serial_data(serial, (void *)device_flags);
+ 

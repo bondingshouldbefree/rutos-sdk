@@ -1,0 +1,10 @@
+#!/bin/sh
+
+[ "$EVENT_NAME" = "mctl.track_timeout" ] || exit 0
+
+module=$(lsmod | grep -E "^xhci_mtk*" | cut -d ' ' -f1)
+[ -z "$module" ] && return
+
+rmmod "$module"
+sleep 1
+modprobe "$module"

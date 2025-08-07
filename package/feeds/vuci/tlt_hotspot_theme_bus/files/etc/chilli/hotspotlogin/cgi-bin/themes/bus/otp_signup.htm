@@ -1,0 +1,61 @@
+<html>
+    <%include("header")%>
+<body>
+    <div class="main-body">
+        <div class="theme-picture">
+            <div class="picture-text"><div class="picture-title"><%:Hotspot%></div></div>
+        </div>
+        <div class="login-panel">
+            <div class="content">
+                <div class="logo">
+                    <img src="<%=logo%>" alt="logo">
+                </div>
+                <nav class="links">
+                    <a href="<%=url('smsauth') .. '?force=login&' .. query%>" class="nav-link"><%:Login%></a>/<a href="" class="nav-link active"><%:Register%></a>
+                </nav>
+
+                <div class="msg">
+                    <div class="msg-title"><%:Welcome To RutOS!%></div>
+                    <div class="msg-content"><%:Thank you for using Teltonika RutOS hotspot services!%></div>
+                </div>
+
+                <%- if res == "smssignup_fail" then %>
+                    <div class="login-error">
+                        <% if reason then %>
+                            <% if reason == "already" then %>
+                                <%:You already created one time password and it has not expired yet.%>
+                            <% elseif reason == "sms" then %>
+                                <%:Something went wrong while sending SMS message.%>
+                            <%else%>
+                                <%:Something went wrong! Please try again.%>
+                            <% end %>
+                        <% else %>
+                            <%:Something went wrong! Please try again.%>
+                        <% end %>
+                    </div>
+                <%end%>
+                <div class="form-container">
+                    <form action="javascript:void(0);" class="form">
+                        <input type="hidden" name="challenge" value="<%=challenge%>">
+                        <input type="hidden" name="uamip" value="<%=uamip%>">
+                        <input type="hidden" name="uamport" value="<%=uamport%>">
+                        <input type="hidden" name="userurl" value="<%=userurl%>">
+                        <input type="hidden" name="challenge" value="<%=challenge%>">
+                        <div class="form-item">
+                            <label for="" class="form-label"><%:Phone number%></label>
+                            <input type="tel" pattern="^[0-9\*+#]+$" class="form-input" name="phone" required>
+                            <div class="login-error">
+                        </div>
+                        
+                            <button class="form-btn" name="register" type="submit"><%:Register%></button>
+
+                        <div class="checkbox-container">
+                            <%=translatef("If you already have a password tap %s here %s to login", '<a target="_blank" href="%s">' % (url('smsauth') .. '?force=login&' .. query), "</a>")%>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

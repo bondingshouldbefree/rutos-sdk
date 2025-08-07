@@ -1,0 +1,1 @@
+{"services/cloud_solutions/azure_iothub":{"description":"Azure IoT hub","read":{"api":{"/azure_iot_hub/*":["*"],"/azure/iot_hub/*":["*"],"/data_to_server/collections/config/*":["id","name","enabled","output"],"/data_to_server/servers/config/*":["id","name","plugin","azure_section_name"]}},"write":{"api":["/azure_iot_hub/*","/azure/iot_hub/*"]}}}

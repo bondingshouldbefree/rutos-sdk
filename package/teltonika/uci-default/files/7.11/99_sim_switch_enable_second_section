@@ -1,0 +1,27 @@
+#!/bin/sh
+
+. /lib/functions.sh
+enabled_count=0
+total_count=0
+
+find_rule_counts() {
+    local section="$1"
+    config_get_bool enabled "$section" enabled
+    [ -n "$enabled" ] && [ "$enabled" -eq 1 ] && enabled_count=$((enabled_count + 1))
+    total_count=$((total_count + 1))
+}
+
+enable_all_rules() {
+    local section="$1"
+    uci_set "sim_switch" "$section" "enabled" "1"
+}
+
+config_load "sim_switch"
+config_foreach find_rule_counts "sim"
+
+if [ $enabled_count -eq 1 ] && [ $total_count -eq 2 ]; then
+    config_foreach enable_all_rules "sim"
+    uci_commit "sim_switch"
+fi
+
+exit 0

@@ -1,0 +1,133 @@
+--- a/system.c
++++ b/system.c
+@@ -45,6 +45,13 @@ enum vjson_state {
+ 	VJSON_SUCCESS,
+ };
+ 
++struct firstboot_req {
++    struct ubus_request_data req;
++    struct uloop_process proc;
++    struct uloop_timeout timeout;
++    struct ubus_context *ctx;
++};
++
+ static int system_board(struct ubus_context *ctx, struct ubus_object *obj,
+                  struct ubus_request_data *req, const char *method,
+                  struct blob_attr *msg)
+@@ -946,6 +953,107 @@ static int list_profiles(struct ubus_con
+ }
+ #endif // PROFILE_SUPPORT
+ 
++
++static int system_userdefaults(struct ubus_context *ctx, struct ubus_object *obj,
++                               struct ubus_request_data *req, const char *method,
++                               struct blob_attr *msg)
++{
++	blob_buf_init(&b, 0);
++
++	char *const cmd[] = { "/sbin/user_defaults", NULL };
++	pid_t pid = fork();
++
++	if (pid == 0) {
++		execv(cmd[0], cmd);
++		_exit(1);
++	} else if (pid < 0) {
++		blobmsg_add_string(&b, "result", "1");
++	}
++	blobmsg_add_string(&b, "result", "0");
++
++	ubus_send_reply(ctx, req, b.head);
++	return 0;
++}
++
++enum {
++	FIRSTBOOT_FACTORY,
++	__FIRSTBOOT_MAX
++};
++
++static const struct blobmsg_policy firstboot_policy[__FIRSTBOOT_MAX] = {
++	[FIRSTBOOT_FACTORY] = { .name = "factory", .type = BLOBMSG_TYPE_BOOL },
++};
++
++static void system_shutdown_timeout(struct uloop_timeout *t) {
++	struct firstboot_req *fb_req = container_of(t, struct firstboot_req, timeout);
++	if (fb_req->proc.pid > 0 && kill(fb_req->proc.pid, 0) == 0) {
++		uloop_timeout_set(&fb_req->timeout, 1000);
++	} else {
++		procd_shutdown(RB_AUTOBOOT);
++	}
++}
++
++static void system_handle_firstboot(struct uloop_process *proc, int ret) {
++	struct firstboot_req *fb_req = container_of(proc, struct firstboot_req, proc);
++
++	blob_buf_init(&b, 0);
++	blobmsg_add_string(&b, "result", (ret == 0) ? "0" : "1");
++
++	ubus_send_reply(fb_req->ctx, &fb_req->req, b.head);
++	ubus_complete_deferred_request(fb_req->ctx, &fb_req->req, 0);
++
++	free(fb_req);
++	uloop_timeout_set(&fb_req->timeout, 1000);
++}
++
++static int system_firstboot(struct ubus_context *ctx, struct ubus_object *obj,
++                               struct ubus_request_data *req, const char *method,
++                               struct blob_attr *msg)
++{
++	struct firstboot_req *fb_req;
++	blob_buf_init(&b, 0);
++	struct blob_attr *tb[__FIRSTBOOT_MAX];
++	blobmsg_parse(firstboot_policy, __FIRSTBOOT_MAX, tb, blob_data(msg), blob_len(msg));
++	char *const cmd[] = { "/sbin/firstboot", "-y", NULL };
++	char *const cmd_factory[] = { "/sbin/firstboot", "-y", "-f", NULL };
++	char *const *c = cmd;
++
++	if (tb[FIRSTBOOT_FACTORY] && blobmsg_get_bool(tb[FIRSTBOOT_FACTORY])) {
++		c = cmd_factory;
++	}
++
++	fb_req = calloc(1, sizeof(*fb_req));
++	if (!fb_req) {
++		blob_buf_init(&b, 0);
++		blobmsg_add_string(&b, "result", "1");
++		ubus_send_reply(ctx, req, b.head);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++
++	ubus_defer_request(ctx, req, &fb_req->req);
++
++	pid_t pid = fork();
++
++	if (pid == 0) {
++		execv(c[0], c);
++		_exit(1);
++	} else if (pid < 0) {
++		blobmsg_add_string(&b, "result", "1");
++		ubus_send_reply(ctx, req, b.head);
++		free(fb_req);
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	}
++
++	fb_req->ctx = ctx;
++	fb_req->proc.pid = pid;
++	fb_req->proc.cb = system_handle_firstboot;
++
++	uloop_process_add(&fb_req->proc);
++	fb_req->timeout.cb = system_shutdown_timeout;
++	uloop_timeout_set(&fb_req->timeout, 1000);
++	return 0;
++}
++
+ static void
+ procd_subscribe_cb(struct ubus_context *ctx, struct ubus_object *obj)
+ {
+@@ -969,6 +1077,8 @@ static const struct ubus_method system_m
+ 	UBUS_METHOD("diff_profile", diff_profile, profile_policy),
+ 	UBUS_METHOD_NOARG("list_profiles", list_profiles),
+ #endif // PROFILE_SUPPORT
++	UBUS_METHOD_NOARG("userdefaults", system_userdefaults),
++	UBUS_METHOD("firstboot", system_firstboot, firstboot_policy),
+ };
+ 
+ static struct ubus_object_type system_object_type =

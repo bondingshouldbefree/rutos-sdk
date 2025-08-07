@@ -1,0 +1,84 @@
+system-linux: pull existing flags from SIOCGIFFLAGS ioctl and carrier from sysfs
+As SIOCGIFFLAGS ioctl truncates returned flags to u16, and the IFF_LOWER_UP
+flag exceeds that size, only use it for pulling IFF_UP. Use sysfs carrier
+file for pulling IFF_LOWER_UP. This should solve the initial issue, that
+commit 86da5cb tried to solve
+---
+Index: netifd/system-linux.c
+===================================================================
+--- netifd/system-linux.c
++++ netifd/system-linux.c
+@@ -706,14 +706,27 @@
+ 	return ioctl(sock_ioctl, cmd, ifr);
+ }
+ 
++static int system_if_get_flags(const char *ifname)
++{
++	struct ifreq ifr;
++ 
++	if (system_device_ifreq(&ifr, ifname, SIOCGIFFLAGS))
++		return 0;
++ 
++	return ifr.ifr_flags;
++}
++
+ #ifndef IFF_LOWER_UP
+ #define IFF_LOWER_UP	0x10000
+ #endif
+ 
+ static void
+-system_device_update_state(struct device *dev, unsigned int flags)
++system_device_update_state(struct device *dev)
+ {
+ 	unsigned int ifindex = system_if_resolve(dev);
++	int flags = system_if_get_flags(dev->ifname);
++	int link_state = 0;
++	char buf[10];
+ 
+ 	if (dev->type == &simple_device_type) {
+ 		if (dev->external)
+@@ -721,14 +734,17 @@
+ 
+ 		device_set_present(dev, ifindex > 0);
+ 	}
+-	device_set_link(dev, flags & IFF_LOWER_UP ? true : false);
++
++	if (!system_get_dev_sysfs("carrier", dev->ifname, buf, sizeof(buf)))
++		link_state = strtoul(buf, NULL, 0);
++
++	device_set_link(dev, link_state ? true : false);
+ }
+ 
+ /* Evaluate netlink messages */
+ static int cb_rtnl_event(struct nl_msg *msg, void *arg)
+ {
+ 	struct nlmsghdr *nh = nlmsg_hdr(msg);
+-	struct ifinfomsg *ifi = NLMSG_DATA(nh);
+ 	struct nlattr *nla[__IFLA_MAX];
+ 	struct device *dev;
+ 
+@@ -743,7 +759,7 @@
+ 	if (!dev)
+ 		return 0;
+ 
+-	system_device_update_state(dev, ifi->ifi_flags);
++	system_device_update_state(dev);
+ 	return 0;
+ }
+ 
+@@ -2515,13 +2531,12 @@
+ static int cb_if_check_valid(struct nl_msg *msg, void *arg)
+ {
+ 	struct nlmsghdr *nh = nlmsg_hdr(msg);
+-	struct ifinfomsg *ifi = NLMSG_DATA(nh);
+ 	struct if_check_data *chk = (struct if_check_data *)arg;
+ 
+ 	if (nh->nlmsg_type != RTM_NEWLINK)
+ 		return NL_SKIP;
+ 
+-	system_device_update_state(chk->dev, ifi->ifi_flags);
++	system_device_update_state(chk->dev);
+ 	return NL_OK;
+ }
+ 
+

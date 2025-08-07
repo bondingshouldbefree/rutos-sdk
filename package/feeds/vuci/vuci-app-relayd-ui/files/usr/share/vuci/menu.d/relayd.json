@@ -1,0 +1,9 @@
+{
+  "network/wireless/relayd": {
+    "title": "Relayd",
+    "index": 30,
+    "view": "network/Relayd",
+    "acls": ["network/wireless/relayd"],
+    "main_page": true
+  }
+}

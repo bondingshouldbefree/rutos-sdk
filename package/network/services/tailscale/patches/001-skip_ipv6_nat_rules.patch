@@ -1,0 +1,13 @@
+Index: tailscale-1.70.0/util/linuxfw/iptables_runner.go
+===================================================================
+--- tailscale-1.70.0.orig/util/linuxfw/iptables_runner.go
++++ tailscale-1.70.0/util/linuxfw/iptables_runner.go
+@@ -87,7 +87,7 @@ func newIPTablesRunner(logf logger.Logf)
+ 			return nil, err
+ 		}
+ 		supportsV6Filter = checkSupportsV6Filter(ipt6, logf)
+-		supportsV6NAT = checkSupportsV6NAT(ipt6, logf)
++		// supportsV6NAT = checkSupportsV6NAT(ipt6, logf)
+ 		logf("netfilter running in iptables mode v6 = %v, v6filter = %v, v6nat = %v", supportsV6, supportsV6Filter, supportsV6NAT)
+ 	}
+ 	return &iptablesRunner{

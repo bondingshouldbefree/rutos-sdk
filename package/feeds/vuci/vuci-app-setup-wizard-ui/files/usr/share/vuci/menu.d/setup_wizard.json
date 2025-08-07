@@ -1,0 +1,29 @@
+{
+  "system/wizard": {
+    "title": "Setup Wizard",
+    "index": 45
+  },
+  "system/wizard/step_pwd": {
+    "title": "General",
+    "view": "system/StepPwd",
+    "acls": ["system/wizard/step_pwd"],
+    "index": 10
+  },
+  "system/wizard/step_lan": {
+    "title": "LAN",
+    "view": "system/StepLan",
+    "acls": ["system/wizard/step_lan"],
+    "index": 20
+  },
+  "system/wizard/step_wifi": {
+    "title": "Wireless",
+    "index": 40,
+    "view": "system/StepWifi",
+    "acls": ["system/wizard/step_wifi"],
+    "depends": {
+      "board": {
+        "allOf": ["has_wifi"]
+      }
+    }
+  }
+}

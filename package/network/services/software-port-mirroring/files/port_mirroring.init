@@ -1,0 +1,31 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=01
+SCRIPT_FILE="/usr/sbin/port_mirroring.sh"
+[ -x "$SCRIPT_FILE" ] || SCRIPT_FILE="/usr/local$SCRIPT_FILE"
+USE_PROCD=1
+
+start_service() {
+	[ -z "$(uci -q get port_mirroring.config.mirror_source_port)" ] || \
+		[ -z "$(uci -q get port_mirroring.config.mirror_monitor_port)" ] && return
+
+	[ -h "/etc/hotplug.d/net/99-port_mirroring" ] || \
+		ln -s /usr/share/port_mirroring/99-port_mirroring.hotplug /etc/hotplug.d/net/99-port_mirroring
+	$SCRIPT_FILE setup
+}
+
+stop_service() {
+	[ -h "/etc/hotplug.d/net/99-port_mirroring" ] && rm /etc/hotplug.d/net/99-port_mirroring &>/dev/null
+	$SCRIPT_FILE teardown
+}
+
+service_triggers() {
+	procd_add_reload_trigger "port_mirroring"
+}
+
+reload_service() {
+	[ -h "/etc/hotplug.d/net/99-port_mirroring" ] || \
+		ln -s /usr/share/port_mirroring/99-port_mirroring.hotplug /etc/hotplug.d/net/99-port_mirroring
+	$SCRIPT_FILE reload
+}

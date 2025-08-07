@@ -1,0 +1,8 @@
+{
+  "system/package_manager": {
+    "title": "Package Manager",
+    "index": 30,
+    "view": "services/PackageManager",
+    "acls": ["system/package_manager"]
+  }
+}

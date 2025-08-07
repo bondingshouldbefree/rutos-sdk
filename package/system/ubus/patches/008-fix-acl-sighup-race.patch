@@ -1,0 +1,45 @@
+From 8acb4adc76a8efd25a236e8928cc89dc8ad2ea1e Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Tue, 18 Mar 2025 18:35:49 +0200
+Subject: [PATCH 1/1] move sighup handling to eloop
+
+---
+ ubusd_main.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/ubusd_main.c b/ubusd_main.c
+index adbd293..0e65937 100644
+--- a/ubusd_main.c
++++ b/ubusd_main.c
+@@ -242,7 +242,7 @@ static int usage(const char *progname)
+ 	return 1;
+ }
+ 
+-static void sighup_handler(int sig)
++static void sighup_handler(struct uloop_signal *s)
+ {
+ 	ubusd_acl_load();
+ }
+@@ -262,6 +262,8 @@ static void mkdir_sockdir()
+ 
+ #include <libubox/ulog.h>
+ 
++struct uloop_signal sig_hup = { 0 };
++
+ int main(int argc, char **argv)
+ {
+ 	const char *ubus_socket = UBUS_UNIX_SOCKET;
+@@ -269,7 +271,9 @@ int main(int argc, char **argv)
+ 	int ch;
+ 
+ 	signal(SIGPIPE, SIG_IGN);
+-	signal(SIGHUP, sighup_handler);
++	sig_hup.cb = sighup_handler;
++	sig_hup.signo = SIGHUP;
++	uloop_signal_add(&sig_hup);
+ 
+ 	ulog_open(ULOG_KMSG | ULOG_SYSLOG, LOG_DAEMON, "ubusd");
+ 	openlog("ubusd", LOG_PID, LOG_DAEMON);
+-- 
+2.48.1
+

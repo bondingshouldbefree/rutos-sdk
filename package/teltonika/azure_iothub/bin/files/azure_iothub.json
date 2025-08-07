@@ -1,0 +1,11 @@
+{
+	"user": "azure",
+	"publish": [ "azure.*" ],
+	"access": {
+		"file": {
+			"methods": [
+				"exec"
+			]
+		}
+	}
+}

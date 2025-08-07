@@ -1,0 +1,368 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+/dts-v1/;
+
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/gpio/gpio.h>
+#include "mt7628an.dtsi"
+#include "platform_name.dtsi"
+
+/ {
+	compatible = "teltonika,rut971", "teltonika,rute", "mediatek,mt7628an-soc";
+	model = "Teltonika RUT971";
+
+	chosen {
+		bootargs = "console=ttyS0,115200 root=/dev/mtdblock5";
+	};
+
+	ext_io {
+		compatible = "spi-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		gpio-sck = <&gpio 3 GPIO_ACTIVE_HIGH>;  // SRCLK
+		gpio-mosi = <&gpio 1 GPIO_ACTIVE_HIGH>; // SER
+		cs-gpios = <&gpio 2 GPIO_ACTIVE_HIGH>;  // RCLK
+		num-chipselects = <1>;
+
+		shift_io: shift_io@0 {
+			compatible = "fairchild,74hc595";
+			reg = <0>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			registers-number = <2>;
+			spi-max-frequency = <10000000>;
+		};
+	};
+
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_modem_reset {
+			gpio-export,name = "modem_reset";
+			gpio-export,output = <0>;
+			gpios = <&shift_io 11 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_power {
+			gpio-export,name = "modem_power";
+			gpio-export,output = <0>;
+			gpios = <&shift_io 10 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_sim_select {
+			gpio-export,name = "sim_sel";
+			gpio-export,output = <1>;
+			gpios = <&shift_io 7 GPIO_ACTIVE_LOW>;
+		};
+
+		gpio_sim_select_2 {
+			gpio-export,name = "sim_sel2";
+			gpio-export,output = <0>;
+			gpios = <&gpio 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_status { // From v5
+			gpio-export,name = "modem_status";
+			gpio-export,input = <0>;
+			gpios = <&gpio 0 GPIO_ACTIVE_LOW>;
+		};
+
+		gpio_dcd {
+			gpio-export,name = "dcd";
+			gpio-export,output = <0>;
+			gpios = <&shift_io 14 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		reset {
+			label = "reset";
+			linux,code = <KEY_RESTART>;
+			gpios = <&gpio 38 GPIO_ACTIVE_LOW>;
+			debounce-interval = <60>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		eth1_led {
+			label = "eth1_led";
+			gpios = <&gpio 43 GPIO_ACTIVE_LOW>;
+		};
+
+		eth2_led {
+			label = "eth2_led";
+			gpios = <&gpio 42 GPIO_ACTIVE_LOW>;
+		};
+
+		eth3_led {
+			label = "eth3_led";
+			gpios = <&gpio 41 GPIO_ACTIVE_LOW>;
+		};
+
+		wan_led {
+			label = "wan_led";
+			gpios = <&gpio 39 GPIO_ACTIVE_LOW>;
+		};
+
+		led_gen_2_3 {
+			label = "mob_gen_2_3";
+			gpios = <&shift_io 5 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_4_3 {
+			label = "mob_gen_4_3";
+			gpios = <&shift_io 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_ssid_1 {
+			label = "mob_ssid_1";
+			gpios = <&shift_io 0 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_2 {
+			label = "mob_ssid_2";
+			gpios = <&shift_io 1 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_3 {
+			label = "mob_ssid_3";
+			gpios = <&shift_io 2 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_4 {
+			label = "mob_ssid_4";
+			gpios = <&shift_io 3 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_5 {
+			label = "mob_ssid_5";
+			gpios = <&shift_io 4 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_power {
+			label = "power";
+			gpios = <&shift_io 15 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+			retain-state-shutdown;
+		};
+	};
+
+	tlt_gpios { // Modify according to wiki page "DTS syntax with Libgpiod changes"
+		gpiochip_info {
+			hw_0 {
+				hwver = <0>;
+				gpiochip_count = <4>;
+
+				gpiochip_0 = <32>; // Built-in
+				gpiochip_1 = <32>; // Built-in
+				gpiochip_2 = <32>; // Built-in
+				gpiochip_3 = <16>; // Shift Register
+			};
+		};
+
+		ioman {
+			GPIO_40 {
+				line_name = "GPIO_IN_1";
+				active_low;
+			};
+			GPIO_108 {
+				line_name = "GPIO_OUT_1";
+			};
+		};
+
+		misc {
+			GPIO_0 {
+				compatible_versions = <5 99>;
+				line_name = "GPIO_MODEM_STATUS";
+				active_low;
+			};
+			GPIO_106 {
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_107 {
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_103 {
+				line_name = "GPIO_SIM_SELECT";
+				active_low;
+			};
+			GPIO_6 {
+				line_name = "GPIO_SIM_SELECT_2";
+			};
+			GPIO_44 {
+				line_name = "GPIO_SD_ENABLE"; // Duplicates as rts, fix in the future
+			};
+			GPIO_109 {
+				line_name = "GPIO_RS485_RX_EN";
+			};
+			GPIO_110 {
+				line_name = "GPIO_DCD";
+			};
+		};
+	};
+
+	ioman {
+		layout@0 {
+			io@0 { // 4pin #3
+				label = "din1";
+				block_type = BLOCK_4PIN;
+				block_pin = "3";
+				gpio_in = "GPIO_IN_1";
+				io_param = "g0";
+			};
+			io@1 { // 4pin #4
+				label = "dout1";
+				block_type = BLOCK_4PIN;
+				block_pin = "4";
+				gpio_out = "GPIO_OUT_1";
+				io_param = "g1";
+			};
+		};
+	};
+};
+
+&mnfinfo {
+	simpin1 {
+		default = "";
+		sec;
+	};
+
+	simpin2 {
+		default = "";
+		sec;
+	};
+
+	simpin3 {
+		tlt-mnf,hwver = <600 9999>;
+		default = "";
+	};
+
+	sim_cfg {
+		default = "2111000_2112000";
+	};
+
+	sim_cfg@1 {
+		tlt-mnf,hwver = <500 599>;
+		default = "2111010_2112010";
+	};
+
+	sim_cfg@2 {
+		tlt-mnf,hwver = <600 9999>;
+		default = "2111110_2112010_2121210";
+	};
+};
+
+&state_default {
+	gpio {
+		groups = "i2s", "p4led_an", "p3led_an", "p2led_an", "p1led_an", "p0led_an", "gpio", "wled_an", "perst", "refclk", "spi cs1";
+		function = "gpio";
+	};
+};
+
+
+&spi0 {
+	status = "okay";
+
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <10000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			boot: boot: partition@0 {
+				label = "u-boot";
+				reg = <0x0 0x40000>;
+				read-only;
+			};
+
+			config: partition@40000 {
+				compatible = "nvmem-cells";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				label = "config";
+				reg = <0x040000 0x010000>;
+				read-only;
+
+				macaddr_config_0: macaddr@0 {
+					reg = <0x0 0x6>;
+				};
+			};
+
+			factory: partition@50000 {
+				label = "factory";
+				reg = <0x050000 0x030000>;
+				read-only;
+			};
+
+			partition@80000 {
+				label = "firmware";
+				reg = <0x080000 0x1ED0000>;
+			};
+
+			partition@1F50000 {
+				label = "event-log";
+				reg = <0x1F50000 0xB0000>;
+			};
+		};
+	};
+};
+
+&wmac {
+	status = "okay";
+	nvmem-cells = <&macaddr_config_0>;
+	nvmem-cell-names = "mac-address";
+	mac-address-increment = <2>;
+	mediatek,mtd-eeprom = <&factory 0x20000>;
+};
+
+&ethernet {
+	nvmem-cells = <&macaddr_config_0>;
+	nvmem-cell-names = "mac-address";
+};
+
+&esw {
+	mediatek,portmap = <0x2f>;
+};
+
+&i2c {
+	status = "okay";
+	hwmon@0x4d {
+		compatible = "mcp3221";
+		reg = <0x4d>;
+		reference-voltage-microvolt = <3300000>;
+	};
+
+	hwmon@0x48 {
+		compatible = "ti,tla2021";
+		reg = <0x48>;
+	};
+
+	tpm@2e {
+		compatible = "infineon,slb9673", "st,st33htpm-i2c";
+		reg = <0x2e>;
+		status = "okay";
+	};
+};
+
+&uart1 {
+	linux,rs485-enabled-at-boot-time;
+	rs485-rts-delay = <0 0>;
+	rs485-rx-during-tx;
+	rts-gpios = <&gpio 44 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+};

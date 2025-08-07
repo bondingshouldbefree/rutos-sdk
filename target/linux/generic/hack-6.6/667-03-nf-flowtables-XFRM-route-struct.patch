@@ -1,0 +1,137 @@
+net: netfilter: flowtables: add 'flow_xfrm_route' struct
+
+'flow_xfrm_route' contains an XFRM bundle that defines output transformations
+when using XFRM output fastpath.
+
+In case of 'FLOW_OFFLOAD_XMIT_NEIGH', 'dst' contains first non-xfrm child dst
+in the bundle.
+
+Adds 'flow_xfrm_route', Kconfig option, convenience functions,
+cleanup code (with a slight refactor)
+
+--- a/net/netfilter/Kconfig
++++ b/net/netfilter/Kconfig
+@@ -742,6 +742,12 @@ config NF_FLOW_TABLE_PROCFS
+ 	  This option enables for the flow table offload statistics
+ 	  to be shown in procfs under net/netfilter/nf_flowtable.
+ 
++config NF_FLOW_TABLE_XFRM
++	bool "Netfilter flow table XFRM datapath offload support"
++	depends on NF_FLOW_TABLE
++	depends on XFRM
++	depends on INET_ESP
++
+ config NETFILTER_XTABLES
+ 	tristate "Netfilter Xtables support (required for ip_tables)"
+ 	default m if NETFILTER_ADVANCED=n
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -101,6 +101,12 @@ struct flow_xfrm_tuple {
+ #endif
+ };
+ 
++struct flow_xfrm_route {
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	struct dst_entry *bundle;
++#endif
++};
++
+ enum flow_offload_tuple_dir {
+ 	FLOW_OFFLOAD_DIR_ORIGINAL = IP_CT_DIR_ORIGINAL,
+ 	FLOW_OFFLOAD_DIR_REPLY = IP_CT_DIR_REPLY,
+@@ -154,6 +160,9 @@ struct flow_offload_tuple {
+ 					encap_num:2,
+ 					in_vlan_ingress:2;
+ 	u16				mtu;
++
++	struct flow_xfrm_route		xfrm_route;
++
+ 	union {
+ 		struct {
+ 			struct dst_entry *dst_cache;
+@@ -249,6 +258,7 @@ struct nf_flow_route {
+ 		} encap[NF_FLOW_TABLE_ENCAP_MAX];
+ 		u8			num_encaps:2,
+ 					ingress_vlans:2;
++		struct flow_xfrm_route	xfrm_route;
+ 	} out;
+ 	enum flow_offload_xmit_type	xmit_type;
+ };
+--- a/include/net/netfilter/nf_flow_table_xfrm.h
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -92,6 +92,22 @@ static inline bool nf_flow_xfrm_tuple_ex
+ 	return false;
+ }
+ 
++static inline void nf_flow_xfrm_route_assign(struct flow_xfrm_route *dst,
++					     struct flow_xfrm_route *src)
++{
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	dst->bundle = src->bundle;
++	src->bundle = NULL;
++#endif
++}
++
++static inline void nf_flow_xfrm_route_release(struct flow_xfrm_route *xroute)
++{
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	dst_release(xroute->bundle);
++#endif
++}
++
+ static inline bool flow_offload_route_xfrm_expired(struct flow_offload *flow)
+ {
+ 	if (flow_offload_has_orig(flow) &&
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -144,6 +144,7 @@ static int flow_offload_fill_route(struc
+ 	flow_tuple->encap_out.encap_num = route->out.num_encaps;
+ 
+ 	nf_flow_xfrm_tuple_clone(&flow_tuple->xfrm_tuple, &route->in.xfrm_tuple);
++	nf_flow_xfrm_route_assign(&flow_tuple->xfrm_route, &route->out.xfrm_route);
+ 
+ 	switch (route->xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+@@ -175,14 +176,13 @@ static void flow_offload_release_common_
+ 	nf_flow_xfrm_tuple_release(&tuple->xfrm_tuple);
+ }
+ 
+-static void nft_flow_dst_release(struct flow_offload *flow,
+-				 enum flow_offload_tuple_dir dir)
++static void nft_flow_dst_release(struct flow_offload_tuple *tuple)
+ {
+-	if (flow->tuplehash[dir].tuple.xmit_type == FLOW_OFFLOAD_XMIT_NEIGH ||
+-	    flow->tuplehash[dir].tuple.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)
+-		dst_release(flow->tuplehash[dir].tuple.dst_cache);
++	if (tuple->xmit_type == FLOW_OFFLOAD_XMIT_NEIGH ||
++	    tuple->xmit_type == FLOW_OFFLOAD_XMIT_XFRM)
++		dst_release(tuple->dst_cache);
+ 
+-	dst_release(flow->tuplehash[dir].tuple.dst_reverse);
++	dst_release(tuple->dst_reverse);
+ }
+ 
+ static void flow_offload_fixup_tcp(struct ip_ct_tcp *tcp)
+@@ -223,13 +223,17 @@ static void flow_offload_fixup_ct(struct
+ 		WRITE_ONCE(ct->timeout, nfct_time_stamp + timeout);
+ }
+ 
+-static void flow_offload_route_release(struct flow_offload *flow)
++static void flow_offload_route_tuple_release(struct flow_offload_tuple *tuple)
+ {
+-	flow_offload_release_common_tuple(&flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].tuple);
+-	flow_offload_release_common_tuple(&flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].tuple);
++	flow_offload_release_common_tuple(tuple);
++	nft_flow_dst_release(tuple);
++	nf_flow_xfrm_route_release(&tuple->xfrm_route);
++}
+ 
+-	nft_flow_dst_release(flow, FLOW_OFFLOAD_DIR_ORIGINAL);
+-	nft_flow_dst_release(flow, FLOW_OFFLOAD_DIR_REPLY);
++static void flow_offload_route_release(struct flow_offload *flow)
++{
++	flow_offload_route_tuple_release(&flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].tuple);
++	flow_offload_route_tuple_release(&flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].tuple);
+ }
+ 
+ void flow_offload_free(struct flow_offload *flow)

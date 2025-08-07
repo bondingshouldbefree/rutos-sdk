@@ -1,0 +1,1 @@
+{"system/admin/profiles/config":{"read":{"api":{"/profiles/*":["*"]}},"write":{"api":["/profiles/*"]},"exception":["/profiles/config/*","/profiles/status"]},"system/admin/profiles/scheduler":{"read":{"api":{"/profiles/scheduler/*":["*"],"/profiles/config/*":["id","profile_id"]}},"write":{"api":["/profiles/scheduler/*"]}}}

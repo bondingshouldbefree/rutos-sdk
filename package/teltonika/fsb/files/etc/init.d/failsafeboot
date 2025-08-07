@@ -1,0 +1,22 @@
+#!/bin/sh /etc/rc.common
+
+. /lib/functions/failsafeboot.sh
+
+START=99
+
+start() {
+        local chosen="$(fsb_get_chosen)"
+
+        if [ "$(fsb_get_param $chosen priority)" -eq 8 ]; then
+                logger -p 4 -t failsafeboot "booted into a slot marked as 'secondary', most likely a fallback occurred"
+                touch /tmp/.fsb_fallback
+        fi
+
+        if [ "$(fsb_get_param $chosen priority)" -eq 2 ]; then
+                logger -p 5 -t failsafeboot "failsafe bootconfig was defaulted, initializing bootconfig with new values"
+                touch /tmp/.fsb_default
+                fsb_init_bootconfig "$chosen"
+        fi
+
+        fsb_mark_boot_success "$chosen"
+}

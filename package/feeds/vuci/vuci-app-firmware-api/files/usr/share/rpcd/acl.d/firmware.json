@@ -1,0 +1,1 @@
+{"system/flashops/general":{"read":{"api":{"/firmware/*":["*"],"/modems/status/*":["id","name","index","builtin","operator_state","operator","provider","cell_info"],"/fota/config/*":["*"],"/dfota/config/*":["*"]}},"write":{"api":["/firmware/*"]}}}

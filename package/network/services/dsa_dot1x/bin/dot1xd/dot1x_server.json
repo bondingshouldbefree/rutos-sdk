@@ -1,0 +1,15 @@
+{
+	"user": "dot1x_server",
+	"publish": [ "dot1x_glue", "dot1x_glue.*" ],
+	"subscribe": [ "port_events", "hostapd.*", "hostapd" ],
+	"send": [],
+	"listen": [ "ubus.object.add" ],
+	"access": {
+		"port_events": {
+			"methods": [ "show" ]
+		},
+		"hostapd": {
+			"methods": [ "config_add", "config_remove" ]
+		}
+	}
+}

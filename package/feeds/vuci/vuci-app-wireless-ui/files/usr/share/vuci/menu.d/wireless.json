@@ -1,0 +1,23 @@
+{
+  "network/wireless": {
+    "title": "Wireless",
+    "index": 40,
+    "depends": {
+      "board": {
+        "allOf": ["has_wifi"]
+      }
+    }
+  },
+  "network/wireless/ssids": {
+    "title": "SSIDs",
+    "index": 10,
+    "view": "network/wirelessInterface/WirelessInterface",
+    "acls": ["network/wireless/ssids"]
+  },
+  "network/wireless/radio": {
+    "title": "Radio",
+    "index": 20,
+    "view": "network/wirelessDevice/WirelessDevice",
+    "acls": ["network/wireless/radio"]
+  }
+}
