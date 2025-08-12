@@ -111,7 +111,7 @@ define Package/$(PKG_NAME)/install/Default
 			find $(1)/usr/share/vuci/menu.d/ -type f -name '*.json' -exec sh -c 'for file; do if echo $(VUCI_JSONS) | grep -w $$$$(basename "$$$$file"); then rm -f "$$$$file"; fi; done' sh {} +; \
 		) \
 	fi; \
-	if [[ -d "$(PKG_BUILD_DIR)/dest" ]] && [[ "$$$$(ls -A $(PKG_BUILD_DIR)/dest)" ]]; then \
+	if [[ -d "$(PKG_BUILD_DIR)/dest" ]] && [[ "$$$$(ls -A $(PKG_BUILD_DIR)/dest -I .gitignore)" ]]; then \
 		$(INSTALL_DIR) $(1)/www/assets; \
 		$(CP) $(PKG_BUILD_DIR)/dest/* $(1)/www/assets; \
 	fi
@@ -148,7 +148,7 @@ define Package/$(PKG_NAME)/install/Default
 			find $(1)/usr/share/vuci/menu.d/ -type f -name '*.json' -exec sh -c 'for file; do if echo $(VUCI_JSONS) | grep -w $$$$(basename "$$$$file"); then rm -f "$$$$file"; fi; done' sh {} +; \
 		) \
 	fi; \
-	if [[ -d "$(PKG_BUILD_DIR)/dest" ]] && [[ "$$$$(ls -A $(PKG_BUILD_DIR)/dest)" ]]; then \
+	if [[ -d "$(PKG_BUILD_DIR)/dest" ]] && [[ "$$$$(ls -A $(PKG_BUILD_DIR)/dest -I .gitignore)" ]]; then \
 		$(INSTALL_DIR) $(1)/www/views; \
 		$(CP) $(PKG_BUILD_DIR)/dest/* $(1)/www/views; \
 	fi
