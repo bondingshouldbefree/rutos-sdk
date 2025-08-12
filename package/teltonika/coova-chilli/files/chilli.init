@@ -1,0 +1,579 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=89
+USE_PROCD=1
+
+WORKING_DIR="/var/run/chilli"
+DB_PATH=/var/hotspot.db
+DB_PATH_FLASH=/etc/chilli/hotspot.db
+KMOD_PATH=lib/iptables/libxt_coova.so
+PROG="/usr/sbin/chilli"
+GENERATED_IPS=""
+[ -x "$PROG" ] || PROG="/usr/local$PROG"
+
+set_conf() {
+	echo "$1=\"$2\"" >>"$chilli_conf"
+}
+
+set_conf_bool() {
+	local option=$1 value=$2
+	[ "$2" = "1" ] && echo "$1" >>"$chilli_conf"
+}
+chilli_network_trigger() {
+	procd_add_interface_trigger "interface.*.up" "$1" /etc/init.d/chilli restart
+}
+
+service_triggers() {
+	procd_add_reload_trigger "chilli"
+}
+
+config_cb() {
+	local chilli_inst="$2"
+
+	case "$1" in
+	chilli)
+		local enabled="$(uci_get chilli "$chilli_inst" enabled 0)"
+		[ "$enabled" -eq 1 ] && {
+			option_cb() {
+				set_chilli "$@"
+			}
+			list_cb() {
+				set_chilli_list "$@"
+			}
+			chilli_conf="${WORKING_DIR}/chilli_${chilli_inst}.conf"
+			if [ -e "$chilli_conf" ]; then
+				rm -f "$chilli_conf"
+			fi
+			touch "$chilli_conf" && chown chilli:chilli "$chilli_conf"
+			eval "start_chilli_$chilli_inst=1"
+		} || {
+			option_cb() {
+				return
+			}
+			list_cb() {
+				return
+			}
+			return 0
+		}
+		;;
+	*)
+		option_cb() {
+			return
+		}
+		list_cb() {
+			return
+		}
+		return 0
+		;;
+	esac
+}
+
+set_dyn_limits() {
+	local section=$1 group=$2 type=$3
+
+	config_get name "${section}" name
+	{
+		[ -z "$group" ] || [ "$group" != "$name" ] || [ -z "$type" ]
+	} && return 0
+
+	config_get timeout "${section}" defsessiontimeout 0
+	config_get idle "${section}" defidletimeout 0
+	config_get dw_max "${section}" downloadlimit 0
+	config_get up_max "${section}" uploadlimit 0
+	config_get warning "${section}" warning 0
+	config_get dw_bwidth "${section}" downloadbandwidth 0
+	config_get upl_bwidth "${section}" uploadbandwidth 0
+	config_get expiration "${section}" expiration 0
+	config_get period "${section}" period "3"
+	option=$(get_option "$period")
+	config_get start "${section}" "$option" "1"
+
+	set_conf "${type}sessiontimeout" "$timeout"
+	set_conf "${type}idletimeout" "$idle"
+	set_conf "${type}bandwidthmaxdown" "$dw_bwidth"
+	set_conf "${type}bandwidthmaxup" "$upl_bwidth"
+	set_conf "${type}maxdownload" "$dw_max"
+	set_conf "${type}maxupload" "$up_max"
+	set_conf "${type}warning" "$warning"
+	set_conf "${type}limitperiod" "$period"
+	set_conf "${type}limitstart" "$start"
+}
+
+set_chilli() {
+	local option=$1 value=$2
+	local route
+
+	case "$1" in
+	# UCI settings
+	network)
+		eval "dhcpif_$CONFIG_SECTION=$2"
+		;;
+	# boolean settings
+	debug | dhcpbroadcast | nodynip | vlanlocation | locationstopstart | locationcopycalled | \
+		locationimmediateupdate | locationopt82 | coanoipcheck | noradallow | proxymacaccept | \
+		proxyonacct | dhcpmacset | dhcpradius | noc2c | eapolenable | uamanydns | uamanyip | uamnatanyip | \
+		nouamsuccess | nowispr1 | nowispr2 | domaindnslocal | radsec | macauth | macreauth | macauthdeny | \
+		macallowlocal | strictmacauth | strictdhcp | ieee8021q | only8021q | radiusoriginalurl | swapoctets | \
+		statusfilesave | wpaguests | openidauth | papalwaysok | mschapv2 | chillixml | acctupdate | dnsparanoia | \
+		seskeepalive | usetap | noarpentries | framedservice | scalewin | redir | injectwispr | redirurl | \
+		routeonetone | nousergardendata | uamgardendata | uamotherdata | withunixipc | uamallowpost | redirssl | \
+		uamuissl | layer3 | patricia | redirdnsreq | dhcpnotidle | ipv6 | ipv6only | registerusers | tos | testtime | \
+		trialusers | duplicateusers | nochallenge | oidcforcehttps | uamblocklist | radiusrequiremessageauth)
+		{
+			[ "$2" = "true" ] || [ "$2" = "1" ]
+		} && set_conf_bool "$@"
+		;;
+	_mode)
+		[ "$value" != "radius" ] && {
+			set_conf "radiusserver1" "localhost"
+			set_conf "radiusserver2" "localhost"
+		}
+		case "$value" in
+		local)
+			set_conf_bool "localusers" 1
+			;;
+		sms_otp)
+			set_conf_bool "smsusers" 1
+			;;
+		mac_auth)
+			set_conf_bool "macusers" 1
+			;;
+		sso)
+			set_conf_bool "oidc" 1
+			;;
+		esac
+		;;
+	_landingpage)
+		case "$value" in
+		int)
+			local net="$(uci_get chilli "${CONFIG_SECTION}" net "192.168.182.0/24")"
+			local uamlisten="$(uci_get chilli "${CONFIG_SECTION}" uamlisten "192.168.182.1")"
+			local _protocol="$(uci_get chilli "${CONFIG_SECTION}" _protocol)"
+			local _mode="$(uci_get chilli "${CONFIG_SECTION}" _mode)"
+			local port=$(uci_get uhttpd hotspot listen_http 81)
+
+			kmod_enabled "$CONFIG_SECTION" && {
+				local result="$(increment_ip "$uamlisten" "${net##*/}" "$GENERATED_IPS")"
+				uamlisten="${result%%;*}"
+				GENERATED_IPS="${result#*;}"
+				eval "uamlisten_$CONFIG_SECTION=$uamlisten"
+			}
+
+			case "$_mode" in
+			sms_otp)
+				route="smsauth"
+				;;
+			mac_auth)
+				route="macauth"
+				;;
+			sso)
+				route="ssoauth"
+				;;
+			esac
+
+			[ "$_protocol" = "https" ] && {
+				local sslca sslcert sslkey
+				port=$(uci_get uhttpd hotspot listen_https 444)
+				set_conf_bool "uamuissl" 1
+
+				local sslca="$(uci_get chilli "${CONFIG_SECTION}" _device_sslcafile "$(uci_get chilli "${CONFIG_SECTION}" sslcafile)")"
+				local sslcert="$(uci_get chilli "${CONFIG_SECTION}" _device_sslcertfile "$(uci_get chilli "${CONFIG_SECTION}" sslcertfile)")"
+				local sslkey="$(uci_get chilli "${CONFIG_SECTION}" _device_sslkeyfile "$(uci_get chilli "${CONFIG_SECTION}" sslkeyfile)")"
+
+				[ -n "$sslcert" ] && [ -n "$sslkey" ] && {
+					[ -n "$sslca" ] && {
+						local fullchain="${WORKING_DIR}/chilli_${CONFIG_SECTION}_cert.pem"
+						cat "$sslcert" "$sslca" > "$fullchain"
+						chown chilli:chilli "$fullchain"
+						chmod 0660 "$fullchain"
+						uci_set uhttpd hotspot cert "$fullchain"
+					} || {
+						uci_set uhttpd hotspot cert "$sslcert"
+					}
+					uci_set uhttpd hotspot key "$sslkey"
+				}
+				uci_set uhttpd hotspot enable_https "1"
+			}
+
+			local subdomain="$(uci_get chilli "${CONFIG_SECTION}" subdomain)"
+			local domain="$(uci_get chilli "${CONFIG_SECTION}" domain)"
+			[ -n "$subdomain" ] && [ -n "$domain" ] && {
+				set_conf "uamallowed" "${subdomain}.${domain}:${port}"
+				uamlisten="${subdomain}.${domain}"
+			}
+			uci_set uhttpd hotspot rfc1918_filter "0"
+
+			uci_commit uhttpd
+			/etc/init.d/uhttpd reload &
+
+			set_conf "uamserver" \
+				"${_protocol:-http}://${uamlisten}:${port}/cgi-bin/hotspot/${route:-userpass}"
+			;;
+		ext)
+			local uamserver="$(uci_get chilli "${CONFIG_SECTION}" uamserver)"
+			local _https="$(uci_get chilli "${CONFIG_SECTION}" _https)"
+
+			[[ "$uamserver" = "https://"* ]] && [ "$_https" = "1" ] && set_conf_bool "uamuissl" 1
+			;;
+		esac
+		;;
+	_success)
+		case "$value" in
+		original)
+			set_conf_bool "successuserurl" 1
+			;;
+		custom)
+			_success_url=$(uci -q get chilli."${CONFIG_SECTION}"._success_url)
+			set_conf "successurlcustom" "$_success_url"
+			;;
+		esac
+		;;
+	_dyn_users_group)
+		eval "chilli_group_$CONFIG_SECTION=$value"
+		;;
+	_trial_users_group)
+		eval "chilli_trial_group_$CONFIG_SECTION=$value"
+		;;
+	_https)
+		[ "$2" = "1" ] && set_conf_bool "redirssl" 1
+		;;
+	_device_sslcertfile)
+		set_conf "sslcertfile" "$2"
+		;;
+	_device_sslkeyfile)
+		set_conf "sslkeyfile" "$2"
+		;;
+	_device_sslcafile)
+		set_conf "sslcafile" "$2"
+		;;
+	subdomain)
+		set_conf "uamhostname" "$2"
+		set_conf "uamaliasname" "$2"
+		set_conf_bool "domaindnslocal" 1
+		;;
+	mac_case)
+		[ "$2" = "lower" ] && set_conf_bool "maclower" 1
+		;;
+	mac_delimiter)
+		case $2 in
+		colon)
+			set_conf "macdelimiter" "1"
+			;;
+		none)
+			set_conf "macdelimiter" "2"
+			;;
+		esac
+		;;
+	dbpath | usersdbpath)
+		touch "$2"
+		chown chilli:chilli "$2"
+		set_conf "$1" "$2"
+		;;
+	usersignup)
+		chmod 0760 "$2"
+		chown root:chilli "$2"
+		set_conf "$1" "$2"
+		;;
+	_* | uamdomain_* | conup | condown | uamlisten | net | macup | macdown | enabled | conrestart) ;;
+
+	*)
+		set_conf "$@"
+		;;
+	esac
+}
+
+set_chilli_list() {
+	local ifname option=$1 value=$2
+
+	case "$1" in
+	moreif)
+		get_dhcp_interface "ifname" "$value"
+		for name in $ifname; do
+			set_conf "$option" "$name"
+		done
+		;;
+	*)
+		set_conf "$@"
+		;;
+	esac
+}
+
+get_option() {
+	case $1 in
+	3)
+		echo "day"
+		;;
+	2)
+		echo "weekday"
+		;;
+	1)
+		echo "hour"
+		;;
+	esac
+}
+
+net_type_wifi() {
+	[ "$(echo "$1" | grep -c "wifi")" -gt 0 ]
+}
+
+get_dhcp_interface() {
+	local var net=$2
+
+	if net_type_wifi "$net"; then
+		. /etc/chilli/wireless.sh
+		wireless_get_ifname var "$net"
+		[ -z "$var" ] && {
+			var=$(cat /var/run/"${net}".wifi_id)
+		}
+	else
+		. /lib/functions/network.sh
+		network_get_device var "$net"
+	fi
+
+	[ -n "$var" ] && eval "$1=\"$var\"" || unset "$1"
+}
+
+increment_ip() {
+	local next_ipaddr="$1"
+	local next_prefix="$2"
+	local generated_ips="$3"
+
+	reset_cb
+
+	local next_network
+	calculate_next_ip() {
+		eval "$(ipcalc.sh "$next_ipaddr/$next_prefix")"
+
+		local network_int=$(echo "$IP" | awk -F. '{print ($1 * 256^3) + ($2 * 256^2) + ($3 * 256) + $4}')
+		local subnet_size=$((2 ** (32 - PREFIX)))
+		local next_network_int=$((network_int + subnet_size))
+
+		next_ipaddr=$(echo "$next_network_int" | awk '
+		function int2ip(ip) {
+			ret=and(ip,255)
+			ip=rshift(ip,8)
+			for (x=1;x<=3;ret=and(ip,255)"."ret,ip=rshift(ip,8),x++);
+			return ret
+		}
+		{ print int2ip($1) }
+		')
+
+		eval "$(ipcalc.sh "$next_ipaddr/$next_prefix")"
+		next_network="$NETWORK"
+	}
+
+	check_generated_ips() {
+		for ip in $generated_ips; do
+			[ "$ip" = "$next_ipaddr" ] && return 1
+		done
+		return 0
+	}
+
+	check_available_network() {
+		local section="$1"
+		local ipaddr netmask
+
+		config_get ipaddr "$section" ipaddr
+		config_get netmask "$section" netmask
+
+		[ -z "$ipaddr" ] && return
+		[ -z "$netmask" ] && return
+
+		local changed=0
+		while [ "$changed" -eq 0 ]; do
+			eval "$(ipcalc.sh "$ipaddr" "$netmask")"
+			[ "$NETWORK" == "$next_network" ] && {
+				generated_ips="$generated_ips $next_ipaddr"
+				calculate_next_ip
+			} || changed=1
+		done
+	}
+
+	check_available_chilli() {
+		local section="$1"
+		local net netmask
+
+		config_get net "$section" net
+		[ -z "$net" ] && return
+
+		local changed=0
+		while [ "$changed" -eq 0 ]; do
+			eval "$(ipcalc.sh "$net")"
+			[ "$NETWORK" == "$next_network" ] && {
+				generated_ips="$generated_ips $next_ipaddr"
+				calculate_next_ip
+			} || changed=1
+		done
+	}
+
+	calculate_next_ip
+
+	while :; do
+		if check_generated_ips; then
+			break
+		else
+			calculate_next_ip
+		fi
+	done
+
+	config_load chilli
+	config_foreach check_available_chilli chilli
+
+	config_load network
+	config_foreach check_available_network interface
+
+	generated_ips="$generated_ips $next_ipaddr"
+	echo "$next_ipaddr;$generated_ips"
+}
+
+kmod_enabled() {
+	local cfg="$1"
+
+	[ -f "/usr/$KMOD_PATH" ] || [ -f "/usr/local/$KMOD_PATH" ] || return 1
+	[ "$(uci -q get chilli."${cfg}"._kmod_disable || echo 0)" -eq 1 ] && return 1
+	return 0
+}
+
+add_kmod_conf() {
+	local cfg="$1"
+
+	local net=$(uci -q get chilli."${cfg}".net)
+	local uamlisten="$(uci -q get chilli."${cfg}".uamlisten)"
+
+	# Coovachilli default if not IP is set
+	net="${net:-192.168.182.0/24}"
+	uamlisten="${uamlisten:-192.168.182.1}"
+
+	set_conf "net" "$net"
+
+	kmod_enabled "$cfg" || {
+		set_conf "uamlisten" "$uamlisten"
+		return
+	}
+
+	local uamlisten_cfg=$(eval "echo \$uamlisten_$cfg")
+	[ -z "$uamlisten_cfg" ] && {
+		local result="$(increment_ip "$uamlisten" "${net##*/}" "$GENERATED_IPS")"
+		uamlisten_cfg="${result%%;*}"
+		GENERATED_IPS="${result#*;}"
+	}
+
+	set_conf "uamlisten" "$uamlisten_cfg"
+	set_conf "dhcplisten" "$uamlisten"
+	set_conf "kname" "$cfg"
+}
+
+add_con_script() {
+	local type="$1"
+	local cfg="$2"
+
+	local content
+	config_get content "$cfg" "$type"
+
+	[ -n "$content" ] && {
+		chmod 0760 "$content"
+		chown root:chilli "$content"
+		content="\\.$(printf '%s\n' "$content" | sed 's/[\/&]/\\&/g')"
+	}
+
+	local file="${WORKING_DIR}/chilli_${type}_${cfg}.sh"
+	sed "1s/.*/&\n$content/" "/etc/chilli/${type}.sh" > "$file"
+	chmod 0760 "$file"
+	chown root:chilli "$file"
+	set_conf "$type" "$file"
+}
+
+start_chilli() {
+	local cfg="$1" dhcpif=$2
+	local start_chilli=$(eval "echo \$start_chilli_$cfg")
+	local chilli_group=$(eval "echo \$chilli_group_$cfg")
+	local trial_group=$(eval "echo \$chilli_trial_group_$cfg")
+	local base="${WORKING_DIR}/chilli_${cfg}"
+	local network=$(eval "echo \$dhcpif_$cfg")
+	local uamdomainfile macaddr wifi_id interface int=0 pid_file
+
+	[ "$start_chilli" = "1" ] || return
+
+	chilli_conf="${WORKING_DIR}/chilli_${cfg}.conf"
+
+	add_kmod_conf "$cfg"
+
+	add_con_script "conup" "$cfg"
+	add_con_script "condown" "$cfg"
+	add_con_script "macup" "$cfg"
+	add_con_script "macdown" "$cfg"
+
+	set_conf "conrestart" "/etc/chilli/conrestart.sh"
+
+	config_get uamdomainfile "$cfg" "uamdomainfile"
+
+	for wifi_id in $(ubus call network.wireless status | jsonfilter -e @[@.up=true].interfaces[@].config.wifi_id); do
+		[ "$wifi_id" = "$network" ] && int=1
+	done
+    
+	[ "$int" = 0 ] && {
+		for interface in $(ubus call network.interface dump | jsonfilter -e @[*] | jsonfilter -e @[*].interface); do
+			[ "$interface" = "$network" ] && int=1
+		done
+	}
+
+	[ "$int" = "0" ] && return
+	[ -z "$dhcpif" ] && get_dhcp_interface dhcpif "$network"
+	[ -z "$dhcpif" ] && return
+	[ -n "$chilli_group" ] && config_foreach set_dyn_limits group "$chilli_group" "dyn"
+	[ -n "$trial_group" ] && config_foreach set_dyn_limits group "$trial_group" "trial"
+
+	local ifname
+	for name in $dhcpif; do
+		[ -z "$ifname" ] && ifname=$name || set_conf "moreif" "$name"
+	done
+	[ -z "$ifname" ] && return
+	macaddr=$(cat /sys/class/net/"${ifname}"/address)
+
+	pid_file="${WORKING_DIR}/run_chilli_${cfg}.pid"
+
+	touch "$pid_file" && chown chilli:chilli "$pid_file"
+
+	procd_open_instance "$cfg"
+	procd_open_trigger
+	net_type_wifi "$network" || chilli_network_trigger "$network"
+	procd_close_trigger
+	procd_set_param command $PROG
+	procd_set_param pidfile "$pid_file"
+	procd_set_param file "${base}.conf"
+	[ -n "$uamdomainfile" ] && procd_set_param file "$uamdomainfile"
+	procd_append_param command --testtime --fg --conf "${base}.conf" --pidfile "$pid_file"
+	procd_append_param command --cmdsocket "${base}.sock" --unixipc "${base}.ipc"
+	procd_append_param command --dhcpif "$ifname" ${macaddr:+--nasmac ${macaddr//:/-}}
+	procd_set_param respawn
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param user chilli
+	procd_close_instance
+}
+
+start_service() {
+	config_load chilli
+	reset_cb
+	config_foreach start_chilli chilli "$@"
+}
+
+service_stopped() {
+	[ -f "${DB_PATH}" ] && {
+		cp -a "${DB_PATH}" "${DB_PATH_FLASH}"
+	}
+	rm -f "${WORKING_DIR}/chilli_"*
+}
+
+reload_service() {
+	stop
+	start
+}
+
+boot() {
+	[ -f "${DB_PATH_FLASH}" ] && {
+		cp -a "${DB_PATH_FLASH}" "${DB_PATH}"
+	}
+	start
+}

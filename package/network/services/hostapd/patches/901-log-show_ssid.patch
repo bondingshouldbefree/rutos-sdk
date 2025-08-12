@@ -1,0 +1,68 @@
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -1575,6 +1575,9 @@ void ap_sta_set_authorized_event(struct
+ 	const u8 *dev_addr = NULL;
+ 	char buf[100];
+ 	char mac[18] = { 0 };
++	struct hostapd_ssid *ssid;
++
++	ssid = &hapd->conf->ssid;
+ #ifdef CONFIG_P2P
+ 	u8 addr[ETH_ALEN];
+ 	u8 ip_addr_buf[4];
+@@ -1669,7 +1672,7 @@ void ap_sta_set_authorized_event(struct
+ 					  buf, ip_addr, keyid_buf,
+ 					  dpp_pkhash_buf, alg_buf);
+ 
+-		hostapd_ubus_insert_wifi_log(mac, 1);
++		hostapd_ubus_insert_wifi_log(ssid, mac, 1);
+ 	} else {
+ 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_DISCONNECTED "%s", buf);
+ 		hostapd_ubus_notify(hapd, "disassoc", sta->addr);
+@@ -1679,7 +1682,7 @@ void ap_sta_set_authorized_event(struct
+ 			wpa_msg_no_global(hapd->msg_ctx_parent, MSG_INFO,
+ 					  AP_STA_DISCONNECTED "%s", buf);
+ 
+-		hostapd_ubus_insert_wifi_log(mac, 0);
++		hostapd_ubus_insert_wifi_log(ssid, mac, 0);
+ 	}
+ 
+ 	if (hapd->sta_authorized_cb)
+--- a/src/ap/ubus.c
++++ b/src/ap/ubus.c
+@@ -2077,10 +2077,10 @@ void hostapd_ubus_notify_beacon_report(
+ 	ubus_notify(ctx, &hapd->ubus.obj, "beacon-report", b.head, -1);
+ }
+ 
+-void hostapd_ubus_insert_wifi_log(char *mac, int ident)
++void hostapd_ubus_insert_wifi_log(struct hostapd_ssid *ssid, char *mac, int ident)
+ {
+ 	struct events_log new_task = { 0 };
+-	char cmd[45]		   = { 0 };
++	char cmd[80]		   = { 0 };
+ 	int i			   = 0;
+ 
+ 	while (mac[i]) {
+@@ -2089,9 +2089,9 @@ void hostapd_ubus_insert_wifi_log(char *
+ 	}
+ 
+ 	if (ident) {
+-		sprintf(cmd, "WiFi client connected: %s", mac);
++		sprintf(cmd, "%s: WiFi client connected: %s", wpa_ssid_txt(ssid->ssid, ssid->ssid_len), mac);
+ 	} else {
+-		sprintf(cmd, "WiFi client disconnected: %s", mac);
++		sprintf(cmd, "%s: WiFi client disconnected: %s", wpa_ssid_txt(ssid->ssid, ssid->ssid_len), mac);
+ 	}
+ 
+ 	new_task.table	  = LLOG_CONNECTIONS;
+--- a/src/ap/ubus.h
++++ b/src/ap/ubus.h
+@@ -63,7 +63,7 @@ void hostapd_ubus_notify_bss_transition_
+ 	struct hostapd_data *hapd, const u8 *addr, u8 dialog_token, u8 status_code,
+ 	u8 bss_termination_delay, const u8 *target_bssid,
+ 	const u8 *candidate_list, u16 candidate_list_len);
+-void hostapd_ubus_insert_wifi_log(char *mac, int ident);
++void hostapd_ubus_insert_wifi_log(struct hostapd_ssid *ssid, char *mac, int ident);
+ void hostapd_ubus_add(struct hapd_interfaces *interfaces);
+ void hostapd_ubus_free(struct hapd_interfaces *interfaces);
+ int hostapd_ubus_notify_bss_transition_query(

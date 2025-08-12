@@ -1,0 +1,28 @@
+#!/bin/sh /etc/rc.common
+
+START=15
+STOP=85
+
+USE_PROCD=1
+PROG=/usr/bin/ip_blockd
+
+service_triggers() {
+	procd_add_reload_trigger ip_blockd
+}
+
+start_service() {
+	local enabled="$(uci_get ip_blockd @globals[-1] enabled 1)"
+	[ "$enabled" -eq 1 ] || return
+
+	procd_open_instance
+	procd_set_param command $PROG
+	procd_set_param respawn
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param user ip_blockd
+	procd_close_instance
+}
+
+reload_service() {
+	restart
+}

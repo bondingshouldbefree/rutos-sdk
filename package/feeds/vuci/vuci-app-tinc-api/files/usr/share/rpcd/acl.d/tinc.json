@@ -1,0 +1,1 @@
+{"services/vpn/tinc":{"description":"Tinc VPN","read":{"api":{"/tinc/*":["*"],"/interfaces/config/*":["name","proto","ifname"]}},"write":{"api":["/tinc/*"]},"source":["/tinc/*"],"exception":["/tinc/config/*"]}}

@@ -1,0 +1,335 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2010 Jo-Philipp Wich
+
+START=14
+
+USE_PROCD=1
+
+UHTTPD_BIN="/usr/sbin/uhttpd"
+OPENSSL_BIN="/usr/bin/openssl"
+
+DEFAULT_UHTTPD_CERT="/etc/uhttpd.crt"
+DEFAULT_UHTTPD_KEY="/etc/uhttpd.key"
+DEFAULT_UHTTPD_CA_CERT="/etc/uhttpd-ca.crt"
+DEFAULT_UHTTPD_CA_KEY="/etc/uhttpd-ca.key"
+
+append_arg() {
+	local cfg="$1"
+	local var="$2"
+	local opt="$3"
+	local def="$4"
+	local val
+
+	config_get val "$cfg" "$var"
+	[ -n "$val" ] || [ -n "$def" ] && procd_append_param command "$opt" "${val:-$def}"
+}
+
+append_bool() {
+	local cfg="$1"
+	local var="$2"
+	local opt="$3"
+	local def="$4"
+	local val
+
+	config_get_bool val "$cfg" "$var" "$def"
+	[ "$val" = 1 ] && procd_append_param command "$opt"
+}
+
+register_certificate_in_config() {
+	local cert="$1"
+	local key="$2"
+	local days="$3"
+	local key_type="$4"
+	local ec_curve="$5"
+
+	[ -e "/etc/config/certificates" ] || return 0
+
+	. /lib/functions.sh
+
+	local CFG="certificates"
+	local encryption key_size
+
+	if [ "$key_type" = "ec" ]; then
+		key_size="${ec_curve#P-}"
+		encryption="ecc"
+	else
+		key_size="$bits"
+		encryption="rsa"
+	fi
+
+	local expiry=$(( $(date +%s) + ($days * 86400) ))
+
+	local cert_section=$(uci show certificates | grep "path='$cert'" | cut -d. -f2 | head -1)
+	local key_section=$(uci show certificates | grep "path='$key'" | cut -d. -f2 | head -1)
+
+	if [ -n "$cert_section" ]; then
+		uci_set "$CFG" "$cert_section" datetime "$expiry"
+		uci_set "$CFG" "$cert_section" encryption "$encryption"
+		uci_set "$CFG" "$cert_section" key_size "$key_size"
+
+		local has_service=$(uci get "$CFG.$cert_section.services" 2>/dev/null | grep -c "uhttpd:main")
+		[ "$has_service" = "0" ] && uci_add_list "$CFG" "$cert_section" services 'uhttpd:main'
+	else
+		local sec_cert=$(uci add certificates certificate)
+		uci_set "$CFG" "$sec_cert" datetime "$expiry"
+		uci_set "$CFG" "$sec_cert" encryption "$encryption"
+		uci_set "$CFG" "$sec_cert" type 'cert'
+		uci_set "$CFG" "$sec_cert" name 'Teltonika'
+		uci_set "$CFG" "$sec_cert" cert_type 'server'
+		uci_set "$CFG" "$sec_cert" key_size "$key_size"
+		uci_set "$CFG" "$sec_cert" fullname "$(basename "$cert")"
+		uci_set "$CFG" "$sec_cert" path "$cert"
+		uci_add_list "$CFG" "$sec_cert" services 'uhttpd:main'
+	fi
+
+	if [ -n "$key_section" ]; then
+		uci_set "$CFG" "$key_section" datetime "$expiry"
+		uci_set "$CFG" "$key_section" encryption "$encryption"
+		uci_set "$CFG" "$key_section" key_size "$key_size"
+
+		local has_service=$(uci get "$CFG.$key_section.services" 2>/dev/null | grep -c "uhttpd:main")
+		[ "$has_service" = "0" ] && uci_add_list "$CFG" "$key_section" services 'uhttpd:main'
+	else
+		local sec_key=$(uci add certificates certificate)
+		uci_set "$CFG" "$sec_key" datetime "$expiry"
+		uci_set "$CFG" "$sec_key" encryption "$encryption"
+		uci_set "$CFG" "$sec_key" pass_required '0'
+		uci_set "$CFG" "$sec_key" type 'key'
+		uci_set "$CFG" "$sec_key" cert_type 'server'
+		uci_set "$CFG" "$sec_key" key_size "$key_size"
+		uci_set "$CFG" "$sec_key" fullname "$(basename "$key")"
+		uci_set "$CFG" "$sec_key" path "$key"
+		uci_add_list "$CFG" "$sec_key" services 'uhttpd:main'
+	fi
+
+	uci_commit "$CFG"
+}
+
+sign_certificate() {
+	local days="$1"
+	local crt_req="$2"
+	local crt_final="$3"
+	local crt_ca_cert="$4"
+	local crt_ca_key="$5"
+
+	local macaddr="$(mnf_info -m)"
+	#							replace invalid dashes JSON keys
+	local ip_addr=$(ubus call network.interface.lan status | tr '-' '_' | jsonfilter -e "@.ipv4_address[0].address")
+	[ -z "$ip_addr" ] && ip_addr=$(jsonfilter -i /etc/board.json -e "@.network.lan.default_ip")
+
+	local extfile="$(mktemp)"
+	echo -e "extendedKeyUsage=serverAuth\nsubjectAltName=DNS:Teltonika${macaddr},IP:${ip_addr}" > "$extfile"
+	$OPENSSL_BIN x509 -req -in "$crt_req" -CA "$crt_ca_cert" \
+		-CAkey "$crt_ca_key" -out "$crt_final" -days $days -extfile "$extfile" &>/dev/null
+	rm -f "$extfile" "$crt_req"
+}
+
+generate_keys() {
+	local cfg="$1"
+	local crt="$2"
+	local key="$3"
+	local days bits country state location commonname key_type ec_curve
+
+	config_get days       "$cfg" days       "3650"
+	config_get bits       "$cfg" bits       "2048"
+	config_get country    "$cfg" country    "ZZ"
+	config_get state      "$cfg" state      "Somewhere"
+	config_get location   "$cfg" location   "Unknown"
+	config_get commonname "$cfg" commonname "OpenWrt"
+	config_get key_type   "$cfg" key_type   "rsa"
+	config_get ec_curve   "$cfg" ec_curve   "P-256"
+
+	local KEY_OPTS="rsa:$bits"
+	local UNIQUEID=$(dd if=/dev/urandom bs=1 count=4 2>/dev/null | hexdump -e '1/1 "%02x"')
+	[ "$key_type" = "ec" ] && KEY_OPTS="ec -pkeyopt ec_paramgen_curve:$ec_curve"
+	[ -x "$OPENSSL_BIN" ] || return
+
+	local crt_ca_cert="$DEFAULT_UHTTPD_CA_CERT"
+	local crt_ca_key="$DEFAULT_UHTTPD_CA_KEY"
+
+	if [ ! -s "$crt_ca_cert" ] || [ ! -s "$crt_ca_key" ]; then
+		crt_ca_cert="$crt_ca_cert.new"
+		crt_ca_key="$crt_ca_key.new"
+
+		$OPENSSL_BIN req -x509 -nodes -subj "/CN=ca" \
+			-newkey $KEY_OPTS -keyout "$crt_ca_key" -out "$crt_ca_cert" -days $days &>/dev/null
+	fi
+
+	local crt_key="$key.new"
+	local crt_final="$crt.new"
+
+	local crt_req="$(mktemp)"
+	$OPENSSL_BIN req -nodes \
+		-subj "/C=${country}/ST=${state}/L=${location}/O=${commonname}$UNIQUEID/CN=${commonname}" \
+		-newkey $KEY_OPTS -keyout "$crt_key" -out "$crt_req" &>/dev/null
+	sign_certificate "$days" "$crt_req" "$crt_final" "$crt_ca_cert" "$crt_ca_key"
+	sync
+	mv -f "$crt_key" "$key"
+	mv -f "$crt_final" "$crt"
+	[ "$crt_ca_cert" = "$DEFAULT_UHTTPD_CA_CERT" ] || mv -f "$crt_ca_cert" "$DEFAULT_UHTTPD_CA_CERT"
+	[ "$crt_ca_key" = "$DEFAULT_UHTTPD_CA_KEY" ] || mv -f "$crt_ca_key" "$DEFAULT_UHTTPD_CA_KEY"
+
+	register_certificate_in_config "$crt" "$key" "$days" "$key_type" "$ec_curve"
+}
+
+append_lua_prefix() {
+	local v="$1"
+	local prefix="${v%%=*}"
+	local handler="${v#*=}"
+
+	if [ "$prefix" != "$handler" ] && [ -n "$prefix" ] && [ -f "$handler" ]; then
+		procd_append_param command -l "$prefix" -L "$handler"
+	else
+		echo "Skipping invalid Lua prefix \"$v\"" >&2
+	fi
+}
+
+start_instance()
+{
+	local disabled enb_http enb_https
+
+	local cfg="$1"
+	config_get disabled "$cfg" disabled "0"
+	[ "$disabled" = "1" ] && return
+
+	config_get enb_http "$cfg" enable_http "1"
+	config_get enb_https "$cfg" enable_https "0"
+	[ -f /lib/libustream-ssl.so ] || enb_https="0"
+
+	[ "$enb_http" = "1" ] || [ "$enb_https" = "1" ] || return
+
+	[ -h "/etc/hotplug.d/iface/91-trigger-vuci-routes-reload" ] || \
+		ln -s /usr/share/uhttpd/91-trigger-vuci-routes-reload.hotplug /etc/hotplug.d/iface/91-trigger-vuci-routes-reload
+	[ -h "/etc/hotplug.d/net/91-trigger-vuci-routes-reload" ] || \
+		ln -s /usr/share/uhttpd/91-trigger-vuci-routes-reload.hotplug /etc/hotplug.d/net/91-trigger-vuci-routes-reload
+
+	procd_open_instance
+	procd_set_param respawn 0 5 0
+	procd_set_param stderr 1
+	procd_set_param command "$UHTTPD_BIN" -f
+
+	[ "$cfg" = "main" ] && procd_append_param command -b
+
+	append_arg "$cfg" home "-h"
+	append_arg "$cfg" config "-c"
+	append_arg "$cfg" cgi_prefix "-x"
+	[ -f /usr/lib/uhttpd_lua.so ] && {
+		local len
+		config_get len "$cfg" lua_prefix_LENGTH
+
+		if [ -n "$len" ]; then
+			config_list_foreach "$cfg" lua_prefix append_lua_prefix
+		else
+			config_get prefix "$cfg" lua_prefix
+			config_get handler "$cfg" lua_handler
+			append_lua_prefix "$prefix=$handler"
+		fi
+	}
+	[ -f /usr/lib/uhttpd_ubus.so ] && {
+		append_arg "$cfg" ubus_prefix "-u"
+		append_arg "$cfg" ubus_socket "-U"
+		append_bool "$cfg" ubus_cors "-X" 0
+	}
+	append_arg "$cfg" script_timeout "-t"
+	append_arg "$cfg" network_timeout "-T"
+	append_arg "$cfg" http_keepalive "-k"
+	append_arg "$cfg" tcp_keepalive "-A"
+	append_arg "$cfg" index_page "-I"
+	append_arg "$cfg" error_page "-E"
+	append_arg "$cfg" max_requests "-n" 3
+	append_arg "$cfg" max_connections "-N"
+
+	append_bool "$cfg" no_ubusauth "-a" 0
+	append_bool "$cfg" no_symlinks "-S" 0
+	append_bool "$cfg" no_dirlists "-D" 0
+	append_bool "$cfg" rfc1918_filter_http "-R" 0
+	[ -f /lib/libustream-ssl.so ] && append_bool "$cfg" rfc1918_filter_https "-F" 0
+
+	[ "$enb_http" = "1" ] && {
+		local http wan_http wan_http_access
+		config_get http "$cfg" listen_http
+		config_get wan_http "$cfg" wan_listen_http
+		config_get wan_http_access "$cfg" _httpWanAccess
+
+		if [ "$wan_http_access" = "1" ] && [ -n "$wan_http" ]; then
+			for port in $wan_http; do
+				case " $http " in
+					*" $port "*) ;;
+					*) http="$http $port" ;;
+				esac
+			done
+		fi
+
+		for listen in $http; do
+			procd_append_param command -p "$listen"
+		done
+	}
+
+	[ "$enb_https" = "1" ] && {
+		local cert key
+		config_get cert 	"$cfg" cert "$DEFAULT_UHTTPD_CERT"
+		config_get cert_key "$cfg" key	"$DEFAULT_UHTTPD_KEY"
+
+		local default_cert=0
+		local generate_cert=0
+
+		[ "$cert_key" = "$DEFAULT_UHTTPD_KEY" ] && [ "$cert" = "$DEFAULT_UHTTPD_CERT" ] && default_cert=1
+
+		if [ "$cfg" != "hotspot" ] && { [ ! -s "$cert" ] || [ ! -s "$cert_key" ]; }; then
+			rm -f "$cert" "$cert_key"
+			generate_cert=1
+		fi
+
+		if [ "$default_cert" -eq 1 ] && { [ ! -s "$DEFAULT_UHTTPD_CA_CERT" ] || [ ! -s "$DEFAULT_UHTTPD_CA_KEY" ]; }; then
+			rm -f "$DEFAULT_UHTTPD_KEY" "$DEFAULT_UHTTPD_CERT" "$DEFAULT_UHTTPD_CA_CERT" "$DEFAULT_UHTTPD_CA_KEY"
+			generate_cert=1
+		fi
+
+		[ "$generate_cert" -eq 1 ] && generate_keys "defaults" "$cert" "$cert_key"
+
+		if [ -s "$cert" ] && [ -s "$cert_key" ]; then
+			procd_append_param command -C "$cert"
+			procd_append_param command -K "$cert_key"
+
+			local https wan_https wan_https_access
+			config_get https "$cfg" listen_https
+			config_get wan_https "$cfg" wan_listen_https
+			config_get wan_https_access "$cfg" _httpsWanAccess
+
+			if [ "$wan_https_access" = "1" ] && [ -n "$wan_https" ]; then
+				for port in $wan_https; do
+					case " $https " in
+						*" $port "*) ;;
+						*) https="$https $port" ;;
+					esac
+				done
+			fi
+
+			for listen in $https; do
+				procd_append_param command -s "$listen"
+				procd_add_mdns "https" "tcp" "$listen"
+			done
+
+			procd_set_param file "$cert" "$cert_key"
+			append_bool "$cfg" redirect_https "-q" 0
+		fi
+	}
+
+	procd_close_instance
+}
+
+service_triggers()
+{
+	procd_add_reload_trigger "uhttpd"
+}
+
+start_service() {
+	config_load uhttpd
+	config_foreach start_instance uhttpd
+}
+
+stop_service() {
+	[ -h "/etc/hotplug.d/iface/91-trigger-vuci-routes-reload" ] && rm /etc/hotplug.d/iface/91-trigger-vuci-routes-reload &>/dev/null
+	[ -h "/etc/hotplug.d/net/91-trigger-vuci-routes-reload" ] && rm /etc/hotplug.d/net/91-trigger-vuci-routes-reload &>/dev/null
+	[ -n "$(pgrep subscribe.lua)" ] && killall subscribe.lua
+}

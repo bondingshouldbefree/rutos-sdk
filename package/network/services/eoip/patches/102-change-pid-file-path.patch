@@ -1,0 +1,13 @@
+Index: eoip-0.5/eoip.c
+===================================================================
+--- eoip-0.5.orig/eoip.c
++++ eoip-0.5/eoip.c
+@@ -428,7 +428,7 @@ int main(int argc, char **argv)
+     if (!getenv("NO_DAEMON"))
+     	ret = daemon(1, 1);
+ 
+-    if (asprintf(&pidfile,"/var/run/eoip-%s",basename(configname)) == -1)
++    if (asprintf(&pidfile,"/var/run/eoip/%s.pid",basename(configname)) == -1)
+ 	exit(1);
+ 
+     mfd = fopen(pidfile, "w");

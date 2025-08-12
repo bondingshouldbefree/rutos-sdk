@@ -1,0 +1,139 @@
+{
+	"user": "juggler",
+	"publish": [
+		"event_juggler*"
+	],
+	"listen": [
+		"ubus.object.remove",
+		"ubus.object.add",
+		"quota.limit_reach",
+		"logd.db_write",
+		"chilli.*"
+	],
+	"subscribe": [
+		"ioman.*",
+		"gsm.modem*",
+		"gpsd"
+	],
+	"access": {
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_service_provider",
+				"get_pin_state",
+				"get_sim_slot",
+				"get_iccid",
+				"get_signal_query",
+				"get_network_info",
+				"get_net_reg_stat_all",
+				"get_ca_info",
+				"get_serving_cell",
+				"get_imsi",
+				"get_neighbour_cells",
+				"get_default_modem_func",
+				"change_sim_slot",
+				"set_sim_slot",
+				"send_sms",
+				"send_voice_call",
+				"get_func",
+				"set_func",
+				"get_incoming_voice_calls",
+				"reject_voice_call"
+			]
+		},
+		"ioman.*": {
+			"methods": [
+				"status",
+				"location",
+				"update",
+				"invert_value",
+				"invert_state"
+			]
+		},
+		"gpsd": {
+			"methods": [
+				"position"
+			]
+		},
+		"mobifd": {
+			"methods": [
+				"reload"
+			]
+		},
+		"mobifd.modem*": {
+			"methods": [
+				"reload"
+			]
+		},
+		"network": {
+			"methods": [
+				"reload"
+			]
+		},
+		"network.interface": {
+			"methods": [
+				"up",
+				"down",
+				"dump"
+			]
+		},
+		"network.wireless": {
+			"methods": [
+				"up",
+				"down"
+			]
+		},
+		"data_sender.*": {
+			"methods": [
+				"send"
+			]
+		},
+		"rpc-profile": {
+			"methods": [
+				"change"
+			]
+		},
+		"port_events": {
+			"methods": [
+				"set_topo_ev"
+			]
+		},
+		"uci" : {
+			"methods": [
+				"reload_config"
+			]
+		},
+		"rpc-sys": {
+			"methods": [
+				"poweroff",
+				"reboot"
+			]
+		},
+		"rut_fota" : {
+			"methods": [
+				"get_info"
+			]
+		},
+		"rms" : {
+			"methods": [
+				"get_status"
+			]
+		},
+		"mctl" : {
+			"methods": [
+				"reboot"
+			]
+		},
+		"api": {
+			"methods": [
+				"get",
+				"post"
+			]
+		}
+	}
+}

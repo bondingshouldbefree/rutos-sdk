@@ -1,0 +1,48 @@
+#include "qcom-ipq4018-rutx-shiftreg.dtsi"
+
+/ {
+	model = "RUTX08";
+
+	soc {
+		wifi@a000000 {
+			status = "disabled";
+		};
+
+		wifi@a800000 {
+			status = "disabled";
+		};
+	};
+
+	tlt_gpios { // Modify according to wiki page "DTS syntax with Libgpiod changes"
+		gpiochip_info {
+			hw_9 {
+				hwver = <9>;
+				gpiochip_count = <2>;
+
+				gpiochip_0 = <100>; // Built-in
+				gpiochip_1 = <8>;   // Shift Register
+			};
+		};
+
+		ioman {
+			GPIO_100 {
+				compatible_versions = <9 99>;
+				line_name = "GPIO_OUT_1";
+			};
+			GPIO_0 {
+				compatible_versions = <9 99>;
+				line_name = "GPIO_IN_1";
+				active_low;
+			};
+		};
+	};
+};
+
+&mnfinfo {
+	/delete-node/ simpin1;
+	/delete-node/ simpin2;
+
+	sim_count {
+		default =  "0";
+	};
+};

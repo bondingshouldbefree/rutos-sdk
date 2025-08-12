@@ -1,0 +1,1 @@
+{"system/admin/memory_expansion/sshfs":{"read":{"api":{"/sshfs/*":["*"]}},"write":{"api":["/sshfs/*"]}}}

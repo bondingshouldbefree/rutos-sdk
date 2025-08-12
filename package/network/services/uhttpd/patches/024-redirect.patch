@@ -1,0 +1,50 @@
+Index: uhttpd-2021-03-21-15346de8/client.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/client.c
++++ uhttpd-2021-03-21-15346de8/client.c
+@@ -174,7 +174,6 @@ void uh_request_done(struct client *cl)
+ 	uh_dispatch_done(cl);
+ 	blob_buf_init(&cl->hdr_response, 0);
+ 	memset(&cl->dispatch, 0, sizeof(cl->dispatch));
+-
+ 	if (!conf.http_keepalive || cl->request.connection_close)
+ 		return uh_connection_close(cl);
+ 
+@@ -300,6 +299,12 @@ static bool rfc1918_filter_check(struct
+ 	return false;
+ }
+ 
++static void uh_tls_redirect_close_cb(struct uloop_timeout *t)
++{
++	struct client *cl = container_of(t, struct client, timeout);
++	uh_request_done(cl);
++}
++
+ static bool tls_redirect_check(struct client *cl)
+ {
+ 	int rem, port;
+@@ -313,6 +318,7 @@ static bool tls_redirect_check(struct cl
+ 		return true;
+ 
+ 	blob_for_each_attr(cur, cl->hdr.head, rem) {
++
+ 		if (!strcmp(blobmsg_name(cur), "host"))
+ 			host = blobmsg_get_string(cur);
+ 
+@@ -341,7 +347,15 @@ static bool tls_redirect_check(struct cl
+ 	else
+ 		ustream_printf(cl->us, "Location: https://%s%s\r\n\r\n", host, url);
+ 
+-	uh_request_done(cl);
++	/* Schedule a delayed connection close to allow the client to
++	 * receive the redirect response before tearing down the connection.
++	 * ustream does not guarantee immediate buffer flush on write, and
++	 * closing the connection immediately risks truncating TCP data
++	 * in flight. A short timeout ensures reliable delivery without
++	 * introducing significant latency.
++	 */
++	cl->timeout.cb = uh_tls_redirect_close_cb;
++	uloop_timeout_set(&cl->timeout, 50);
+ 
+ 	return false;
+ }

@@ -1,0 +1,119 @@
+#!/bin/sh /etc/rc.common
+
+START=98
+
+USE_PROCD=1
+
+PROG=/usr/sbin/tpm_manager
+NAME=tpm_manager
+PIDCOUNT=1
+
+EK_CTX=0x81010002
+AK_CTX=0x81010003
+PRIMARY_CTX=0x81000001
+IDEVID_CTX=0x81020000
+
+PATH_TO_TPM_DEV=/dev/tpm0
+
+handle_ek_key_create() {
+	tpm2_createek -c "$EK_CTX" -G ecc384
+}
+
+handle_ak_key_create() {
+	tpm2_createak --ek-context "$EK_CTX" \
+		--ak-context /tmp/tpm/ak.ctx \
+		--key-algorithm ecc384 \
+		--hash-algorithm sha384 \
+		--signing-algorithm ecdsa \
+		--ak-name /tmp/tpm/ak.name > /dev/null 2>&1
+
+	tpm2_evictcontrol -c /tmp/tpm/ak.ctx "$AK_CTX" > /dev/null 2>&1
+}
+
+handle_primary_key_create() {
+	tpm2_createprimary -C e -c /tmp/tpm/primary.ctx \
+		--hash-algorithm sha384 \
+		--key-algorithm ecc384 > /dev/null 2>&1
+
+	tpm2_evictcontrol -c /tmp/tpm/primary.ctx "$PRIMARY_CTX" > /dev/null 2>&1
+	rm /tmp/tpm/primary.ctx
+}
+
+handle_idevid_key_create() {
+	tpm2_create -C "$PRIMARY_CTX" \
+		-c /tmp/tpm/idevid.ctx \
+		--key-algorithm ecc384:ecdsa-sha384 \
+		--hash-algorithm sha384 > /dev/null 2>&1
+
+	tpm2_evictcontrol -c /tmp/tpm/idevid.ctx "$IDEVID_CTX" > /dev/null 2>&1
+	rm /tmp/tpm/idevid.ctx
+}
+
+handle_idevid_csr_create() {
+	local serial_num="$1"
+	local model_name="$2"
+
+	openssl req -provider tpm2 -provider default -propquery '?provider=tpm2' -new \
+		-subj "/DC=org/DC=simple/O=Teltonika Networks/CN=$model_name/serialNumber=$serial_num" \
+		-key handle:$IDEVID_CTX \
+		-out /tmp/tpm/idevid_csr.pem > /dev/null 2>&1
+}
+
+handle_ak_csr_gen() {
+	local serial_num="$1"
+	local model_name="$2"
+
+	openssl req -provider tpm2 -provider default -propquery '?provider=tpm2' -new \
+		-subj "/DC=org/DC=simple/O=Teltonika Networks/CN=$model_name/serialNumber=$serial_num" \
+		-key handle:$AK_CTX \
+		-out /tmp/tpm/ak_csr.pem > /dev/null 2>&1
+}
+
+boot() {
+	mkdir /tmp/tpm/
+
+	[ -e "$PATH_TO_TPM_DEV" ] || return 1
+
+	tpm2_dictionarylockout -s -t 90
+
+	tpm2_getcap handles-persistent | grep -q "$EK_CTX" || {
+		echo "EK key pair not generated... Generating..."
+		handle_ek_key_create
+	}
+
+	tpm2_getcap handles-persistent | grep -q "$AK_CTX" || {
+		echo "AK key pair not generated... Generating..."
+		handle_ak_key_create
+	}
+
+	tpm2_getcap handles-persistent | grep -q "$PRIMARY_CTX" || {
+		echo "Primary key pair not generated... Generating..."
+		handle_primary_key_create
+	}
+
+	tpm2_getcap handles-persistent | grep -q "$IDEVID_CTX" || {
+		echo "IDevID key pair not generated... Generating..."
+		handle_idevid_key_create
+	}
+
+	local serial_num="$(mnf_info -s)"
+	local model_name="$(mnf_info -n)"
+
+	handle_idevid_csr_create "$serial_num" "$model_name"
+	handle_ak_csr_gen "$serial_num" "$model_name"
+}
+
+start_service() {
+	local pid_file="/var/run/${NAME}.${PIDCOUNT}.pid"
+
+	procd_open_instance
+	procd_set_param command "$PROG"
+
+	# respawn automatically if something died, be careful if you have an alternative process supervisor
+	# if process dies sooner than respawn_threshold, it is considered crashed and after 5 retries the service is stopped
+	procd_set_param respawn
+
+	procd_set_param stdout 1 # forward stdout of the command to logd
+	procd_set_param pidfile $pid_file # write a pid file on instance start and remote it on stop
+	procd_close_instance
+}

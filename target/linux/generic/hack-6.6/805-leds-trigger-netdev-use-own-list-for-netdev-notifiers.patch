@@ -1,0 +1,196 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Fri May 23 09:45:47 2025 +0300
+Subject: leds: trigger: netdev: use separate list for netdev notifiers
+
+Current ledtrig-netdev has a deadlock opportunity when a netdev provider is
+being deregistered at the same time it is being unassigned from an LED.
+
+Original stack traces reported by lockdep:
+
+Thread 1:
+	__schedule+0x5ac/0xa14
+	schedule+0x64/0xe0
+	schedule_preempt_disabled+0x1c/0x34
+	rwsem_down_write_slowpath+0x324/0x868
+	down_write+0x94/0x1b0
+	led_trigger_unregister+0xb8/0x140
+	phy_led_triggers_unregister+0x38/0x7c
+	phy_detach+0x158/0x178
+	mtk_stop+0xf4/0x350
+	__dev_close_many+0xa4/0x114
+	__dev_change_flags+0xb8/0x204
+	dev_change_flags+0x28/0x78
+	dev_ifsioc+0x160/0x574
+	dev_ioctl+0xe0/0x4d0
+	sock_ioctl+0x290/0x3b0
+	sys_ioctl+0x128/0xc10
+	syscall_common+0x34/0x58
+
+Thread 2:
+	__schedule+0x5ac/0xa14
+	schedule+0x64/0xe0
+	schedule_preempt_disabled+0x1c/0x34
+	__mutex_lock+0x568/0xce0
+	mutex_lock_nested+0x1c/0x28
+	unregister_netdevice_notifier+0x3c/0xd8
+	netdev_trig_deactivate+0x20/0x8c
+	led_trigger_set+0xdc/0x364
+	led_trigger_remove+0x2c/0x44
+	led_trigger_write+0x164/0x1a0
+	sysfs_kf_bin_write+0x7c/0xb8
+	kernfs_fop_write_iter+0x154/0x234
+	vfs_write+0x394/0x544
+	ksys_write+0x64/0x10c
+	syscall_common+0x34/0x58
+
+The issue appears to be a circular dependency between led_classdev->trigger_lock
+and rtnl_mutex:
+- Thread 1 acquires rtnl_mutex in dev_ioctl and attempts to take trigger_lock
+  in led_trigger_unregister
+- Thread 2 acquires trigger_lock led_trigger_remove and attempts to take
+  rtnl_mutex in unregister_netdevice_notifier.
+
+To fix this, ledtrig-netdev now manages a global list of assigned leds to handle
+netdev notifications for, called from a single static notifier_block. This way,
+netdev_trig_deactivate does not need to call unregister_netdevice_notifier,
+and thus does not need to take rtnl_mutex, breaking the cycle.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/leds/trigger/ledtrig-netdev.c |   65 +++++++++++++++++++++++++++-------
+ 1 file changed, 52 insertions(+), 13 deletions(-)
+
+--- a/drivers/leds/trigger/ledtrig-netdev.c
++++ b/drivers/leds/trigger/ledtrig-netdev.c
+@@ -28,6 +28,10 @@
+ 
+ #define NETDEV_LED_DEFAULT_INTERVAL	50
+ 
++
++static LIST_HEAD(netdev_leds);
++static DEFINE_MUTEX(netdev_leds_lock);
++
+ /*
+  * Configurable sysfs attributes:
+  *
+@@ -44,7 +48,6 @@ struct led_netdev_data {
+ 	struct mutex lock;
+ 
+ 	struct delayed_work work;
+-	struct notifier_block notifier;
+ 
+ 	struct led_classdev *led_cdev;
+ 	struct net_device *net_dev;
+@@ -60,6 +63,8 @@ struct led_netdev_data {
+ 
+ 	bool carrier_link_up;
+ 	bool hw_control;
++
++	struct list_head list;
+ };
+ 
+ static void set_baseline_state(struct led_netdev_data *trigger_data)
+@@ -472,13 +477,11 @@ static struct attribute *netdev_trig_att
+ };
+ ATTRIBUTE_GROUPS(netdev_trig);
+ 
+-static int netdev_trig_notify(struct notifier_block *nb,
++static int netdev_trig_notify(struct led_netdev_data *trigger_data,
+ 			      unsigned long evt, void *dv)
+ {
+ 	struct net_device *dev =
+ 		netdev_notifier_info_to_dev((struct netdev_notifier_info *)dv);
+-	struct led_netdev_data *trigger_data =
+-		container_of(nb, struct led_netdev_data, notifier);
+ 
+ 	if (evt != NETDEV_UP && evt != NETDEV_DOWN && evt != NETDEV_CHANGE
+ 	    && evt != NETDEV_REGISTER && evt != NETDEV_UNREGISTER
+@@ -523,6 +526,26 @@ static int netdev_trig_notify(struct not
+ 	return NOTIFY_DONE;
+ }
+ 
++static int netdev_trig_notify_all(struct notifier_block *nb, unsigned long evt,
++				  void *dv)
++{
++	struct led_netdev_data *trigger_data;
++
++	mutex_lock(&netdev_leds_lock);
++
++	list_for_each_entry(trigger_data, &netdev_leds, list)
++		netdev_trig_notify(trigger_data, evt, dv);
++
++	mutex_unlock(&netdev_leds_lock);
++
++	return NOTIFY_DONE;
++}
++
++static struct notifier_block netdev_led_trigger_notifier = {
++	.notifier_call = netdev_trig_notify_all,
++	.priority = 10
++};
++
+ /* here's the real work! */
+ static void netdev_trig_work(struct work_struct *work)
+ {
+@@ -591,9 +614,6 @@ static int netdev_trig_activate(struct l
+ 
+ 	mutex_init(&trigger_data->lock);
+ 
+-	trigger_data->notifier.notifier_call = netdev_trig_notify;
+-	trigger_data->notifier.priority = 10;
+-
+ 	INIT_DELAYED_WORK(&trigger_data->work, netdev_trig_work);
+ 
+ 	trigger_data->led_cdev = led_cdev;
+@@ -623,18 +643,20 @@ static int netdev_trig_activate(struct l
+ 
+ 	led_set_trigger_data(led_cdev, trigger_data);
+ 
+-	rc = register_netdevice_notifier(&trigger_data->notifier);
+-	if (rc)
+-		kfree(trigger_data);
++	mutex_lock(&netdev_leds_lock);
++	list_add_tail(&trigger_data->list, &netdev_leds);
++	mutex_unlock(&netdev_leds_lock);
+ 
+-	return rc;
++	return 0;
+ }
+ 
+ static void netdev_trig_deactivate(struct led_classdev *led_cdev)
+ {
+ 	struct led_netdev_data *trigger_data = led_get_trigger_data(led_cdev);
+ 
+-	unregister_netdevice_notifier(&trigger_data->notifier);
++	mutex_lock(&netdev_leds_lock);
++	list_del(&trigger_data->list);
++	mutex_unlock(&netdev_leds_lock);
+ 
+ 	cancel_delayed_work_sync(&trigger_data->work);
+ 
+@@ -652,7 +674,24 @@ static struct led_trigger netdev_led_tri
+ 	.groups = netdev_trig_groups,
+ };
+ 
+-module_led_trigger(netdev_led_trigger);
++static int __init netdev_led_trigger_init(void)
++{
++	int ret;
++
++	ret = register_netdevice_notifier(&netdev_led_trigger_notifier);
++	if (ret)
++		return ret;
++
++	return led_trigger_register(&(netdev_led_trigger));
++}
++module_init(netdev_led_trigger_init);
++
++static void __exit netdev_led_trigger_exit(void)
++{
++	led_trigger_unregister(&(netdev_led_trigger));
++	unregister_netdevice_notifier(&netdev_led_trigger_notifier);
++}
++module_exit(netdev_led_trigger_exit);
+ 
+ MODULE_AUTHOR("Ben Whitten <ben.whitten@gmail.com>");
+ MODULE_AUTHOR("Oliver Jowett <oliver@opencloud.com>");

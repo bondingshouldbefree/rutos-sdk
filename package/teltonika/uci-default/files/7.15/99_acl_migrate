@@ -1,0 +1,12 @@
+#!/bin/sh
+
+migrate_name() {
+	sed -i "s/${1}\*'/${2}\*'/g" /etc/config/rpcd
+}
+
+migrate_name "network\/port_security" "network\/ports\/port_security"
+migrate_name "network\/port_security\/radius" "network\/ports\/port_security\/radius"
+migrate_name "network\/port_security\/general" "network\/ports\/port_security\/general"
+
+exit 0
+

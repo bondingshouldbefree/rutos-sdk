@@ -1,0 +1,1 @@
+{"services/cloud_solutions/cumulocity":{"description":"cumulocity configuration","read":{"api":{"/cumulocity/*":["*"]}},"write":{"api":["/cumulocity/*"]}},"services/cloud_solutions/cot":{"description":"cloud of things configuration","read":{"api":{"/cloud_of_things/*":["*"]}},"write":{"api":["/cloud_of_things/*"]}}}

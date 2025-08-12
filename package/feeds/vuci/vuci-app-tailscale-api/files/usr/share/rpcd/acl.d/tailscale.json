@@ -1,0 +1,1 @@
+{"services/vpn/tailscale":{"description":"tailscale configuration","read":{"api":{"/tailscale/*":["*"]}},"write":{"api":["/tailscale/*"]}}}

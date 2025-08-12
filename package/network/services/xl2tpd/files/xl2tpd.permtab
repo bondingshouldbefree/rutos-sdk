@@ -1,0 +1,2 @@
+/etc/xl2tpd	xl2tpd:xl2tpd	-	r
+/etc/config/xl2tpd	xl2tpd:xl2tpd	660	-

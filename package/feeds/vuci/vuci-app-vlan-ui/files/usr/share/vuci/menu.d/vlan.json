@@ -1,0 +1,23 @@
+{
+  "network/vlan": {
+    "title": "VLAN",
+    "index": 70
+  },
+  "network/vlan/port_based": {
+    "title": "Port Based",
+    "index": 10,
+    "view": "network/VlanPort",
+    "acls": ["network/vlan/port_based"],
+    "depends": {
+      "board": {
+        "notAnyOf": ["is_gateway", "is_ap", "is_X86"]
+      }
+    }
+  },
+  "network/vlan/interface_based": {
+    "title": "Interface Based",
+    "index": 20,
+    "view": "network/VlanInterface",
+    "acls": ["network/vlan/interface_based"]
+  }
+}

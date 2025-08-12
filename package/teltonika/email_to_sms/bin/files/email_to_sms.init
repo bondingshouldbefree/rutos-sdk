@@ -1,0 +1,24 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=70
+STOP=40
+
+start_service() {
+	mkdir -p /var/run/ets
+	/usr/bin/email_to_sms start
+}
+
+stop_service() {
+	/usr/bin/email_to_sms stop
+}
+
+service_triggers()
+{
+	procd_add_reload_trigger "email_to_sms"
+}
+
+reload_service () {
+	stop
+	start
+}

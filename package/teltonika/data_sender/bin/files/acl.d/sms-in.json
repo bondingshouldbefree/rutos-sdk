@@ -1,0 +1,8 @@
+{
+	"user": "ds",
+	"subscribe": [ "urcd.modem*.sms" ],
+	"listen": [
+		"ubus.object.remove",
+		"ubus.object.add"
+	]
+}

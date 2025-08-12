@@ -1,0 +1,1 @@
+{"services/ddns":{"description":"ddns configuration","read":{"api":{"/ddns/*":["*"],"/interfaces/config/*":["id"],"/openvpn/config/*":["type","id","name"],"/dns/config/*":["rebind_protection"]}},"write":{"api":["/ddns/*"]},"source":["/ddns/*"]}}

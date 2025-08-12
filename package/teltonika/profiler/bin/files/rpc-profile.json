@@ -1,0 +1,9 @@
+{
+  "user": "rpcd",
+  "access": {
+    "rpc-profile": {
+      "methods": ["create", "change", "update", "remove", "diff", "list"]
+    }
+  },
+  "publish": ["rpc-profile"]
+}

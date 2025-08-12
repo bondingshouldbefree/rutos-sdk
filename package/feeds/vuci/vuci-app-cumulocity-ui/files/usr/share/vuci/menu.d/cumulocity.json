@@ -1,0 +1,20 @@
+{
+	"services/cloud_solutions": {
+		"title": "Cloud Solutions",
+		"index": 10
+	},
+	"services/cloud_solutions/cumulocity": {
+		"title": "Cumulocity",
+		"index": 40,
+		"view": "services/Cumulocity",
+		"acls": [ "services/cloud_solutions/cumulocity" ],
+		"plugin": true,
+		"main_page": true
+	},
+	"services/cloud_solutions/cot": {
+		"title": "Cloud of Things",
+		"index": 50,
+		"view": "services/CloudOfThings",
+		"acls": [ "services/cloud_solutions/cot" ]
+	}
+}

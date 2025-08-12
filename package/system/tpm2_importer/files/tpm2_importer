@@ -1,0 +1,171 @@
+#!/bin/sh
+cat /etc/board.json | grep '"tpm": true' -q || {
+	echo TPM2 is not supported on this device
+	exit 9
+}
+
+TPM2_IMPORTER_DATA_DIR="/etc/certificates/tpm2"
+
+CODE_UNKNOWN_KEY_TYPE=1
+CODE_KEY_NOT_SUPPORTED=2
+CODE_IMPORT_FAILED=4
+CODE_NO_SPACE=5
+CODE_KEY_NOT_IN_TPM=6
+CODE_TPM_DELETE_FAILED=7
+INVALID_OPTIONS=8
+
+TPM_MANAGER_PRIMARY_KEY_HANDLE=0x81000001
+
+function get_hash() {
+	local key_path="$1"
+	local hash
+	hash="$(echo "$key_path" | sha256sum | awk '{print $1}')"
+	echo "$hash"
+}
+
+function get_key_type() {
+	local type
+	type=$(pki --print --type priv --in "$1" 2>/dev/null | awk '$1 == "privkey:" { print tolower($2) }')
+	[ -z "$type" ] && {
+		echo "failed to determine key type."
+		return $CODE_UNKNOWN_KEY_TYPE
+	}
+	echo "$type"
+}
+
+function find_available_persistent_slot() {
+	local handle
+	local all_handles
+	all_handles="$(tpm2_getcap handles-persistent | awk '{print tolower($2)}')"
+	for i in $(seq 0 128) ; do
+		handle="$(printf '0x%x' "$((0x81010010 + i))")"
+		echo "$all_handles" | grep -q "$handle" || {
+			echo "$handle"
+			return 0
+		}
+	done
+	echo "no available persistent slots"
+	return $CODE_NO_SPACE
+}
+
+function get_key_algo() {
+	case "$1" in
+		rsa)
+			echo "rsa"
+			;;
+		ecdsa)
+			echo "ecc"
+			;;
+		*)
+			echo "unsupported key type $1"
+			return $CODE_KEY_NOT_SUPPORTED
+			;;
+	esac
+}
+
+function import_key() {
+	local hash
+	local key_path="$1"
+	hash="$(get_hash "$key_path")"
+	local working_dir="${TPM2_IMPORTER_DATA_DIR}/${hash}"
+	mkdir -p "$working_dir"
+	local key_type key_algo
+
+	key_type="$(get_key_type "$key_path")"  || { rc=$?; echo "$key_type"; return $rc; }
+	key_algo="$(get_key_algo "$key_type")" || { rc=$?; echo "$key_algo"; return $rc; }
+
+
+	tpm2_import -C $TPM_MANAGER_PRIMARY_KEY_HANDLE -G "$key_algo" -i "$key_path" -r "$working_dir/key.priv" -u "$working_dir/key.pub" > /dev/null 2>&1 || {
+		echo "failed to import key."
+		return $CODE_IMPORT_FAILED
+	}
+	tpm2_load -C $TPM_MANAGER_PRIMARY_KEY_HANDLE -u "$working_dir/key.pub" -r "$working_dir/key.priv" -c "$working_dir/imported.ctx" > /dev/null 2>&1 || {
+		echo "failed to load key."
+		return $CODE_IMPORT_FAILED
+	}
+	local slot
+	slot="$(find_available_persistent_slot)" || { rc=$?; echo "$slot"; return $rc; }
+
+	tpm2_evictcontrol -C o -c "$working_dir/imported.ctx" "$slot" > /dev/null 2>&1 || {
+		rm -r "$working_dir"
+		echo "failed to evict key."
+		return $CODE_NO_SPACE
+	}
+	rm "$working_dir/imported.ctx"
+	echo "$slot" > "$working_dir/handle"
+	printf "# DON'T PANIC\n# This file is a placeholder and is mostly harmless\n# The key is securely stored in the TPM2 at %s\n" "$slot" > "$key_path" # destroy old key, keeping just the file path for certificate manager
+	echo "$slot"
+	return 0
+}
+
+function get_handle() {
+	local handle
+	local hash
+	hash="$(get_hash "$1")"
+	[ ! -f "${TPM2_IMPORTER_DATA_DIR}/${hash}/handle" ] && {
+		echo "key is not in TPM2"
+		return $CODE_KEY_NOT_IN_TPM
+	}
+	cat "${TPM2_IMPORTER_DATA_DIR}/${hash}/handle" 
+}
+
+
+function print_usage() {
+	cat << EOF
+Usage: "$(basename "$0")" <keyfile> <command>
+       "$(basename "$0")" <keyfile> import        # import key to TPM2
+       "$(basename "$0")" <keyfile> delete        # delete key from TPM2
+       "$(basename "$0")" <keyfile> get_handle    # get handle of key in TPM2
+EOF
+}
+
+[ $# -ne 2 ] && {
+	print_usage
+	exit $INVALID_OPTIONS
+}
+
+[ -f "$1" ] || {
+	echo "file '$1' not found"
+	exit $INVALID_OPTIONS
+}
+
+mkdir -p "$TPM2_IMPORTER_DATA_DIR"
+chmod 600 "$TPM2_IMPORTER_DATA_DIR"
+
+case "$2" in
+	import)
+		handle="$(get_handle "$1")" && {
+			echo "key '$1' already in TPM2 at $handle"
+			exit 0
+		}
+		import_key "$1"
+		;;
+	delete)
+		handle="$(get_handle "$1")" || { rc=$?; echo "$handle"; return $rc; }
+		echo "$handle" | grep -Eq '^0x[0-9]*$' || {
+			echo "key '$1' is not in TPM2"
+			exit $CODE_KEY_NOT_IN_TPM
+		}
+		[ $((0x81010010)) -le "$((handle))" -a $((0x81010010+128)) -ge "$((handle))" ] || {
+			echo "key '$1' is not in TPM2"
+			exit $CODE_KEY_NOT_IN_TPM
+		}
+		hash="$(get_hash "$1")"
+		tpm2_evictcontrol -c "$handle" > /dev/null 2>&1 || {
+			echo "failed to delete key."
+			exit $CODE_TPM_DELETE_FAILED
+		}
+		rm -r "${TPM2_IMPORTER_DATA_DIR}/${hash}"
+		echo "" > "$1" # remove internal tracking info from key
+		echo "key '$1'[$handle] removed from the TPM2"
+		;; 
+	get_handle)
+		get_handle "$1"
+		;;
+	*)
+		echo "unknown command '$2'"
+		print_usage
+		exit $INVALID_OPTIONS
+		;;
+esac
+

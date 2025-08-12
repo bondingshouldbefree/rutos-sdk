@@ -1,0 +1,4 @@
+{
+	"user": "dnp3_client",
+	"publish": [ "dnp3_client",  "dnp3_client.*" ]
+}

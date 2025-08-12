@@ -1,0 +1,25 @@
+config system 'system'
+	option timezone 'UTC'
+	option ttylogin '0'
+	option size '128'
+	option urandom_seed '0'
+
+config timeserver 'ntp'
+	option zoneName 'UTC'
+	option enabled '0'
+	option enable_server '0'
+	list server '0.pool.ntp.org'
+	list server '1.pool.ntp.org'
+	list server '2.pool.ntp.org'
+	list server '3.pool.ntp.org'
+
+config debug 'debug'
+	option sms_utils_debug_level '4'
+
+config remote_logger 'default'
+
+config banner 'banner'
+	option enabled '0'
+
+config ledman "ledman"
+	option enabled '1'

@@ -1,0 +1,49 @@
+#!/bin/sh
+
+. /usr/share/libubox/jshn.sh
+
+show () {
+	json_init
+	json_add_string output "$1"
+	json_add_string exit_code "$2"
+	json_dump
+}
+
+do_exec() {
+	file="$1"
+	[ ! -x $file ] && {
+		show "Bad file $file" 1
+		exit 0
+	}
+	read input;
+	json_load "$input"
+	args=""
+	json_select args
+	json_get_keys keys
+	for key in $keys; do
+		json_get_var entry "$key"
+		args="$args $entry"
+	done
+
+	res="$($file $args)"
+	code=$?
+	show "$res" "$code"
+}
+
+main () {
+	case "$1" in
+		list) echo '{ "format": { "args": [] }, "sme": { "args": [] } }' ;;
+		call)
+			case "$2" in
+				format)
+					do_exec /bin/fmt-usb-msd.sh
+				;;
+				sme)
+					do_exec /bin/sme.sh
+				;;
+			esac
+		;;
+	esac
+}
+
+main "$@"

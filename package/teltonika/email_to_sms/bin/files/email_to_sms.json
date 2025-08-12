@@ -1,0 +1,16 @@
+{
+    "user": "ets",
+    "access": {
+        "gsm": {
+            "methods": [
+                "info"
+            ]
+        },
+        "gsm.modem*": {
+            "methods": [
+                "info",
+                "send_sms"
+            ]
+        }
+    }
+}

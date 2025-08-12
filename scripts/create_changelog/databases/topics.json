@@ -1,0 +1,1381 @@
+[
+  {
+    "category": "Services",
+    "name": "Netbird",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "high_storage"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Package Manager",
+    "depends": []
+  },
+  {
+    "category": "Services",
+    "name": "Auto Reply",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Traffic Logging",
+    "depends": []
+  },
+  {
+    "category": "Network",
+    "name": "Data limit",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "FreeRADIUS",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      },
+      {
+        "type": "hw",
+        "name": "flash16mb",
+        "value": false
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "OpenConnect",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "flash16mb",
+        "value": false
+      },
+      {
+        "type": "hw",
+        "name": "is_access_point",
+        "value": false
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "MQTT Broker",
+    "depends": []
+  },
+  {
+    "category": "Services",
+    "name": "Power Control",
+    "depends": [
+      {
+        "type": "device",
+        "name": "ATRM50"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Java VM",
+    "depends": []
+  },
+  {
+    "category": "Services",
+    "name": "SMS Forwarding",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Email to SMS",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Post/Get - Mobile",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Post/Get - I/O",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Time Zone Database",
+    "depends": []
+  },
+  {
+    "category": "Services",
+    "name": "Messages",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "SD & USB Tools",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "usb"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "MQTT Broker Bridge",
+    "depends": []
+  },
+  {
+    "category": "Network",
+    "name": "Network usage",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      },
+      {
+        "type": "hw",
+        "name": "flash16mb",
+        "value": false
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "PPTP",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Network",
+    "name": "BFD",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "EoIP",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Speed Test",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Event juggler",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Network Shares",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "usb"
+      }
+    ]
+  },
+  {
+    "category": "Network",
+    "name": "VRF",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "System Users",
+    "depends": []
+  },
+  {
+    "category": "Network",
+    "name": "VXLAN",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "TR-069",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Impulse Counter",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "ios"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "MBus Gateway",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mbus"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Password Policy",
+    "depends": []
+  },
+  {
+    "category": "System",
+    "name": "Profiles",
+    "depends": []
+  },
+  {
+    "category": "Services",
+    "name": "Bluetooth",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "bluetooth"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "NTP Client",
+    "depends": []
+  },
+  {
+    "category": "Services",
+    "name": "AWS IoT Core",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Auto Reboot",
+    "depends": []
+  },
+  {
+    "category": "Services",
+    "name": "Console",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "serial_usb"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Modbus TCP over Serial Gateway",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "serial_usb"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Python3",
+    "depends": [
+      {
+        "type": "family",
+        "name": "RUT30X"
+      },
+      {
+        "type": "family",
+        "name": "RUTX"
+      },
+      {
+        "type": "family",
+        "name": "TRB1"
+      },
+      {
+        "type": "device",
+        "name": "RUTC50"
+      },
+      {
+        "type": "family",
+        "name": "RUT9M"
+      },
+      {
+        "type": "family",
+        "name": "RUTM"
+      },
+      {
+        "type": "device",
+        "name": "OTD500"
+      },
+      {
+        "type": "family",
+        "name": "ATRM"
+      },
+      {
+        "type": "family",
+        "name": "TRB5"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "USB client"
+  },
+  {
+    "category": "System",
+    "name": "CLI",
+    "depends": []
+  },
+  {
+    "category": "Services",
+    "name": "L2TPv3",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Tinc",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Wireguard",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Network",
+    "name": "Curl",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      },
+      {
+        "type": "family",
+        "name": "TAP"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Docker",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "high_storage"
+      }
+    ]
+  },
+  {
+    "category": "Network",
+    "name": "NAT64",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "flash16mb",
+        "value": false
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "L2TP",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Side Widget",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Backup"
+  },
+  {
+    "category": "Services",
+    "name": "Hotspot 2.0",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      },
+      {
+        "type": "hw",
+        "name": "wifi"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "RutOS"
+  },
+  {
+    "category": "System",
+    "name": "USB",
+    "depends": [
+      {
+        "type": "family",
+        "name": "TRB1"
+      },
+      {
+        "type": "family",
+        "name": "TRB5"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Security"
+  },
+  {
+    "category": "Network",
+    "name": "Devices",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "NTP"
+  },
+  {
+    "category": "Services",
+    "name": "Tailscale",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      },
+      {
+        "type": "hw",
+        "name": "flash16mb",
+        "value": false
+      },
+      {
+        "type": "hw",
+        "name": "is_trb1",
+        "value": false
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Web Filter",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Ledman"
+  },
+  {
+    "category": "Services",
+    "name": "RMS"
+  },
+  {
+    "category": "Services",
+    "name": "OPC UA Client",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "BACnet",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "rs485"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "I/O Juggler",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "ios"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Mosquitto",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "SSL/TLS"
+  },
+  {
+    "category": "Network",
+    "name": "Channel Analysis",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "wifi"
+      },
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "SSTP",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "BGP",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Events Log"
+  },
+  {
+    "category": "Services",
+    "name": "DNP3 Outstation",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Over IP",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "serial_mbus"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "MQTT Publisher",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Modbus Client",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "DNP3 Client",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "System Status"
+  },
+  {
+    "category": "System",
+    "name": "Memory Expansion",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "usb"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "SSH"
+  },
+  {
+    "category": "Services",
+    "name": "OPC UA Server",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Wifi Scanner",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "wifi"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Package Manager",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "IPsec",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Kernel"
+  },
+  {
+    "category": "System",
+    "name": "Boot"
+  },
+  {
+    "category": "Network",
+    "name": "802.1X Server",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "has_dot1x_server"
+      }
+    ]
+  },
+  {
+    "category": "Network",
+    "name": "802.1X Client",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "has_dot1x_client"
+      }
+    ]
+  },
+  {
+    "category": "Network",
+    "name": "HTTPS DNS Proxy",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Network",
+    "name": "Ports Settings",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "port_link"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Azure IoT Hub",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "NTRIP",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "serial_usb"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "SNMP",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "DMVPN",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "DLMS",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Administration"
+  },
+  {
+    "category": "Services",
+    "name": "Dynamic DNS",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "DLNA",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "GRE",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Overview"
+  },
+  {
+    "category": "Services",
+    "name": "SMS Gateway",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Modbus Server",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "MQTT Modbus Gateway",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Zerotier",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "WebUI"
+  },
+  {
+    "category": "System",
+    "name": "Troubleshoot"
+  },
+  {
+    "category": "Services",
+    "name": "Call Utilities",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      },
+      {
+        "type": "hw",
+        "name": "modem_low_power",
+        "value": false
+      },
+      {
+        "type": "hw",
+        "name": "modem_data_only",
+        "value": false
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "SMS Utilities",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Setup Wizard",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Recipients",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Network",
+    "name": "Dynamic routes",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Mobile Utilities",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      }
+    ]
+  },
+  {
+    "category": "Services",
+    "name": "Data to Server",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "IP Block",
+    "category": "System"
+  },
+  {
+    "name": "Update Firmware",
+    "category": "System"
+  },
+  {
+    "name": "Stunnel",
+    "category": "Services",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "Certificates",
+    "category": "System",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "SMPP",
+    "category": "Services",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "OpenVPN",
+    "category": "Services",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "Mobile",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      }
+    ]
+  },
+  {
+    "name": "GPS",
+    "category": "Services",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "gps"
+      }
+    ]
+  },
+  {
+    "name": "Access Control",
+    "category": "System"
+  },
+  {
+    "name": "API Core",
+    "category": "System"
+  },
+  {
+    "name": "UI Core",
+    "category": "System"
+  },
+  {
+    "name": "PAM",
+    "category": "System",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "Hotspot",
+    "category": "Services",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "Email Relay",
+    "category": "Services",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "MBus Client",
+    "category": "Services",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mbus"
+      }
+    ]
+  },
+  {
+    "name": "Input/Output",
+    "category": "Services",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "ios"
+      }
+    ]
+  },
+  {
+    "name": "Modem Control",
+    "category": "Services",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "mobile"
+      },
+      {
+        "type": "hw",
+        "name": "serial_usb"
+      }
+    ]
+  },
+  {
+    "name": "Wireless",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "wifi"
+      }
+    ]
+  },
+  {
+    "name": "DHCP server",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "DNS",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "Firewall",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "IGMP Proxy",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "Multi AP",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      },
+      {
+        "type": "hw",
+        "name": "wifi"
+      }
+    ]
+  },
+  {
+    "name": "Multi WAN",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      },
+      {
+        "type": "hw",
+        "name": "is_trb5",
+        "value": false
+      }
+    ]
+  },
+  {
+    "name": "Network",
+    "category": "Network"
+  },
+  {
+    "name": "Port Mirroring",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "hw",
+        "name": "port_mirror"
+      }
+    ]
+  },
+  {
+    "name": "QOS",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "Realtime Traffic",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "Topology",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "RelayD",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      },
+      {
+        "type": "hw",
+        "name": "wifi"
+      }
+    ]
+  },
+  {
+    "name": "Static Routes",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "SQM",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "SSHFS",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "UDP Relay",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "VLAN",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "name": "VRRP",
+    "category": "Network",
+    "depends": [
+      {
+        "type": "family",
+        "name": "Router"
+      }
+    ]
+  },
+  {
+    "category": "System",
+    "name": "Custom Scripts",
+    "depends": []
+  }
+]

@@ -1,0 +1,23 @@
+{
+	"services/serial_utilities": {
+		"title": "Serial Utilities",
+		"index": 40,
+		"depends": {
+			"board": {
+				"anyOf": ["has_mbus", "has_usb", "has_rs232", "has_rs485", "has_console"]
+			}
+		}
+	},
+	"services/serial_utilities/modem_control": {
+		"title": "Modem Control",
+		"index": 10,
+		"view": "services/ModemControl",
+		"acls": [ "services/serial_utilities/modem_control" ],
+		"depends": {
+			"board": {
+				"allOf": ["has_mobile"],
+				"notAnyOf": ["has_mbus"]
+			}
+		}
+	}
+}

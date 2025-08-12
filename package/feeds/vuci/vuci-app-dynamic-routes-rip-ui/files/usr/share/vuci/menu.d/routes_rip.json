@@ -1,0 +1,41 @@
+{
+  "network/routes": {
+    "title": "Routing",
+    "index": 80
+  },
+  "network/routes/dynamic_routes": {
+    "title": "Dynamic Routes",
+    "index": 30
+  },
+  "network/routes/dynamic_routes/proto_rip": {
+    "title": "RIP",
+    "index": 20,
+    "view": "network/ProtoRip",
+    "acls": ["network/routes/dynamic_routes/proto_rip"],
+    "main_page": true,
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-ripd", "frr5-ripd"]
+      }
+    }
+  },
+  "status/routes": {
+    "title": "Routes",
+    "index": 35
+  },
+  "status/routes/dynamic": {
+    "title": "Dynamic",
+    "index": 20
+  },
+  "status/routes/dynamic/rip": {
+    "title": "RIP",
+    "index": 20,
+    "view": "status/ProtoRip",
+    "acls": ["status/routes/dynamic/rip"],
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-ripd", "frr5-ripd"]
+      }
+    }
+  }
+}

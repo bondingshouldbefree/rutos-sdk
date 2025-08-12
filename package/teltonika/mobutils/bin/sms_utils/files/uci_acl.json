@@ -1,0 +1,115 @@
+{
+    "mode": "blacklist",
+    "access": {
+        "etherwake": {
+            "etherwake": {
+                "*": {
+                    "pathes": 110,
+                    "sudo": 110
+                }
+            }
+        },
+        "buttons": {
+            "button": {
+                "*": {
+                    "handler": 110
+                }
+            }
+        },
+        "dhcp": {
+            "dnsmasq": {
+                "*": {
+                    "dhcpscript": 110
+                }
+            }
+        },
+        "firewall": {
+            "include": 110
+        },
+        "profiles": {
+            "profile": {
+                "*": {
+                    "archive": 110,
+                    "md5file": 110
+                }
+            },
+            "*": {
+                "general": {
+                    "path": 110
+                }
+            }
+        },
+        "snmpd": {
+            "agent": {
+                "general": {
+                    "mibfile": 110
+                }
+            },
+            "exec": {
+                "*": {
+                    "name": 110,
+                    "prog": 110,
+                    "args": 110
+                }
+            }
+        },
+        "privoxy": {
+            "privoxy": {
+                "*": {
+                    "confdir": 110
+                }
+            }
+        },
+        "rpcd": 255,
+        "uhttpd": {
+            "uhttpd": {
+                "*": {
+                    "no_dirlists": 110,
+                    "ubus_prefix": 110,
+                    "cgi_prefix": 110,
+                    "lua_prefix": 110,
+                    "index_page": 110,
+                    "error_page": 110,
+                    "home": 110
+                }
+            }
+        },
+        "ulogd": {
+            "ulogd": {
+                "global": {
+                    "plugin": 110,
+                    "stack": 110
+                }
+            },
+            "emu": {
+                "*": {
+                    "file": 110
+                }
+            }
+        },
+        "wireless": {
+            "wifi-device": {
+                "*": {
+                    "path": 110
+                }
+            }
+        },
+        "fstab": 255,
+        "vuci": {
+            "core": {
+                "*": {
+                    ".acl": 110,
+                    "ubus_prefix": 255
+                }
+            }
+        },
+        "certificates": 255,
+        "samba": {
+            "user": {
+                "*": {
+                    "username": 110
+                }
+            }
+        }
+    }
+}

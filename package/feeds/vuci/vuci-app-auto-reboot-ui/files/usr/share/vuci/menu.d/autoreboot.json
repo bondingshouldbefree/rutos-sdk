@@ -1,0 +1,22 @@
+{
+  "system/maintenance": {
+    "title": "Maintenance",
+    "index": 20
+  },
+  "system/maintenance/auto_reboot": {
+    "title": "Auto Reboot",
+    "index": 10
+  },
+  "system/maintenance/auto_reboot/ping_reboot": {
+    "title": "Ping/Wget Reboot",
+    "index": 1,
+    "view": "services/PingReboot",
+    "acls": ["system/maintenance/auto_reboot/ping_reboot"]
+  },
+  "system/maintenance/auto_reboot/reboot_scheduler": {
+    "title": "Reboot Scheduler",
+    "index": 2,
+    "view": "services/PeriodicReboot",
+    "acls": ["system/maintenance/auto_reboot/reboot_scheduler"]
+  }
+}

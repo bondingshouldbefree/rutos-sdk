@@ -1,0 +1,6 @@
+#!/bin/sh
+
+[ -e "/etc/config/dot1x" ] || exit 0
+uci show dot1x.lan1 > /dev/null 2>&1 || exit 0
+sed -i "s/config port 'lan1'/config port '_lan1'/g" /etc/config/dot1x
+exit 0

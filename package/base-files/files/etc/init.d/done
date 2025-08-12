@@ -1,0 +1,124 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2006 OpenWrt.org
+
+START=16
+REBOOT_FILE_PATH="/log/reboot"
+
+_check_paths() {
+	for sub_path in $1; do
+		[ ! -d $sub_path ] && return 1
+	done
+
+	return 0
+}
+
+check_passed() {
+	echo "$1 passed" > dev/kmsg
+	uci -q set system.$1.counter='0'
+	uci commit system
+
+	return 0
+}
+
+handle_usbhub_reset() {
+		gpio_path="/sys/class/gpio/$3/value"
+		[ ! -f "$gpio_path" ] && echo "Error: Couldn't find $3 gpio" && return
+
+		echo "Powering off modem(s)" > dev/kmsg
+		mctl -s -d -a
+		for count in $(seq 3); do
+			echo "USB hub not detected, resetting" > /dev/kmsg
+			echo 1 > $gpio_path
+			sleep 1
+			echo 0 > $gpio_path
+			sleep 2
+			_check_paths "$2" && {
+				echo "$1 passed" > dev/kmsg
+				echo "Powering on modems" > dev/kmsg
+				mctl -p -d -a &
+				return
+			}
+		done
+
+
+		echo "$1 failed" > dev/kmsg
+		echo "Powering on modems" > dev/kmsg
+		mctl -p -d -a &
+}
+
+handle_reboot() {
+	disable="$(uci -q get system.modem.disable)"
+	name=$1
+
+	if [ $name = "usbcheck" ] && [ -n "$disable" ] && [ "$disable" -eq 1 ]; then
+		check_passed "$name"
+	else
+		for _ in $(seq 0 5); do
+			[ -d "$2" ] && check_passed "$name" && return 0
+			sleep 5
+		done
+
+		cnt=$(uci -q get system.$name.counter)
+		max=$(uci -q get system.$name.max)
+		if [ "$max" -gt "$cnt" ]; then
+			cnt=$((cnt+1))
+			uci -q set system.$name.counter=$cnt
+			uci commit system
+			echo "$name failed - rebooting system, count $cnt" > dev/kmsg
+			sync && reboot -f
+		else
+			echo "$name failed after $cnt count" > dev/kmsg
+		fi
+	fi
+}
+
+add_event() {
+	ubus call log write_ext "{
+			\"event\":\"$1\",
+			\"sender\":\"Startup\",
+			\"table\":1,
+			${2:+\"priority\":$2,}
+			\"write_db\":1
+		}"
+}
+
+add_startup_event() {
+	if [ -f "$REBOOT_FILE_PATH" ]; then
+		#Some applications need an indication that the device has rebooted.
+		#move the file to a temporary location instead of deleting it
+		mv "$REBOOT_FILE_PATH" /tmp/reboot
+	else
+		add_event "Device startup after unexpected shutdown"
+	fi
+
+	add_event "Device startup completed" 5
+}
+
+boot() {
+	mount_root done
+	rm -f /overlay/sysupgrade.tgz && sync
+
+	index=1
+	while [ $index -le 5 ]; do
+		_line=$(jsonfilter -i /etc/board.json -e "@.checks[$((index - 1))]")
+		[ -z "$_line" ] && break
+
+		name=$(jsonfilter -s "$_line" -e "@.name")
+		path=$(jsonfilter -s "$_line" -e "@.path")
+		action=$(jsonfilter -s "$_line" -e "@.action")
+		[[ -z "$name" || -z "$path" || -z "$action" ]] && break
+
+		if ! _check_paths "$path" ; then
+			if [ "$name" = "usbhub_check" ]; then
+				handle_usbhub_reset "$name" "$path" "$action"
+			elif [ "$action" = "reboot" ]; then
+				handle_reboot "$name" "$path"
+			fi
+		else
+			[ "$action" = "reboot" ] && check_passed "$name"
+		fi
+		index=$((index + 1))
+	done
+
+	add_startup_event
+}

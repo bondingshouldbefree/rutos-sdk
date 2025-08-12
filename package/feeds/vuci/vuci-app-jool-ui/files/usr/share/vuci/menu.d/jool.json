@@ -1,0 +1,8 @@
+{
+  "network/jool": {
+    "title": "NAT64",
+    "index": 160,
+    "acls": ["network/jool"],
+    "view": "network/Jool"
+  }
+}

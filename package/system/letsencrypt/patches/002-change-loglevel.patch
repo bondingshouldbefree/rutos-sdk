@@ -1,0 +1,11 @@
+--- a/letsencrypt.sh
++++ b/letsencrypt.sh
+@@ -105,7 +105,7 @@ VERSION_DATE="2024-07-09"
+ # The meaningful User-Agent to help finding related log entries in the ACME server log
+ USER_AGENT="bruncsak/ght-acme.sh $VERSION_DATE"
+ 
+-LOGLEVEL=1
++LOGLEVEL=0
+ 
+ # utility functions
+ 

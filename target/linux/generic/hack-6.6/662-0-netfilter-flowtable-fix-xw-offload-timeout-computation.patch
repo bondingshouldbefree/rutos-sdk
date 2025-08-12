@@ -1,0 +1,83 @@
+flow_offload_work_stats incorrectly computes new timeout values when nf_flowtable_time_stamp
+value is nearing an overflow.
+
+Redo flow_offload_work_stats to compare over difference with current time.
+Also, sprinkle READ_ONCE uses in places they were missing before.
+
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -324,7 +324,7 @@ EXPORT_SYMBOL_GPL(flow_offload_refresh);
+ 
+ static inline bool nf_flow_has_expired(const struct flow_offload *flow)
+ {
+-	return nf_flow_timeout_delta(flow->timeout) <= 0;
++	return nf_flow_timeout_delta(READ_ONCE(flow->timeout)) <= 0;
+ }
+ 
+ static void flow_offload_del(struct nf_flowtable *flow_table,
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -932,29 +932,45 @@ static void flow_offload_work_del(struct
+ 	set_bit(NF_FLOW_HW_DEAD, &offload->flow->flags);
+ }
+ 
+-static void flow_offload_tuple_stats(struct flow_offload_work *offload,
++static int flow_offload_tuple_stats(struct flow_offload_work *offload,
+ 				     enum flow_offload_tuple_dir dir,
+ 				     struct flow_stats *stats)
+ {
+-	nf_flow_offload_tuple(offload->flowtable, offload->flow, NULL, dir,
++	return nf_flow_offload_tuple(offload->flowtable, offload->flow, NULL, dir,
+ 			      offload->flowtable->priority,
+ 			      FLOW_CLS_STATS, stats,
+ 			      &offload->flowtable->flow_block.cb_list);
+ }
+ 
++static void flow_offload_update_timeout(struct flow_offload *flow, u32 timeout) {
++	u32 cur = READ_ONCE(flow->timeout);
++	int cur_delta = nf_flow_timeout_delta(cur);
++	int new_delta;
++
++	timeout += flow_offload_get_timeout(flow);
++	new_delta = nf_flow_timeout_delta(timeout);
++
++	if (new_delta > cur_delta)
++		WRITE_ONCE(flow->timeout, timeout);
++}
++
+ static void flow_offload_work_stats(struct flow_offload_work *offload)
+ {
++	struct flow_offload *flow = offload->flow;
+ 	struct flow_stats stats[FLOW_OFFLOAD_DIR_MAX] = {};
+-	u64 lastused;
++	int ret;
++
++	ret = flow_offload_tuple_stats(offload, FLOW_OFFLOAD_DIR_ORIGINAL, &stats[0]);
++	if (ret)
++		flow_offload_update_timeout(flow, stats[0].lastused);
+ 
+-	flow_offload_tuple_stats(offload, FLOW_OFFLOAD_DIR_ORIGINAL, &stats[0]);
+-	if (test_bit(NF_FLOW_HW_BIDIRECTIONAL, &offload->flow->flags))
+-		flow_offload_tuple_stats(offload, FLOW_OFFLOAD_DIR_REPLY,
++	if (test_bit(NF_FLOW_HW_BIDIRECTIONAL, &offload->flow->flags)) {
++		ret = flow_offload_tuple_stats(offload, FLOW_OFFLOAD_DIR_REPLY,
+ 					 &stats[1]);
+ 
+-	lastused = max_t(u64, stats[0].lastused, stats[1].lastused);
+-	offload->flow->timeout = max_t(u64, offload->flow->timeout,
+-				       lastused + flow_offload_get_timeout(offload->flow));
++	if (ret)
++		flow_offload_update_timeout(flow, stats[1].lastused);
++	}
+ 
+ 	if (offload->flowtable->flags & NF_FLOWTABLE_COUNTER) {
+ 		if (stats[0].pkts)
+@@ -1067,7 +1083,7 @@ void nf_flow_offload_stats(struct nf_flo
+ 	struct flow_offload_work *offload;
+ 	__s32 delta;
+ 
+-	delta = nf_flow_timeout_delta(flow->timeout);
++	delta = nf_flow_timeout_delta(READ_ONCE(flow->timeout));
+ 	if ((delta >= (9 * flow_offload_get_timeout(flow)) / 10))
+ 		return;
+ 

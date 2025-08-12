@@ -1,0 +1,199 @@
+#include "qcom-ipq4018-rutx-STM32.dtsi"
+
+/ {
+	model = "RUTX12 STM32";
+
+	soc {
+		gpio-export {
+			compatible = "gpio-export";
+			#size-cells = <0>;
+
+			gpio_modem_reset {
+				gpio-export,name = "modem_reset";
+				gpio-export,output = <0>;
+				gpios = <&stm32_io 21 GPIO_ACTIVE_HIGH>;
+			};
+
+			gpio_modem_power {
+				gpio-export,name = "modem_power";
+				gpio-export,output = <0>;
+				gpios = <&stm32_io 20 GPIO_ACTIVE_HIGH>;
+			};
+
+			gpio_modem2_reset {
+				gpio-export,name = "modem2_reset";
+				gpio-export,output = <0>;
+				gpios = <&stm32_io 13 GPIO_ACTIVE_HIGH>;
+			};
+
+			gpio_modem2_power {
+				gpio-export,name = "modem2_power";
+				gpio-export,output = <0>;
+				gpios = <&stm32_io 14 GPIO_ACTIVE_HIGH>;
+			};
+		};
+
+		leds {
+			compatible = "gpio-leds";
+
+			led_wan_sim1 {
+				label = "wan_sim_1";
+				gpios = <&stm32_io 0 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_sim2 {
+				label = "wan_sim_2";
+				gpios = <&stm32_io 1 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_eth {
+				label = "wan_eth_3";
+				gpios = <&stm32_io 3 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_wifi {
+				label = "wan_wifi_4";
+				gpios = <&stm32_io 2 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_2 {
+				label = "mob_gen_2";
+				gpios = <&stm32_io 4 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_3 {
+				label = "mob_gen_3";
+				gpios = <&stm32_io 5 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_4 {
+				label = "mob_gen_4";
+				gpios = <&stm32_io 6 GPIO_ACTIVE_HIGH>;
+			};
+
+			led2_gen_2 {
+				label = "mob2_gen_2";
+				gpios = <&stm32_io 32 GPIO_ACTIVE_HIGH>;
+			};
+
+			led2_gen_3 {
+				label = "mob2_gen_3";
+				gpios = <&stm32_io 33 GPIO_ACTIVE_HIGH>;
+			};
+
+			led2_gen_4 {
+				label = "mob2_gen_4";
+				gpios = <&stm32_io 34 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_ssid_1 {
+				label = "mob_ssid_1";
+				gpios = <&stm32_io 7 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_ssid_3 {
+				label = "mob_ssid_3";
+				gpios = <&stm32_io 9 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_ssid_5 {
+				label = "mob_ssid_5";
+				gpios = <&stm32_io 11 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led2_ssid_1 {
+				label = "mob2_ssid_1";
+				gpios = <&stm32_io 31 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led2_ssid_3 {
+				label = "mob2_ssid_3";
+				gpios = <&stm32_io 30 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led2_ssid_5 {
+				label = "mob2_ssid_5";
+				gpios = <&stm32_io 29 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_wifi_24 {
+				label = "wifi_gen_2";
+				gpios = <&stm32_io 19 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wifi_50 {
+				label = "wifi_gen_5";
+				gpios = <&stm32_io 18 GPIO_ACTIVE_HIGH>;
+			};
+		};
+	};
+
+	tlt_gpios { // Modify according to wiki page "DTS syntax with Libgpiod changes"
+		gpiochip_info {
+			hw_0 {
+				hwver = <0>;
+				gpiochip_count = <2>;
+
+				gpiochip_0 = <100>; // Built-in
+				gpiochip_1 = <37>;  // STM32 expander
+			};
+		};
+
+		ioman {
+			GPIO_123 {
+				compatible_versions = <0 3>;
+				line_name = "GPIO_OUT_1";
+			};
+			GPIO_124 {
+				compatible_versions = <0 3>;
+				line_name = "GPIO_IN_1";
+				active_low;
+			};
+		};
+
+		misc {
+			GPIO_120 {
+				compatible_versions = <0 3>;
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_114 {
+				compatible_versions = <0 3>;
+				line_name = "GPIO_MODEM_POWER_2";
+			};
+			GPIO_121 {
+				compatible_versions = <0 3>;
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_113 {
+				compatible_versions = <0 3>;
+				line_name = "GPIO_MODEM_RESET_2";
+			};
+		};
+	};
+};
+
+&mnfinfo {
+	simpin3 {
+		reg = <&config_rw 0x20 0x8>;
+		type = "digit";
+		default = "";
+		sec;
+	};
+
+	simpin4 {
+		reg = <&config_rw 0x30 0x8>;
+		type = "digit";
+		default = "";
+		sec;
+	};
+
+	sim_cfg {
+		default = "0210000_0000000_0110000_0000000";
+	};
+};

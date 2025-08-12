@@ -1,0 +1,1 @@
+{"network/jool":{"description":"NAT64 (Jool) configuration","read":{"api":{"/jool/*":["*"],"/interfaces/basic/status/*":["name"],"/firewall/zones/config/*":["name","network"],"/routes/status/*":["*"]}},"write":{"api":["/jool/*"]}}}

@@ -1,0 +1,33 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+fix_conf() {
+    local sid="$1"
+    local config="$2"
+    local opts="$3"
+    [ "$config" = "network" ] && {
+        config_get proto "$sid" "proto" ""
+        [ "$proto" != "pptp" ] && return
+    }
+    config_get mppe "$sid" "mppe" ""
+    config_get mppe_encryption "$sid" "mppe_encryption" ""
+    config_get pptp_options "$sid" "pptp_options" ""
+    [ -z "$mppe" ] && uci_set "$config" "$sid" "mppe" "stateless"
+    [ -z "$mppe_encryption" ] && uci_add_list "$config" "$sid" "mppe_encryption" "128"
+    if [ -z "$pptp_options" ]; then
+        IFS=';'
+        for i in $opts; do
+            uci_add_list "$config" "$sid" "pptp_options" "$i"
+        done
+        unset IFS
+    fi
+}
+
+config_load "pptpd"
+config_foreach fix_conf "service" "pptpd" "proxyarp;encounter;auth;lcp-echo-failure 3;lcp-echo-interval 60;default-asyncmap;mtu 1482;mru 1482;nobsdcomp;nodeflate;require-mschap-v2;refuse-chap;refuse-mschap;refuse-eap;refuse-pap;logfd 2"
+uci_commit pptpd
+
+config_load "network"
+config_foreach fix_conf "interface" "network" "refuse-pap;refuse-eap;refuse-chap;refuse-mschap;noipdefault;noauth;nobsdcomp;nodeflate;idle 0;maxfail 0"
+uci_commit network

@@ -1,0 +1,34 @@
+#!/bin/sh
+PPP_IPPARAM="$6"
+
+. /lib/netifd/netifd-proto.sh
+proto_init_update "$IFNAME" 1 1
+proto_set_keep 1
+[ -n "$PPP_IPPARAM" ] && {
+	[ -n "$IPLOCAL" ] && proto_add_ipv4_address "$IPLOCAL" 32 "" "${IPREMOTE:-2.2.2.2}"
+	[ -n "$IPREMOTE" ] && proto_add_ipv4_route 0.0.0.0 0 "$IPREMOTE"
+	[ -n "$DNS1" ] && proto_add_dns_server "$DNS1"
+	[ -n "$DNS2" -a "$DNS1" != "$DNS2" ] && proto_add_dns_server "$DNS2"
+	ubus call network reload
+}
+proto_send_update "$PPP_IPPARAM"
+
+[ -d /etc/ppp/ip-up.d ] && {
+	for SCRIPT in /etc/ppp/ip-up.d/*
+	do
+		[ -x "$SCRIPT" ] && "$SCRIPT" "$@"
+	done
+}
+
+set_status() {
+	json_init
+	json_add_string "conndate" "$(date +%s)"
+	json_add_string "local_ip" "$1"
+	json_add_string "remote_ip" "$2"
+	json_add_string "interface" "$3"
+	json_dump > /tmp/state/l2tp/"${3#l2tp-}".status
+}
+
+if [ -n "$IPLOCAL" ] || [ -n "$IPREMOTE" ]; then
+	set_status "$IPLOCAL" "$IPREMOTE" "$1"
+fi

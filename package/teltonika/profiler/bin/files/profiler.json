@@ -1,0 +1,8 @@
+{
+  "user": "profiler",
+  "access": {
+    "rpc-profile": {
+      "methods": ["change"]
+    }
+  }
+}

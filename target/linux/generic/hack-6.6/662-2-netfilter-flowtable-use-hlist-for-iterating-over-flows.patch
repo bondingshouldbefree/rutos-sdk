@@ -1,0 +1,157 @@
+Use a separate hlist instead of the hashtable for iterating over flow_offloads of a flowtable.
+With subsequent patches, flow_offloads won't be guaranteed to always have a tuple in the original
+direction, which broke the previous implementation, as it used tuple direction to de-duplicate
+flow_offloads.
+
+Writing to the list requires holding flows_lock. Reading only requires RCU read-side lock.
+
+Modifying the list inside the body of hlist_for_each_entry_rcu is uncommon but seems to be
+safe.
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -76,6 +76,8 @@ enum nf_flowtable_flags {
+ 
+ struct nf_flowtable {
+ 	struct list_head		list;
++	struct hlist_head		flows;
++	spinlock_t			flows_lock;
+ 	struct rhashtable		rhashtable;
+ 	int				priority;
+ 	const struct nf_flowtable_type	*type;
+@@ -179,6 +181,7 @@ enum flow_offload_type {
+ 
+ struct flow_offload {
+ 	struct flow_offload_tuple_rhash		tuplehash[FLOW_OFFLOAD_DIR_MAX];
++	struct hlist_node			list;
+ 	struct nf_conn				*ct;
+ 	unsigned long				flags;
+ 	u16					type;
+@@ -318,7 +321,7 @@ void nf_flow_table_free(struct nf_flowta
+ 
+ void flow_offload_teardown(struct flow_offload *flow);
+ 
+-int nf_flow_table_iterate(struct nf_flowtable *flow_table,
++void nf_flow_table_iterate(struct nf_flowtable *flow_table,
+                       void (*iter)(struct nf_flowtable *flowtable,
+                                    struct flow_offload *flow, void *data),
+                       void *data);
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -271,6 +271,18 @@ unsigned long flow_offload_get_timeout(s
+ 	return timeout;
+ }
+ 
++static void nf_flow_offload_register(struct nf_flowtable *flow_table, struct flow_offload *flow) {
++	spin_lock_bh(&flow_table->flows_lock);
++	hlist_add_head_rcu(&flow->list, &flow_table->flows);
++	spin_unlock_bh(&flow_table->flows_lock);
++}
++
++static void nf_flow_offload_deregister(struct nf_flowtable *flow_table, struct flow_offload *flow) {
++	spin_lock_bh(&flow_table->flows_lock);
++	hlist_del_rcu(&flow->list);
++	spin_unlock_bh(&flow_table->flows_lock);
++}
++
+ int flow_offload_add(struct nf_flowtable *flow_table, struct flow_offload *flow)
+ {
+ 	int err;
+@@ -300,6 +312,8 @@ int flow_offload_add(struct nf_flowtable
+ 		nf_flow_offload_add(flow_table, flow);
+ 	}
+ 
++	nf_flow_offload_register(flow_table, flow);
++
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_add);
+@@ -336,6 +350,7 @@ static void flow_offload_del(struct nf_f
+ 	rhashtable_remove_fast(&flow_table->rhashtable,
+ 			       &flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].node,
+ 			       nf_flow_offload_rhash_params);
++	nf_flow_offload_deregister(flow_table, flow);
+ 	flow_offload_free(flow);
+ }
+ 
+@@ -372,38 +387,18 @@ flow_offload_lookup(struct nf_flowtable
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_lookup);
+ 
+-int nf_flow_table_iterate(struct nf_flowtable *flow_table,
++void nf_flow_table_iterate(struct nf_flowtable *flow_table,
+ 		      void (*iter)(struct nf_flowtable *flowtable,
+ 				   struct flow_offload *flow, void *data),
+ 		      void *data)
+ {
+-	struct flow_offload_tuple_rhash *tuplehash;
+-	struct rhashtable_iter hti;
+ 	struct flow_offload *flow;
+-	int err = 0;
+-
+-	rhashtable_walk_enter(&flow_table->rhashtable, &hti);
+-	rhashtable_walk_start(&hti);
+-
+-	while ((tuplehash = rhashtable_walk_next(&hti))) {
+-		if (IS_ERR(tuplehash)) {
+-			if (PTR_ERR(tuplehash) != -EAGAIN) {
+-				err = PTR_ERR(tuplehash);
+-				break;
+-			}
+-			continue;
+-		}
+-		if (tuplehash->tuple.dir)
+-			continue;
+-
+-		flow = container_of(tuplehash, struct flow_offload, tuplehash[0]);
+ 
++	rcu_read_lock();
++	hlist_for_each_entry_rcu(flow, &flow_table->flows, list) {
+ 		iter(flow_table, flow, data);
+ 	}
+-	rhashtable_walk_stop(&hti);
+-	rhashtable_walk_exit(&hti);
+-
+-	return err;
++	rcu_read_unlock();
+ }
+ 
+ static bool nf_flow_custom_gc(struct nf_flowtable *flow_table,
+@@ -553,6 +548,9 @@ int nf_flow_table_init(struct nf_flowtab
+ 	queue_delayed_work(system_power_efficient_wq,
+ 			   &flowtable->gc_work, HZ);
+ 
++	INIT_HLIST_HEAD(&flowtable->flows);
++	spin_lock_init(&flowtable->flows_lock);
++
+ 	mutex_lock(&flowtable_lock);
+ 	list_add(&flowtable->list, &flowtables);
+ 	mutex_unlock(&flowtable_lock);
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -215,7 +215,6 @@ xt_flowoffload_hook_work(struct work_str
+ {
+ 	struct xt_flowoffload_table *table;
+ 	struct xt_flowoffload_hook *hook;
+-	int err;
+ 
+ 	table = container_of(work, struct xt_flowoffload_table, work.work);
+ 
+@@ -225,15 +224,12 @@ xt_flowoffload_hook_work(struct work_str
+ 		hook->used = false;
+ 	spin_unlock_bh(&hooks_lock);
+ 
+-	err = nf_flow_table_iterate(&table->ft, xt_flowoffload_check_hook,
+-				    NULL);
+-	if (err && err != -EAGAIN)
+-		goto out;
++	nf_flow_table_iterate(&table->ft, xt_flowoffload_check_hook,
++			      NULL);
+ 
+ 	if (!xt_flowoffload_cleanup_hooks(table))
+ 		return;
+ 
+-out:
+ 	queue_delayed_work(system_power_efficient_wq, &table->work, HZ);
+ }
+ 

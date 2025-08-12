@@ -1,0 +1,119 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2013 OpenWrt.org
+
+# start after and stop before networking
+START=05
+STOP=89
+PIDCOUNT=0
+
+USE_PROCD=1
+PROG=/sbin/logread
+
+validate_log_section() {
+	uci_load_validate system system "$1" "$2" \
+		'log_file:string' \
+		'log_compress:bool:1' \
+		'size:uinteger' \
+		'log_ip:string' \
+		'log_remote:bool:1' \
+		'log_port:port:514' \
+		'log_proto:or("tcp", "udp"):udp' \
+		'log_trailer_null:bool:0' \
+		'log_prefix:string' \
+		'log_hostname:bool:0' \
+		'log_size:uinteger'
+}
+
+validate_log_daemon() {
+	uci_load_validate system system "$1" "$2" \
+		'size:uinteger:0' \
+	    'log_size:uinteger:0' \
+		'log_buffer_size:uinteger:0'
+}
+
+start_service_daemon() {
+	local effective_size="${size}"
+
+	[ -z "$effective_size" ] || [ "$effective_size" -eq 0 ] &&
+        effective_size="$log_buffer_size"
+
+	[ -z "$effective_size" ] && effective_size=16
+	procd_open_instance
+	procd_set_param command "/sbin/logd"
+	procd_set_param user logd
+	procd_append_param command -S "${effective_size}"
+	procd_set_param respawn
+	procd_close_instance
+}
+
+start_service_remote() {
+	PIDCOUNT="$((PIDCOUNT + 1))"
+	local pid_file="/var/run/logread.${PIDCOUNT}.pid"
+
+	[ "$2" = 0 ] || {
+		echo "validation failed"
+		return 1
+	}
+	[ "${log_remote}" -ne 0 ] || return
+	[ -z "${log_ip}" ] && return
+
+	procd_open_instance
+	procd_set_param command "$PROG" -f -r "$log_ip" "${log_port}" -p "$pid_file"
+	case "${log_proto}" in
+	"udp") procd_append_param command -u ;;
+	"tcp") [ "${log_trailer_null}" -eq 1 ] && procd_append_param command -0 ;;
+	esac
+	[ "${log_hostname}" -eq 1 ] && procd_append_param command -h "$(uci_get system system hostname)"
+	[ -z "${log_prefix}" ] || procd_append_param command -P "${log_prefix}"
+	procd_close_instance
+}
+
+start_service_local() {
+	PIDCOUNT="$((PIDCOUNT + 1))"
+	local pid_file="/var/run/logread.${PIDCOUNT}.pid"
+	local log_dir
+
+	[ "$2" = 0 ] || {
+		echo "Validation failed for local logging"
+		return 1
+	}
+	[ -n "${log_file}" ] && {
+		# Create log directory if it does not exist
+		log_dir=$(dirname "${log_file}")
+		[ -d "${log_dir}" ] || mkdir -p "${log_dir}"
+		chown logd:logd "${log_dir}"
+	}
+
+	procd_open_instance
+	procd_set_param user logd
+	procd_set_param command "$PROG" -f -i -p "$pid_file"
+
+	local effective_size="${size}"
+	[ -z "$effective_size" ] || [ "$effective_size" -eq 0 ] &&
+        effective_size="${log_size}"
+
+	[ -n "${effective_size}" ] && procd_append_param command -S "$effective_size"
+	[ -n "${log_file}" ] && procd_append_param command -F "$log_file"
+	[[ "${log_compress}" -eq "1" && -n "${log_file}" ]] && procd_append_param command -c "$log_compress"
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+
+	if [ -n "$pid_file" ]; then
+		echo "PID file created: $pid_file"
+	else
+		echo "Failed to create PID file: $pid_file"
+	fi
+}
+
+service_triggers() {
+	procd_add_reload_trigger "system"
+	procd_add_validation validate_log_section
+}
+
+start_service() {
+	config_load system
+	config_foreach validate_log_daemon system start_service_daemon
+	config_foreach validate_log_section system start_service_local
+	config_foreach validate_log_section remote_logger start_service_remote
+	[ ! -e /dev/log ] && ln -s /var/run/logd/log /dev/log
+}

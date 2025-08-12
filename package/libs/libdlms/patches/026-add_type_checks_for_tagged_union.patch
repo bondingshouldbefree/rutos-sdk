@@ -1,0 +1,462 @@
+diff --git a/development/include/gxset.h b/development/include/gxset.h
+index 99d83ea..b192027 100644
+--- a/development/include/gxset.h
++++ b/development/include/gxset.h
+@@ -37,11 +37,8 @@
+ extern "C" {
+ #endif
+ 
+-#if defined(DLMS_IGNORE_MALLOC) || defined(DLMS_COSEM_EXACT_DATA_TYPES)
+-#include "../include/gxsetignoremalloc.h"
+-#else
+ #include "../include/gxsetmalloc.h"
+-#endif //DLMS_IGNORE_MALLOC
++
+ #include "gxobjects.h"
+ #include "dlmssettings.h"
+     int cosem_setValue(dlmsSettings* settings, gxValueEventArg *e);
+diff --git a/development/src/client.c b/development/src/client.c
+index 2b08c28..8a34da0 100644
+--- a/development/src/client.c
++++ b/development/src/client.c
+@@ -48,11 +48,7 @@
+ #include "../include/gxget.h"
+ #include "../include/dlms.h"
+ #include "../include/cosem.h"
+-#if defined(DLMS_IGNORE_MALLOC) || defined(DLMS_COSEM_EXACT_DATA_TYPES)
+-#include "../include/gxsetignoremalloc.h"
+-#else
+ #include "../include/gxsetmalloc.h"
+-#endif //DLMS_IGNORE_MALLOC
+ 
+ #ifndef DLMS_IGNORE_HDLC
+ int cl_snrmRequest(dlmsSettings* settings, message* messages)
+diff --git a/development/src/gxsetmalloc.c b/development/src/gxsetmalloc.c
+index 06c7098..00e7ba4 100644
+--- a/development/src/gxsetmalloc.c
++++ b/development/src/gxsetmalloc.c
+@@ -323,50 +323,54 @@ int updateSeasonProfile(gxArray* profile, dlmsVARIANT* data)
+     int ret = DLMS_ERROR_CODE_OK, pos;
+     gxSeasonProfile* sp = NULL;
+     obj_clearSeasonProfile(profile);
+-    dlmsVARIANT tm;
+-    dlmsVARIANT* tmp, * it;
+-    var_init(&tm);
+-    for (pos = 0; pos != data->Arr->size; ++pos)
+-    {
+-        sp = (gxSeasonProfile*)gxmalloc(sizeof(gxSeasonProfile));
+-        if (sp == NULL)
+-        {
+-            return DLMS_ERROR_CODE_OUTOFMEMORY;
+-        }
+-        ret = va_getByIndex(data->Arr, pos, &it);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        ret = va_getByIndex(it->Arr, 0, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        BYTE_BUFFER_INIT(&sp->name);
+-        bb_set2(&sp->name, tmp->byteArr, 0, bb_size(tmp->byteArr));
+ 
+-        ret = va_getByIndex(it->Arr, 1, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        ret = dlms_changeType2(tmp, DLMS_DATA_TYPE_DATETIME, &tm);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        time_copy(&sp->start, tm.dateTime);
+-        var_clear(&tm);
+-        ret = va_getByIndex(it->Arr, 2, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
++    if (data->vt == DLMS_DATA_TYPE_ARRAY && data->Arr != NULL) {
++        dlmsVARIANT tm;
++        dlmsVARIANT* tmp, * it;
++        var_init(&tm);
++        for (pos = 0; pos != data->Arr->size; ++pos)
+         {
+-            break;
++            sp = (gxSeasonProfile*)gxmalloc(sizeof(gxSeasonProfile));
++            if (sp == NULL)
++            {
++                return DLMS_ERROR_CODE_OUTOFMEMORY;
++            }
++            ret = va_getByIndex(data->Arr, pos, &it);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            ret = va_getByIndex(it->Arr, 0, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            BYTE_BUFFER_INIT(&sp->name);
++            bb_set2(&sp->name, tmp->byteArr, 0, bb_size(tmp->byteArr));
++
++            ret = va_getByIndex(it->Arr, 1, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            ret = dlms_changeType2(tmp, DLMS_DATA_TYPE_DATETIME, &tm);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            time_copy(&sp->start, tm.dateTime);
++            var_clear(&tm);
++            ret = va_getByIndex(it->Arr, 2, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            BYTE_BUFFER_INIT(&sp->weekName);
++            bb_set2(&sp->weekName, tmp->byteArr, 0, bb_size(tmp->byteArr));
++            arr_push(profile, sp);
+         }
+-        BYTE_BUFFER_INIT(&sp->weekName);
+-        bb_set2(&sp->weekName, tmp->byteArr, 0, bb_size(tmp->byteArr));
+-        arr_push(profile, sp);
+     }
++
+     if (ret != 0 && sp != NULL)
+     {
+         gxfree(sp);
+@@ -379,77 +383,81 @@ int updateWeekProfileTable(gxArray* profile, dlmsVARIANT* data)
+     int ret = DLMS_ERROR_CODE_OK, pos;
+     gxWeekProfile* wp = NULL;
+     obj_clearWeekProfileTable(profile);
+-    dlmsVARIANT* tmp, * it;
+-    for (pos = 0; pos != data->Arr->size; ++pos)
+-    {
+-        wp = (gxWeekProfile*)gxmalloc(sizeof(gxWeekProfile));
+-        if (wp == NULL)
+-        {
+-            ret = DLMS_ERROR_CODE_OUTOFMEMORY;
+-            break;
+-        }
+-        ret = va_getByIndex(data->Arr, pos, &it);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        ret = va_getByIndex(it->Arr, 0, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        BYTE_BUFFER_INIT(&wp->name);
+-        bb_set2(&wp->name, tmp->byteArr, 0, bb_size(tmp->byteArr));
+-        ret = va_getByIndex(it->Arr, 1, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        wp->monday = (unsigned char)var_toInteger(tmp);
+ 
+-        ret = va_getByIndex(it->Arr, 2, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
++    if (data->vt == DLMS_DATA_TYPE_ARRAY && data->Arr != NULL) {
++        dlmsVARIANT* tmp, * it;
++        for (pos = 0; pos != data->Arr->size; ++pos)
+         {
+-            break;
+-        }
+-        wp->tuesday = (unsigned char)var_toInteger(tmp);
++            wp = (gxWeekProfile*)gxmalloc(sizeof(gxWeekProfile));
++            if (wp == NULL)
++            {
++                ret = DLMS_ERROR_CODE_OUTOFMEMORY;
++                break;
++            }
++            ret = va_getByIndex(data->Arr, pos, &it);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            ret = va_getByIndex(it->Arr, 0, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            BYTE_BUFFER_INIT(&wp->name);
++            bb_set2(&wp->name, tmp->byteArr, 0, bb_size(tmp->byteArr));
++            ret = va_getByIndex(it->Arr, 1, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            wp->monday = (unsigned char)var_toInteger(tmp);
+ 
+-        ret = va_getByIndex(it->Arr, 3, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        wp->wednesday = (unsigned char)var_toInteger(tmp);
++            ret = va_getByIndex(it->Arr, 2, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            wp->tuesday = (unsigned char)var_toInteger(tmp);
+ 
+-        ret = va_getByIndex(it->Arr, 4, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        wp->thursday = (unsigned char)var_toInteger(tmp);
++            ret = va_getByIndex(it->Arr, 3, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            wp->wednesday = (unsigned char)var_toInteger(tmp);
+ 
+-        ret = va_getByIndex(it->Arr, 5, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        wp->friday = (unsigned char)var_toInteger(tmp);
++            ret = va_getByIndex(it->Arr, 4, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            wp->thursday = (unsigned char)var_toInteger(tmp);
+ 
+-        ret = va_getByIndex(it->Arr, 6, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        wp->saturday = (unsigned char)var_toInteger(tmp);
++            ret = va_getByIndex(it->Arr, 5, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            wp->friday = (unsigned char)var_toInteger(tmp);
+ 
+-        ret = va_getByIndex(it->Arr, 7, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
++            ret = va_getByIndex(it->Arr, 6, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            wp->saturday = (unsigned char)var_toInteger(tmp);
++
++            ret = va_getByIndex(it->Arr, 7, &tmp);
++            if (ret != DLMS_ERROR_CODE_OK)
++            {
++                break;
++            }
++            wp->sunday = (unsigned char)var_toInteger(tmp);
++            arr_push(profile, wp);
+         }
+-        wp->sunday = (unsigned char)var_toInteger(tmp);
+-        arr_push(profile, wp);
+     }
++
+     if (ret != 0 && wp != NULL)
+     {
+         gxfree(wp);
+@@ -463,110 +471,114 @@ int updateDayProfileTable(dlmsSettings* settings, gxArray* profile, dlmsVARIANT*
+     gxDayProfile* dp = NULL;
+     gxDayProfileAction* ac = NULL;
+     obj_clearDayProfileTable(profile);
+-    dlmsVARIANT* tmp, * tmp2, * it, * it2;
+-    dlmsVARIANT tm;
+-    for (pos = 0; pos != data->Arr->size; ++pos)
+-    {
+-        dp = (gxDayProfile*)gxmalloc(sizeof(gxDayProfile));
+-        if (dp == NULL)
+-        {
+-            ret = DLMS_ERROR_CODE_OUTOFMEMORY;
+-            break;
+-        }
+-        arr_init(&dp->daySchedules);
+-        ret = va_getByIndex(data->Arr, pos, &it);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        ret = va_getByIndex(it->Arr, 0, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        dp->dayId = (unsigned char)var_toInteger(tmp);
+-        ret = va_getByIndex(it->Arr, 1, &tmp);
+-        if (ret != DLMS_ERROR_CODE_OK)
+-        {
+-            break;
+-        }
+-        for (pos2 = 0; pos2 != tmp->Arr->size; ++pos2)
++
++    if (data->vt == DLMS_DATA_TYPE_ARRAY && data->Arr != NULL) {
++        dlmsVARIANT* tmp, * tmp2, * it, * it2;
++        dlmsVARIANT tm;
++        for (pos = 0; pos != data->Arr->size; ++pos)
+         {
+-            ac = (gxDayProfileAction*)gxmalloc(sizeof(gxDayProfileAction));
+-            if (ac == NULL)
+-            {
+-                return DLMS_ERROR_CODE_OUTOFMEMORY;
+-            }
+-            ret = va_getByIndex(tmp->Arr, pos2, &it2);
+-            if (ret != DLMS_ERROR_CODE_OK)
++            dp = (gxDayProfile*)gxmalloc(sizeof(gxDayProfile));
++            if (dp == NULL)
+             {
++                ret = DLMS_ERROR_CODE_OUTOFMEMORY;
+                 break;
+             }
+-            //Get start time.
+-            ret = va_getByIndex(it2->Arr, 0, &tmp2);
++            arr_init(&dp->daySchedules);
++            ret = va_getByIndex(data->Arr, pos, &it);
+             if (ret != DLMS_ERROR_CODE_OK)
+             {
+                 break;
+             }
+-            var_init(&tm);
+-            ret = dlms_changeType2(tmp2, DLMS_DATA_TYPE_TIME, &tm);
++            ret = va_getByIndex(it->Arr, 0, &tmp);
+             if (ret != DLMS_ERROR_CODE_OK)
+             {
+                 break;
+             }
+-            time_copy(&ac->startTime, tm.dateTime);
+-            var_clear(&tm);
+-            //Get script logical name.
+-            ret = va_getByIndex(it2->Arr, 1, &tmp2);
++            dp->dayId = (unsigned char)var_toInteger(tmp);
++            ret = va_getByIndex(it->Arr, 1, &tmp);
+             if (ret != DLMS_ERROR_CODE_OK)
+             {
+                 break;
+             }
+-
+-		if (!tmp2->byteArr) {
+-			gxfree(ac);
+-			break;
+-		}
+-
+-            if (tmp2->vt == DLMS_DATA_TYPE_OCTET_STRING && tmp2->byteArr != NULL)
++            for (pos2 = 0; pos2 != tmp->Arr->size; ++pos2)
+             {
+-#ifndef DLMS_IGNORE_OBJECT_POINTERS
+-                if ((ret = oa_findByLN(&settings->objects, DLMS_OBJECT_TYPE_SCRIPT_TABLE, tmp2->byteArr->data, &ac->script)) != 0)
++                ac = (gxDayProfileAction*)gxmalloc(sizeof(gxDayProfileAction));
++                if (ac == NULL)
++                {
++                    return DLMS_ERROR_CODE_OUTOFMEMORY;
++                }
++                ret = va_getByIndex(tmp->Arr, pos2, &it2);
++                if (ret != DLMS_ERROR_CODE_OK)
+                 {
+                     break;
+                 }
+-                if (ac->script == NULL)
++                //Get start time.
++                ret = va_getByIndex(it2->Arr, 0, &tmp2);
++                if (ret != DLMS_ERROR_CODE_OK)
++                {
++                    break;
++                }
++                var_init(&tm);
++                ret = dlms_changeType2(tmp2, DLMS_DATA_TYPE_TIME, &tm);
++                if (ret != DLMS_ERROR_CODE_OK)
++                {
++                    break;
++                }
++                time_copy(&ac->startTime, tm.dateTime);
++                var_clear(&tm);
++                //Get script logical name.
++                ret = va_getByIndex(it2->Arr, 1, &tmp2);
++                if (ret != DLMS_ERROR_CODE_OK)
++                {
++                    break;
++                }
++
++                    if (!tmp2->byteArr) {
++                            gxfree(ac);
++                            break;
++                    }
++
++                if (tmp2->vt == DLMS_DATA_TYPE_OCTET_STRING && tmp2->byteArr != NULL)
+                 {
+-                    if ((ret = cosem_createObject(DLMS_OBJECT_TYPE_SCRIPT_TABLE, &ac->script)) != 0)
++#ifndef DLMS_IGNORE_OBJECT_POINTERS
++                    if ((ret = oa_findByLN(&settings->objects, DLMS_OBJECT_TYPE_SCRIPT_TABLE, tmp2->byteArr->data, &ac->script)) != 0)
+                     {
+-                        return ret;
++                        break;
+                     }
+-                    memcpy(ac->script->logicalName, tmp2->byteArr->data, tmp2->byteArr->size);
+-                    //Add object to released objects list.
+-                    ret = oa_push(&settings->releasedObjects, ac->script);
+-                    if (ret != DLMS_ERROR_CODE_OK)
++                    if (ac->script == NULL)
+                     {
+-                        return ret;
++                        if ((ret = cosem_createObject(DLMS_OBJECT_TYPE_SCRIPT_TABLE, &ac->script)) != 0)
++                        {
++                            return ret;
++                        }
++                        memcpy(ac->script->logicalName, tmp2->byteArr->data, tmp2->byteArr->size);
++                        //Add object to released objects list.
++                        ret = oa_push(&settings->releasedObjects, ac->script);
++                        if (ret != DLMS_ERROR_CODE_OK)
++                        {
++                            return ret;
++                        }
+                     }
+-                }
+ #else
+-                memcpy(ac->scriptLogicalName, tmp2->byteArr->data, 6);
++                    memcpy(ac->scriptLogicalName, tmp2->byteArr->data, 6);
+ #endif //DLMS_IGNORE_OBJECT_POINTERS
++                }
++                ret = va_getByIndex(it2->Arr, 2, &tmp2);
++                if (ret != DLMS_ERROR_CODE_OK)
++                {
++                    break;
++                }
++                ac->scriptSelector = (uint16_t)var_toInteger(tmp2);
++                arr_push(&dp->daySchedules, ac);
+             }
+-            ret = va_getByIndex(it2->Arr, 2, &tmp2);
+-            if (ret != DLMS_ERROR_CODE_OK)
++            if (ret != 0)
+             {
+                 break;
+             }
+-            ac->scriptSelector = (uint16_t)var_toInteger(tmp2);
+-            arr_push(&dp->daySchedules, ac);
+-        }
+-        if (ret != 0)
+-        {
+-            break;
++            arr_push(profile, dp);
+         }
+-        arr_push(profile, dp);
+     }
++
+     if (ret != 0)
+     {
+         if (dp)

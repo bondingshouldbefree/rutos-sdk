@@ -1,0 +1,70 @@
+From 3f49203c55ccd5d4217abf13addb18844136455f Mon Sep 17 00:00:00 2001
+From: Rich Felker <dalias@aerifal.cx>
+Date: Sat, 13 Apr 2024 12:15:37 -0400
+Subject: initgroups: do not artificially limit number of supplementary groups
+
+historically linux limited the number of supplementary groups a
+process could be in to 32, but this limit was raised to 65536 in linux
+2.6.4. proposals to support the new limit, change NGROUPS_MAX, or make
+it dynamic have been stalled due to the impact it would have on
+initgroups where the groups array exists in automatic storage.
+
+the changes here decouple initgroups from the value of NGROUPS_MAX and
+allow it to fall back to allocating a buffer in the case where
+getgrouplist indicates the user has more supplementary groups than
+could be reported in the buffer. getgrouplist already involves
+allocation, so this does not pull in any new link dependency.
+likewise, getgrouplist is already using the public malloc (vs internal
+libc one), so initgroups does the same. if this turns out not to be
+the best choice, both can be changed together later.
+
+the initial buffer size is left at 32, but now as the literal value,
+so that any potential future change to NGROUPS_MAX will not affect
+initgroups.
+---
+ src/misc/initgroups.c | 26 ++++++++++++++++++++++----
+ 1 file changed, 22 insertions(+), 4 deletions(-)
+
+(limited to 'src')
+
+diff --git a/src/misc/initgroups.c b/src/misc/initgroups.c
+index 922a9581..101f5c7b 100644
+--- a/src/misc/initgroups.c
++++ b/src/misc/initgroups.c
+@@ -1,11 +1,29 @@
+ #define _GNU_SOURCE
+ #include <grp.h>
+ #include <limits.h>
++#include <stdlib.h>
+ 
+ int initgroups(const char *user, gid_t gid)
+ {
+-	gid_t groups[NGROUPS_MAX];
+-	int count = NGROUPS_MAX;
+-	if (getgrouplist(user, gid, groups, &count) < 0) return -1;
+-	return setgroups(count, groups);
++	gid_t buf[32], *groups = buf;
++	int count = sizeof buf / sizeof *buf, prev_count = count;
++	while (getgrouplist(user, gid, groups, &count) < 0) {
++		if (groups != buf) free(groups);
++
++		/* Return if failure isn't buffer size */
++		if (count <= prev_count)
++			return -1;
++
++		/* Always increase by at least 50% to limit to
++		 * logarithmically many retries on TOCTOU races. */
++		if (count < prev_count + (prev_count>>1))
++			count = prev_count + (prev_count>>1);
++
++		groups = calloc(count, sizeof *groups);
++		if (!groups) return -1;
++		prev_count = count;
++	}
++	int ret = setgroups(count, groups);
++	if (groups != buf) free(groups);
++	return ret;
+ }
+-- 
+cgit v1.2.1
+

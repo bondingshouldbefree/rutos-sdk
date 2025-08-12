@@ -1,0 +1,261 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CERT_DIR="/etc/certificates"
+UPLOAD_DIR="/etc/vuci-uploads"
+
+validate_service() {
+	local path="$1"
+
+	[ ! -f "$path" ] && return 1
+
+	uci show certificates 2>/dev/null | grep -q "path='${path}'" && return 0
+
+	local type key_size datetime encryption
+
+	local pkey_out pub_pkey_out x509_out req_out enddate_out
+
+	pkey_out=$(openssl pkey -in "$path" -text -noout 2>/dev/null)
+	pub_pkey_out=$(openssl pkey -pubin -in "$path" -text -noout 2>/dev/null)
+	x509_out=$(openssl x509 -in "$path" -text -noout 2>/dev/null)
+	req_out=$(openssl req -in "$path" -text -noout 2>/dev/null)
+	enddate_out=$(openssl x509 -in "$path" -enddate -noout 2>/dev/null)
+
+	# Helper
+	detect_encryption() {
+		case "$1" in
+			*"rsaEncryption"*) echo "rsa" ;;
+			*"id-ecPublicKey"* | *"EC Private-Key:"* | *"EC Public-Key:"*) echo "ecc" ;;
+			*"RSA Public-Key:"*) echo "rsa" ;;
+			*) echo "-" ;;
+		esac
+	}
+
+	if echo "$pkey_out" | grep -q "Private-Key:"; then
+		type="key"
+		key_size=$(echo "$pkey_out" | grep "Private-Key:" | awk '{print $2}' | tr -d '()')
+		encryption=$(detect_encryption "$pkey_out")
+	elif echo "$pub_pkey_out" | grep -q "Public-Key:"; then
+		type="public_key"
+		key_size=$(echo "$pub_pkey_out" | grep "Public-Key:" | awk '{print $2}' | tr -d '()')
+		encryption=$(detect_encryption "$pub_pkey_out")
+	elif [ -n "$x509_out" ]; then
+		type="cert"
+		key_size=$(echo "$x509_out" | grep "Public-Key:" | awk '{print $2}' | tr -d '()')
+		local raw_date
+		raw_date=$(echo "$enddate_out" | cut -d= -f2)
+
+		local month day time year
+		month=$(echo "$raw_date" | awk '{print $1}')
+		case "$month" in
+		Jan) month=01 ;;
+		Feb) month=02 ;;
+		Mar) month=03 ;;
+		Apr) month=04 ;;
+		May) month=05 ;;
+		Jun) month=06 ;;
+		Jul) month=07 ;;
+		Aug) month=08 ;;
+		Sep) month=09 ;;
+		Oct) month=10 ;;
+		Nov) month=11 ;;
+		Dec) month=12 ;;
+		*) month=00 ;;
+		esac
+
+		day=$(echo "$raw_date" | awk '{print $2}')
+		time=$(echo "$raw_date" | awk '{print $3}')
+		year=$(echo "$raw_date" | awk '{print $4}')
+
+		datetime=$(date -u -d "$year-$month-$day $time" +%s 2>/dev/null || echo "-")
+		encryption=$(detect_encryption "$x509_out")
+	elif [ -n "$req_out" ]; then
+		type="req"
+		key_size=$(echo "$req_out" | grep "Public-Key:" | awk '{print $2}' | tr -d '()')
+		encryption=$(detect_encryption "$req_out")
+	else
+		type="-"
+		key_size="-"
+		datetime="-"
+		encryption="-"
+		echo "${type}|${key_size}|${datetime}|${encryption}"
+		return 0
+	fi
+
+	echo "${type}|${key_size}|${datetime}|${encryption}"
+	return 0
+}
+
+add_service_to_config() {
+	local path="$1"
+	local service="$2"
+	local inst="$3"
+	local skip_service="$4"
+	local service_inst="${service}:${inst}"
+
+	local section
+	section=$(uci show certificates 2>/dev/null | grep "path='${path}'" | cut -d'.' -f2 | cut -d'=' -f1)
+
+	local filename cert_type type key_size datetime encryption
+	filename=$(basename "$path")
+	cert_type="import"
+
+	local result
+	result=$(validate_service "$path") || return 1
+
+	type=$(echo "$result" | cut -d'|' -f1)
+	key_size=$(echo "$result" | cut -d'|' -f2)
+	datetime=$(echo "$result" | cut -d'|' -f3)
+	encryption=$(echo "$result" | cut -d'|' -f4)
+
+	[ -z "$type" ] && type="-"
+	[ -z "$key_size" ] && key_size="-"
+	[ -z "$datetime" ] && datetime="-"
+	[ -z "$encryption" ] && encryption="-"
+
+	if [ -z "$section" ]; then
+		section=$(uci add certificates certificate)
+		[ -z "$section" ] && return 1
+		
+		uci_set "certificates" "$section" "path" "$path"
+		uci_set "certificates" "$section" "fullname" "$filename"
+		uci_set "certificates" "$section" "type" "$type"
+		uci_set "certificates" "$section" "datetime" "$datetime"
+		uci_set "certificates" "$section" "cert_type" "$cert_type"
+		uci_set "certificates" "$section" "key_size" "$key_size"
+		uci_set "certificates" "$section" "encryption" "$encryption"
+	fi
+
+	if [ -z "$skip_service" ]; then
+		local existing_services service_exists
+		existing_services=$(uci get certificates."$section".services 2>/dev/null)
+		
+		echo " $existing_services " | grep -q " $service_inst " || uci_add_list "certificates" "$section" "services" "$service_inst"
+	fi
+
+	uci_commit "certificates"
+}
+
+move_cert_file() {
+	local path="$1" service="$2" instance="$3"
+	[ -f "$path" ] || return 1
+
+	local filename new_path
+	filename="$(basename "$path")"
+	new_path="$CERT_DIR/$filename"
+
+	mkdir -p "$CERT_DIR" && mv "$path" "$new_path"
+	section=$(uci show certificates 2>/dev/null | grep "path='${path}'" | cut -d'.' -f2 | cut -d'=' -f1)
+
+	if [ -n "$section" ]; then
+		local value
+		value="$(uci_get "certificates" "$section" "tpm2")"
+		if [ "$value" = "1" ]; then
+			old_hash="$(echo "$path" | sha256sum | awk '{print $1}')"
+			new_hash="$(echo "$new_path" | sha256sum | awk '{print $1}')"
+			mv "/etc/certificates/tpm2/$old_hash" "/etc/certificates/tpm2/$new_hash"
+		fi
+		uci_set "certificates" "$section" "path" "$new_path"
+		uci_commit "certificates"
+		add_service_to_config "$new_path" "$service" "$instance"
+	else
+		add_service_to_config "$new_path" "$service" "$instance"
+	fi
+	echo "$new_path"
+}
+
+migrate_single_option() {
+	local config="$1" section="$2" option="$3" service="$4"
+	local value new_path
+
+	value="$(uci_get "$config" "$section" "$option")"
+	[ -z "$value" ] && return 0
+	if echo "$value" | grep -q "^$UPLOAD_DIR/"; then
+		new_path="$(move_cert_file "$value" "$service" "$section")"
+		[ -n "$new_path" ] && uci_set "$config" "$section" "$option" "$new_path"
+	else
+		add_service_to_config "$value" "$service" "$section"
+	fi
+}
+
+migrate_certificates() {
+	local section="$1"
+
+	[ "$CONFIG" = "uhttpd" ] && [ "$section" != "main" ] && return 0
+	[ "$CONFIG" = "network" ] && [ "$SECTION_TYPE" = "interface" ] && \
+	[ "$(uci_get "$CONFIG" "$section" proto)" != "$SERVICE" ] && return 0
+
+	migrate_single_option "$CONFIG" "$section" "$OPTION" "$SERVICE" &&
+		uci_commit "$CONFIG"
+}
+
+migrate_tinc_host() {
+	local section="$1"
+	local pubkey_path privkey_path new_path
+
+	pubkey_path="$(uci_get tinc "$section" publickeyfile)"
+
+	[ -n "$pubkey_path" ] &&
+		[ "${pubkey_path#"$UPLOAD_DIR/"}" != "$pubkey_path" ] &&
+			new_path="$(move_cert_file "$pubkey_path" "tinc" "$section")" &&
+			[ -n "$new_path" ] && uci_set tinc "$section" publickeyfile "$new_path" ||
+			add_service_to_config "$pubkey_path" "tinc" "$section"
+
+	uci_commit tinc
+}
+
+_process_hosts_for_net() {
+	local netid="$1"
+	[ -z "$netid" ] && return 0
+	id="tinc-host_$netid"
+	config_foreach migrate_tinc_host "$id"
+}
+
+process_all_tinc_hosts() {
+	[ -f "/etc/config/tinc" ] || return 0
+	config_load tinc
+	config_foreach _process_hosts_for_net tinc-net
+}
+
+add_service_to_config "/etc/uhttpd.crt" "uhttpd" "main" true
+add_service_to_config "/etc/uhttpd.key" "uhttpd" "main" true
+
+configs="
+	uhttpd uhttpd cert uhttpd
+	uhttpd uhttpd key uhttpd
+	ipsec remote leftcert ipsec
+	ipsec remote cacert ipsec
+	ipsec remote key ipsec
+	ipsec remote rightcert ipsec
+	chilli chilli sslcafile chilli
+	chilli chilli sslcertfile chilli
+	chilli chilli sslkeyfile chilli
+	tinc tinc-net publickeyfile tinc
+	tinc tinc-net privatekeyfile tinc
+	stunnel service cert stunnel
+	stunnel service key stunnel
+	openvpn openvpn ca openvpn
+	openvpn openvpn cert openvpn
+	openvpn openvpn key openvpn
+	emailrelay emailrelay server_tls_certificate emailrelay
+	user_groups email ca_file user_groups
+	network interface ca_cert openconnect
+	network interface user_key openconnect
+	network interface user_cert openconnect
+	network interface ca sstp
+	dot1x port client_cert dot1x
+	dot1x port ca_cert dot1x
+	dot1x port private_key dot1x
+"
+
+echo "$configs" | while read -r CONFIG SECTION_TYPE OPTION SERVICE; do
+	[ -z "$CONFIG" ] && continue
+	export CONFIG SECTION_TYPE OPTION SERVICE
+	config_load "$CONFIG"
+	config_foreach migrate_certificates "$SECTION_TYPE"
+done
+
+process_all_tinc_hosts
+
+exit 0

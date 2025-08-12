@@ -1,0 +1,234 @@
+Change the functionality of flow_offload_add to only create an offload for a single direction.
+
+To simplify downstream implementation, flow_offload allocation is also moved into flow_offload_add,
+since now we are also having to deal with an already existing flow_offload for a conntrack entry.
+
+Added spin lock to flow_offload to protect flow_offload_add and flow_offload_teardown functions to
+avoid race conditions where a flow_offload might be deleted as a second tuple is being added to it,
+resulting in possible leaks, or worse.
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -188,6 +188,7 @@ struct flow_offload {
+ 	u16					type;
+ 	u32					timeout;
+ 	struct rcu_head				rcu_head;
++	spinlock_t				lock;
+ };
+ 
+ #define NF_FLOW_TIMEOUT (30 * HZ)
+@@ -246,6 +247,16 @@ static inline struct nf_conn_flow *nf_ct
+ 	return flow_ext;
+ }
+ 
++static inline void flow_offload_lock(struct flow_offload *flow)
++{
++	spin_lock_bh(&flow->lock);
++}
++
++static inline void flow_offload_unlock(struct flow_offload *flow)
++{
++	spin_unlock_bh(&flow->lock);
++}
++
+ struct flow_offload *flow_offload_alloc(struct nf_conn *ct);
+ void flow_offload_free(struct flow_offload *flow);
+ 
+@@ -313,10 +324,8 @@ nf_flow_table_offload_del_cb(struct nf_f
+ 		flow_table->type->put(flow_table);
+ }
+ 
+-void flow_offload_route_init(struct flow_offload *flow,
+-			     struct nf_flow_route *route);
+-
+-int flow_offload_add(struct nf_flowtable *flow_table, struct flow_offload *flow);
++int flow_offload_add(struct nf_flowtable *flow_table, struct nf_conn *ct,
++		     struct nf_flow_route *route, enum flow_offload_tuple_dir dir);
+ void flow_offload_refresh(struct nf_flowtable *flow_table,
+ 			  struct flow_offload *flow, bool force);
+ 
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -48,6 +48,19 @@ flow_offload_fill_dir(struct flow_offloa
+ 	}
+ }
+ 
++static struct flow_offload *_flow_offload_alloc(void)
++{
++	struct flow_offload *flow;
++
++	flow = kzalloc(sizeof(*flow), GFP_ATOMIC);
++	if (!flow)
++		return NULL;
++
++	spin_lock_init(&flow->lock);
++
++	return flow;
++}
++
+ struct flow_offload *flow_offload_alloc(struct nf_conn *ct)
+ {
+ 	struct flow_offload *flow;
+@@ -55,7 +68,7 @@ struct flow_offload *flow_offload_alloc(
+ 	if (unlikely(nf_ct_is_dying(ct)))
+ 		return NULL;
+ 
+-	flow = kzalloc(sizeof(*flow), GFP_ATOMIC);
++	flow = _flow_offload_alloc();
+ 	if (!flow)
+ 		return NULL;
+ 
+@@ -151,15 +164,6 @@ static void nft_flow_dst_release(struct
+ 		dst_release(flow->tuplehash[dir].tuple.dst_cache);
+ }
+ 
+-void flow_offload_route_init(struct flow_offload *flow,
+-			     struct nf_flow_route *route)
+-{
+-	flow_offload_fill_route(flow, route, FLOW_OFFLOAD_DIR_ORIGINAL);
+-	flow_offload_fill_route(flow, route, FLOW_OFFLOAD_DIR_REPLY);
+-	flow->type = NF_FLOW_OFFLOAD_ROUTE;
+-}
+-EXPORT_SYMBOL_GPL(flow_offload_route_init);
+-
+ static void flow_offload_fixup_tcp(struct ip_ct_tcp *tcp)
+ {
+ 	tcp->seen[0].td_maxwin = 0;
+@@ -283,41 +287,93 @@ static void nf_flow_offload_deregister(s
+ 	spin_unlock_bh(&flow_table->flows_lock);
+ }
+ 
+-int flow_offload_add(struct nf_flowtable *flow_table, struct flow_offload *flow)
++static struct flow_offload *flow_offload_init(struct nf_conn *ct) {
++	struct flow_offload *flow;
++
++	if (test_and_set_bit(IPS_OFFLOAD_BIT, &ct->status))
++		return NULL;
++
++	flow = flow_offload_alloc(ct);
++	if (!flow)
++		goto err_unset;
++
++	return flow;
++err_unset:
++	clear_bit(IPS_OFFLOAD_BIT, &ct->status);
++	return NULL;
++}
++
++int flow_offload_add(struct nf_flowtable *flow_table, struct nf_conn *ct,
++		     struct nf_flow_route *route, enum flow_offload_tuple_dir dir)
+ {
+-	int err;
++	struct nf_conn_flow *flow_ext = nf_ct_ext_find(ct, NF_CT_EXT_FLOW_OFFLOAD);
++	struct flow_offload *flow;
++	bool new_flow = false;
++	int err = 1;
++
++	if (!flow_ext) {
++		return 1;
++	}
+ 
++	flow = rcu_dereference(flow_ext->flow);
++	if (!flow) {
++		flow = flow_offload_init(ct);
++		if (!flow)
++			return 1;
++
++		new_flow = true;
++	}
++
++	flow_offload_lock(flow);
++
++	if (test_bit(dir? NF_FLOW_TUPLE_REPLY : NF_FLOW_TUPLE_ORIG, &flow->flags))
++		goto err;
++
++	if (test_bit(NF_FLOW_TEARDOWN, &flow->flags))
++		goto err;
++
++	flow_offload_fill_route(flow, route, dir);
++
++	flow->type = NF_FLOW_OFFLOAD_ROUTE;
+ 	flow->timeout = nf_flowtable_time_stamp + flow_offload_get_timeout(flow);
+ 
+ 	err = rhashtable_insert_fast(&flow_table->rhashtable,
+-				     &flow->tuplehash[0].node,
++				     &flow->tuplehash[dir].node,
+ 				     nf_flow_offload_rhash_params);
+-	if (err < 0)
+-		return err;
++	if (err) {
++ 		goto err;
++	}
+ 
+-	err = rhashtable_insert_fast(&flow_table->rhashtable,
+-				     &flow->tuplehash[1].node,
+-				     nf_flow_offload_rhash_params);
+-	if (err < 0) {
+-		rhashtable_remove_fast(&flow_table->rhashtable,
+-				       &flow->tuplehash[0].node,
+-				       nf_flow_offload_rhash_params);
+-		return err;
++	if (ct->tuplehash[dir].tuple.dst.protonum == IPPROTO_TCP) {
++		ct->proto.tcp.seen[dir].flags |= IP_CT_TCP_FLAG_BE_LIBERAL;
++		ct->proto.tcp.seen[!dir].flags |= IP_CT_TCP_FLAG_BE_LIBERAL;
+ 	}
+ 
+-	nf_ct_offload_timeout(flow->ct);
++	set_bit(dir? NF_FLOW_TUPLE_REPLY : NF_FLOW_TUPLE_ORIG, &flow->flags);
+ 
+-	set_bit(NF_FLOW_TUPLE_ORIG, &flow->flags);
+-	set_bit(NF_FLOW_TUPLE_REPLY, &flow->flags);
++	nf_ct_offload_timeout(flow->ct);
+ 
+ 	if (nf_flowtable_hw_offload(flow_table)) {
+-		__set_bit(NF_FLOW_HW, &flow->flags);
++		set_bit(NF_FLOW_HW, &flow->flags);
+ 		nf_flow_offload_add(flow_table, flow);
+ 	}
+ 
+-	nf_flow_offload_register(flow_table, flow);
++	if (new_flow) {
++		rcu_assign_pointer(flow_ext->flow, flow);
++		nf_flow_offload_register(flow_table, flow);
++	}
++
++	flow_offload_unlock(flow);
+ 
+ 	return 0;
++
++err:
++	flow_offload_unlock(flow);
++	if (new_flow) {
++		flow_offload_free(flow);
++		clear_bit(IPS_OFFLOAD_BIT, &ct->status);
++	}
++	return err;
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_add);
+ 
+@@ -365,9 +421,23 @@ static void flow_offload_del(struct nf_f
+ 
+ void flow_offload_teardown(struct flow_offload *flow)
+ {
+-	clear_bit(IPS_OFFLOAD_BIT, &flow->ct->status);
+-	set_bit(NF_FLOW_TEARDOWN, &flow->flags);
++	struct nf_conn_flow *flow_ext;
++
++	flow_offload_lock(flow);
++
++	if (test_and_set_bit(NF_FLOW_TEARDOWN, &flow->flags)) {
++		flow_offload_unlock(flow);
++		return;
++	}
++
++	flow_ext = nf_ct_ext_find(flow->ct, NF_CT_EXT_FLOW_OFFLOAD);
++	if (flow_ext)
++		RCU_INIT_POINTER(flow_ext->flow, NULL);
++
+ 	flow_offload_fixup_ct(flow->ct);
++	clear_bit(IPS_OFFLOAD_BIT, &flow->ct->status);
++
++	flow_offload_unlock(flow);
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_teardown);
+ 

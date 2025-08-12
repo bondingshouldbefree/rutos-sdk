@@ -1,0 +1,48 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=99
+STOP=01
+
+CONFIG="opcua_client"
+APP=/usr/bin/opcua_client
+
+if [ ! -x "$APP" ]; then
+	APP="/usr/local$APP"
+fi
+
+check_enabled() {
+	config_get SECTION_ENABLED "$1" enabled "0"
+	[ "$SECTION_ENABLED" = "0" ] && return
+	ANY_SECTION_ENABLED=1
+}
+
+is_any_enabled() {
+	ANY_SECTION_ENABLED=0
+	config_foreach check_enabled "$1"
+	[ "$ANY_SECTION_ENABLED" = 1 ]
+}
+
+is_service_enabled() {
+	config_load "$CONFIG"
+	is_any_enabled main && is_any_enabled server && is_any_enabled value_group
+}
+
+start_service() {
+	is_service_enabled || return
+	procd_open_instance
+	procd_set_param command "$APP"
+	procd_set_param respawn "${respawn_threshold:-0}" "${respawn_timeout:-60}" "${respawn_retry:-0}"
+	procd_set_param user opcua_client
+	procd_close_instance
+}
+
+reload_service() {
+	procd_set_param file /etc/config/opcua_client
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger "$CONFIG"
+}

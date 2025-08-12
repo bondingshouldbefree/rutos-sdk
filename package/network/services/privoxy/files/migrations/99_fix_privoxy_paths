@@ -1,0 +1,18 @@
+#!/bin/sh
+
+CFG="privoxy"
+
+[ -f "/etc/config/$CFG" ] || exit 0
+
+. /lib/functions.sh
+
+config_load "$CFG"
+config_get logdir "$CFG" logdir
+config_get actionsfile "$CFG" actionsfile
+
+[ "$logdir" = "/var/log" ] && uci_set "$CFG" "$CFG" logdir "/var/log/privoxy"
+[ "$actionsfile" = "/var/run/user.action" ] && uci_set "$CFG" "$CFG" actionsfile "/var/run/privoxy/user.action"
+
+uci_commit "$CFG"
+
+exit 0

@@ -1,0 +1,1 @@
+{"services/vpn/openconnect":{"description":"openconnect configuration","read":{"api":{"/openconnect/*":["*"]}},"write":{"api":["/openconnect/*"]},"source":["/openconnect/*"],"exception":["/openconnect/config/*"]}}

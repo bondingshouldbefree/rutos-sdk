@@ -1,0 +1,73 @@
+include $(TOPDIR)/rules.mk
+
+PKG_NAME:=urngd
+PKG_RELEASE:=1
+
+PKG_SOURCE_DATE:=2020-01-21
+
+PKG_LICENSE:=BSD-3-Clause
+PKG_LICENSE_FILES:=urngd.c
+
+PKG_BUILD_PARALLEL:=1
+
+PKG_CONFIG_DEPENDS += \
+	CONFIG_USE_PROCD \
+	CONFIG_USE_OPENRC
+
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL=$(PROJECT_GIT)/project/urngd.git
+PKG_SOURCE_VERSION:=c7f7b6b65b82eda4675b42d8cd28d76ea7aebf1a
+
+include $(INCLUDE_DIR)/package.mk
+include $(INCLUDE_DIR)/cmake.mk
+
+define Package/urngd
+  SECTION:=utils
+  CATEGORY:=Base system
+  TITLE:=OpenWrt non-physical true random number generator based on timing jitter
+  DEPENDS:=+libubox
+  USERID:=rng:rng
+  FATTRS:=/sbin/urngd::::cap_sys_admin+ep
+endef
+
+define Package/urngd/description
+  urngd is OpenWrt's micro non-physical true random number generator based on
+  timing jitter.
+
+  Using the Jitter RNG core, the rngd provides an entropy source that feeds into
+  the Linux /dev/random device if its entropy runs low. It updates the
+  /dev/random entropy estimator such that the newly provided entropy unblocks
+  /dev/random.
+
+  The seeding of /dev/random also ensures that /dev/urandom benefits from
+  entropy. Especially during boot time, when the entropy of Linux is low, the
+  Jitter RNGd provides a source of sufficient entropy.
+endef
+
+define Build/Patch
+	$(if $(QUILT),rm -rf $(PKG_BUILD_DIR)/patches; mkdir -p $(PKG_BUILD_DIR)/patches)
+	$(call PatchDir,$(PKG_BUILD_DIR),$(PATCH_DIR)/generic,generic/)
+ifeq ($(CONFIG_TARGET_x86_64_DEVICE_teltonika_x86_64_test),y)
+	$(call PatchDir,$(PKG_BUILD_DIR),$(PATCH_DIR)/x86_test,x86_test/)
+endif
+	$(if $(QUILT),touch $(PKG_BUILD_DIR)/.quilt_used)
+endef
+
+define Quilt/Refresh/Package
+	$(call Quilt/RefreshDir,$(PKG_BUILD_DIR),$(PATCH_DIR)/generic,generic/)
+ifeq ($(CONFIG_TARGET_x86_64_DEVICE_teltonika_x86_64_test),y)
+	$(call Quilt/RefreshDir,$(PKG_BUILD_DIR),$(PATCH_DIR)/x86_test,x86_test/)
+endif
+endef
+
+define Package/urngd/install
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/$(PKG_NAME).init $(1)/etc/init.d/$(PKG_NAME)
+	$(INSTALL_DIR) $(1)/sbin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/$(PKG_NAME) $(1)/sbin/$(PKG_NAME)
+
+	$(if $(CONFIG_USE_OPENRC),\
+		$(OPENRC_INSTALL) sysinit urgnd ./files/urgnd.openrc $(1))
+endef
+
+$(eval $(call BuildPackage,urngd))

@@ -1,0 +1,53 @@
+{
+        "user": "gsm",
+        "access": {
+                "gsm": {
+                        "methods": [ "*"]
+                },
+                "gsm.modem*": {
+                        "methods": [ "*" ]
+                },
+                "mobifd": {
+                        "methods": [ "reload" ]
+                },
+                "boardjson": {
+                        "methods": [ "get" ]
+                },
+                "network": {
+                        "methods": [ "reload" ]
+                },
+                "network.interface.*": {
+                        "methods": [ "up", "down", "status" ]
+                },
+                "quota_limit.*": {
+                        "methods": [ "status" ]
+                },
+                "rpc-ping": {
+                        "methods": [ "*" ]
+                },
+                "mctl": {
+                        "methods": [ "reboot" ]
+                },
+                "file": {
+                        "methods": [ "read", "write" ]
+                },
+                "service": {
+                        "methods": [ "event" ]
+                },
+                "esim.modem*": {
+                        "methods": [ "status", "enable", "disable", "delete", "download" ]
+                }
+        },
+        "publish": [ "mobifd", "mobifd.modem*" ],
+        "send": [ "gsm.*", "mobifd.*", "vuci.*", "lpac.updates", "rms.notify" ],
+        "listen": [
+                "gsm",
+                "gsm.new_modem",
+                "network.interface",
+                "ubus.object.remove",
+                "ubus.object.add",
+                "lpac.updates",
+                "esim.state"
+        ],
+        "subscribe": ["gsm", "gsm.*" ]
+}

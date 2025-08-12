@@ -1,0 +1,3 @@
+#!/bin/sh
+
+([ "$EVENT_NAME" = "gsm.new_modem" ] || [ "$EVENT_NAME" = "gsm.modem_gone" ]) && /bin/trigger_vuci_routes_reload

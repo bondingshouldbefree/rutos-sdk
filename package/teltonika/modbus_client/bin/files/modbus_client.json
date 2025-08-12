@@ -1,0 +1,64 @@
+{
+	"user": "modbus_client",
+	"publish": [ "modbus_client.rpc", "modbus_client.app" ],
+	"send": [ "modbus_client.alarm" ],
+	"access": {
+		"modbus_client.app": {
+			"methods": [
+				"tcp.test",
+				"serial.test"
+			]
+		},
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_service_provider",
+				"get_pin_state",
+				"get_sim_slot",
+				"get_iccid",
+				"get_signal_query",
+				"get_network_info",
+				"get_net_reg_stat_all",
+				"get_ca_info",
+				"get_serving_cell",
+				"get_imsi",
+				"get_neighbour_cells",
+				"send_sms"
+			]
+		},
+		"gpsd": {
+			"methods": [
+				"position"
+			]
+		},
+		"ioman.*": {
+			"methods": [
+				"status",
+				"location",
+				"update",
+				"invert_value",
+				"invert_state"
+			]
+		},
+		"network.interface": {
+			"methods": [
+				"dump"
+			]
+		},
+		"rms" : {
+			"methods": [
+				"get_status"
+			]
+		},
+		"rut_fota": {
+			"methods": [
+				"get_info"
+			]
+		}
+	}
+}

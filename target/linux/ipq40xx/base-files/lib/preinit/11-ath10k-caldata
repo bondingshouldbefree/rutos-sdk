@@ -1,0 +1,20 @@
+#!/bin/sh
+
+setup_ath10k_caldata() {
+	[ -e /proc/device-tree/soc/wifi@a000000 ] || return
+	[ -e /proc/device-tree/soc/wifi@a800000 ] || return
+
+	[ "$(cat /proc/device-tree/soc/wifi@a000000/status)" = "disabled" ] && return
+	[ "$(cat /proc/device-tree/soc/wifi@a800000/status)" = "disabled" ] && return
+
+	. /lib/functions/caldata.sh
+
+	echo "- extracting ath10k calibration data -"
+
+	mkdir -p /var/ath10k
+
+	caldata_extract "0:ART" 4096 12064 "/var/ath10k/pre-cal-ahb-a000000.wifi.bin"
+	caldata_extract "0:ART" 20480 12064 "/var/ath10k/pre-cal-ahb-a800000.wifi.bin"
+}
+
+boot_hook_add preinit_main setup_ath10k_caldata

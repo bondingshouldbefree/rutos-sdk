@@ -1,0 +1,12 @@
+--- a/mount_root.c
++++ b/mount_root.c
+@@ -76,6 +76,9 @@ start(int argc, char *argv[1])
+ 	case FS_SNAPSHOT:
+ 		mount_snapshot(data);
+ 		break;
++	default:
++	        ULOG_WARN("unknown file system type, using tmpfs overlay\n");
++	        return ramoverlay();
+ 	}
+ 
+ 	return 0;

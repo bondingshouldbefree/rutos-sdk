@@ -1,0 +1,99 @@
+{
+	"user": "snmpd",
+	"access": {
+		"ioman.*": {
+			"methods": [
+				"status",
+				"location"
+			]
+		},
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_firmware",
+				"get_pin_state",
+				"get_net_reg_stat_all",
+				"get_signal_query",
+				"get_service_provider",
+				"get_network_info",
+				"get_temperature",
+				"get_signal_query",
+				"get_iccid",
+
+
+			]
+		},
+		"mwan3": {
+			"methods": [
+				"status"
+			]
+		},
+		"port_events": {
+			"methods": [
+				"show"
+			]
+		},
+		"tswconfig.lldp": {
+			"methods": [
+				"get"
+			]
+		},
+		"tswconfig.stats": {
+			"methods": [
+				"get_stats"
+			]
+		},
+		"boardjson": {
+			"methods": [
+				"get"
+			]
+		},
+		"gpsd": {
+			"methods": [
+				"position"
+			]
+		},
+		"network.interface": {
+			"methods": [
+				"dump"
+			]
+		},
+		"network.wireless": {
+			"methods": [
+				"status"
+			]
+		},
+		"mdcollect": {
+			"methods": [
+				"get"
+			]
+		},
+		"chilli": {
+			"methods": [
+				"list"
+			]
+		},
+		"modbus_client.rpc": {
+			"methods": [
+				"get_tags",
+				"get_tag_value"
+			]
+		},
+		"mbus_client.rpc": {
+			"methods": [
+				"get_tags",
+				"get_tag_value"
+			]
+		},
+		"api": {
+			"methods": [
+				"get"
+			]
+		}
+	}
+}

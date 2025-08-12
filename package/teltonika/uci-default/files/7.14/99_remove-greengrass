@@ -1,0 +1,9 @@
+#!/bin/sh
+
+if [ -f /etc/config/greengrass ]; then
+	rm /etc/config/greengrass
+fi
+
+[ -f /etc/package_restore.txt ] && sed -i '/greengrass - AWS Greengrass Core/d' /etc/package_restore.txt
+
+exit 0

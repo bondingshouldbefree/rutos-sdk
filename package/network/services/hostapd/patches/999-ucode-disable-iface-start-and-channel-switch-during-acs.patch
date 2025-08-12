@@ -1,0 +1,22 @@
+--- a/src/ap/ucode.c
++++ b/src/ap/ucode.c
+@@ -534,6 +534,9 @@ uc_hostapd_iface_start(uc_vm_t *vm, size
+ 	if (ucv_type(info) != UC_OBJECT)
+ 		return NULL;
+ 
++	if (iface->state == HAPD_IFACE_ACS)
++		return ucv_boolean_new(false);
++
+ #define UPDATE_VAL(field, name)							\
+ 	do {									\
+ 		intval = ucv_int64_get(ucv_object_get(info, name, NULL));	\
+@@ -642,6 +645,9 @@ uc_hostapd_iface_switch_channel(uc_vm_t
+ 	if (!iface || ucv_type(info) != UC_OBJECT)
+ 		return NULL;
+ 
++	if(iface->state == HAPD_IFACE_ACS)
++		return ucv_boolean_new(false);
++
+ 	conf = iface->conf;
+ 	if ((intval = ucv_int64_get(ucv_object_get(info, "csa_count", NULL))) && !errno)
+ 		csa.cs_count = intval;

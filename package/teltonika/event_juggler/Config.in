@@ -1,0 +1,213 @@
+config PACKAGE_EVENT_JUGGLER_DEBUG
+	bool "Enable debug"
+	depends on PACKAGE_event-juggler
+	default n
+    help
+        Enables deep debuging
+
+menu "Events"
+	depends on PACKAGE_event-juggler
+
+config PACKAGE_EVENT_JUGGLER_EVENT_IO
+	bool "IO event support"
+	default n
+    help
+        Compile with IO event support
+
+config PACKAGE_EVENT_JUGGLER_EVENT_LOG
+	bool "Log event support"
+	default y
+	help
+		Compile with log event support
+
+config PACKAGE_EVENT_JUGGLER_EVENT_QUOTA
+	bool "Data limit event support"
+	default n
+	help
+		Compile with data limit event support
+
+config PACKAGE_EVENT_JUGGLER_EVENT_GPS
+	bool "GPS event support"
+	default n
+	help
+		Compile with GPS event support
+
+config PACKAGE_EVENT_JUGGLER_EVENT_GSM
+	bool "GSM event support"
+	default n
+	help
+		Compile with GSM event support
+
+config PACKAGE_EVENT_JUGGLER_EVENT_ASTRO_TIME
+	bool "Astronomic time event support"
+	default y
+	help
+		Compile with astronomic time event support
+
+config PACKAGE_EVENT_JUGGLER_EVENT_BOOT
+	bool "Boot event support"
+	default y
+	help
+		Compile with boot event support
+
+config PACKAGE_EVENT_JUGGLER_EVENT_TIME
+	bool "Cronjob style event support"
+	default y
+	help
+		Compile with cronjob style event support
+
+config PACKAGE_EVENT_JUGGLER_EVENT_HOTSPOT
+	bool "Hotspot event support"
+	default y
+	help
+		Compile with hotspot event support
+
+config PACKAGE_EVENT_JUGGLER_EVENT_DUMMY
+	bool "Dummy event support"
+	default n
+	help
+		Compile with dummy event support
+
+endmenu
+
+menu "Actions"
+	depends on PACKAGE_event-juggler
+
+config PACKAGE_EVENT_JUGGLER_ACTION_REBOOT
+	bool "Reboot action support"
+	default y
+	help
+		Compile with reboot action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_OUT
+	bool "IO action support"
+	default n
+	help
+		Compile with IO action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_WIFI
+	bool "Wifi action support"
+	default n
+	help
+		Compile with wifi action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_PROFILE
+	bool "Profile action support"
+	default y
+	help
+		Compile with profile action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_RMS
+	bool "RMS action support"
+	default y
+	help
+		Compile with RMS action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_SHUTDOWN
+	bool "Shutdown action support"
+	default y
+	help
+		Compile with shutdown action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_EXEC
+	bool "Exec action support"
+	default y
+	help
+		Compile with exec action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_MODEM
+	bool "Modem action support"
+	default n
+	help
+		Compile with modem action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_LUA
+	bool "LUA action support"
+	default y
+	help
+		Compile with LUA action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_SIM_SWITCH
+	bool "SIM switch action support"
+	default n
+	help
+		Compile with SIM switch action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_HTTP
+	bool "HTTP action support"
+	default y
+	help
+		Compile with HTTP action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_SMS
+	bool "SMS action support"
+	default n
+	help
+		Compile with SMS action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_CALL
+	bool "Call action support"
+	default n
+	help
+		Compile with Call action support`
+
+config PACKAGE_EVENT_JUGGLER_ACTION_SMTP
+	bool "SMTP action support"
+	default y
+	help
+		Compile with SMTP action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_MQTT
+	bool "MQTT action support"
+	default y
+	help
+		Compile with MQTT action support
+
+config PACKAGE_EVENT_JUGGLER_ACTION_CONNECTION
+	bool "Connection control support"
+	default y
+	help
+		Compile with connection control support
+
+endmenu
+
+menu "Conditions"
+	depends on PACKAGE_event-juggler
+
+config PACKAGE_EVENT_JUGGLER_CONDITION_TIME
+	bool "Time condition support"
+	default y
+	help
+		Compile with time condition support
+
+config PACKAGE_EVENT_JUGGLER_CONDITION_BOOL
+	bool "Boolean condition support"
+	default y
+	help
+		Compile with boolean condition support
+
+config PACKAGE_EVENT_JUGGLER_CONDITION_IO
+	bool "I/O condition support"
+	default n
+	help
+		Compile with I/O condition support
+
+config PACKAGE_EVENT_JUGGLER_CONDITION_GPS
+	bool "GPS condition support"
+	default n
+	help
+		Compile with GPS condition support
+
+config PACKAGE_EVENT_JUGGLER_CONDITION_LUA
+	bool "LUA condition support"
+	default y
+	help
+		Compile with LUA condition support
+
+config PACKAGE_EVENT_JUGGLER_CONDITION_FILTER
+	bool "Filter condition support"
+	default y
+	help
+		Compile with filter condition support
+
+endmenu

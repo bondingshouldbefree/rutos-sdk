@@ -1,0 +1,2272 @@
+#
+# Copyright (C) 2025 Teltonika-Networks
+#
+
+#
+# Documentation
+#
+# STRUCTURE:
+# ----------
+# 1. Labels - Define major feature categories
+#    Usage: label "Category Name"
+#    Example: label "Mobile Management"
+#
+# 2. Detail - Provides descriptive text about features (supports multiple lines)
+#    Usage: detail [if CONDITION]
+#               [key]: Descriptive text
+#
+#    The [key]: prefix is optional:
+#    - With prefix: Uses the specified key as the feature name
+#    - Without prefix: Uses the feature's title as the key automatically
+#
+#    Examples:
+#    With prefix:    detail
+#                        Band's management: Provides mobile band locking for different network types
+#
+#    Without prefix: detail
+#                        Enables tracking of mobile data usage across daily, weekly, monthly periods
+#
+# 3. Tooltip - Provides additional explanatory information (supports multiple lines)
+#    Usage: tooltip [key|value] [if CONDITION]
+#               [detail_key]: Additional information about the feature
+#
+#    The [detail_key]: prefix is optional:
+#    - With prefix: Uses the specified key to link to specified detail key
+#    - Without prefix: Uses the feature's title as the key automatically
+#
+#    The type can be 'key' or 'value' (defaults to 'key' if omitted)
+#    It specifies the place where the tooltip should be shown.
+#
+#    Examples:
+#    With prefix:    tooltip key
+#                        eSIM management: Feature availability varies by order code
+#
+#    Without prefix: tooltip key
+#                        Feature availability varies by order code
+#
+# SPECIAL FORMATTING:
+# ------------------
+# 1. Escaping colons - Use "\:" to include literal colons in text
+#    Example: detail
+#                 Teltonika RMS https\://teltonika-networks.com/products/rms
+#
+# 2. Joining text - Text from multiple detail/tooltip blocks is joined with spaces
+#    • Default behavior: Adds space between blocks
+#    • Escaped joining: Use "\" at the beginning of a line to join without extra space
+#
+#    Example:
+#    detail
+#        Certificate creation tool allows to create CA, server, client
+#    detail if LETS_ENCRYPT_SUPPORT
+#        \, let's encrypt
+#    detail if SCEP_SUPPORT
+#        \, SCEP
+#    detail
+#        certificates
+#
+#    Result: "Certificate creation tool allows to create CA, server, client, let's encrypt, SCEP certificates"
+#
+
+
+#
+# Labels
+#
+
+config DOC_LABEL_MOBILE_MANAGEMENT
+	bool
+	label "Mobile Management"
+	default y
+
+config DOC_LABEL_SIM_MANAGEMENT
+	bool
+	label "SIM Management"
+	default y
+
+config DOC_LABEL_MOBILE_UTILITIES
+	bool
+	label "Mobile Utilities"
+	default y
+
+config DOC_LABEL_WIFI
+	bool
+	label "Wi-Fi"
+	default y
+
+config DOC_LABEL_NETWORK
+	bool
+	label "Network"
+	default y
+
+config DOC_LABEL_NETWORK_UTILITIES
+	bool
+	label "Network Utilities"
+	default y
+
+config DOC_LABEL_FIREWALL
+	bool
+	label "Firewall"
+	default y
+
+config DOC_LABEL_VPN
+	bool
+	label "VPN"
+	default y
+
+config DOC_LABEL_IOT
+	bool
+	label "IoT Platforms"
+	default y
+
+config DOC_LABEL_INDR_PROTOCOLS
+	bool
+	label "Industrial Protocols"
+	default y
+
+config DOC_LABEL_MON_MNGT
+	bool
+	label "Monitoring & Management"
+	default y
+
+config DOC_LABEL_LOC_TRACK
+	bool
+	label "Location Tracking"
+	default y
+
+config DOC_LABEL_IO
+	bool
+	label "Input/Output"
+	default y
+
+config DOC_LABEL_SYSTEM
+	bool
+	label "System"
+	default y
+
+config DOC_LABEL_UTILITIES
+	bool
+	label "Utilities"
+	default y
+
+config DOC_LABEL_OTHER
+	bool
+	label "Other"
+	default y
+
+menu "Target firmware features"
+
+#
+# Mobile management
+#
+
+config MOBILE_SUPPORT
+	bool "Mobile Connection Management"
+	label "Mobile Management"
+	maintainer "Mobile"
+	imply PACKAGE_gsmctl
+	imply PACKAGE_mobifd
+	imply PACKAGE_apn_db
+	imply PACKAGE_rpcd-mod-smslimit
+	imply PACKAGE_uqmi if !HAVE_QRTR_PIPE_ENDPOINTS
+	imply PACKAGE_qmi-utils if HAVE_QRTR_PIPE_ENDPOINTS
+	imply PACKAGE_vuci-app-mobile-ui
+	imply PACKAGE_mctl
+	imply PACKAGE_urcd
+	imply PACKAGE_ppp if PPP_MOBILE_SUPPORT
+	imply BUSYBOX_CONFIG_FEATURE_NETIFD
+	detail
+		Band Management: Provides mobile band locking for different network types
+		Block/Allow List: Offers operator block/allow listing by country or individual operators
+		Operator Selection Modes: Module connection modes including auto, manual, and manual-auto
+		APN: Implemented automatic APN selection with the option for manual APN configuration
+		Multiple PDN: Enables the use of different PDNs for multiple network access and services
+		VoLTE: Provides control of VoLTE service
+		SMS Limit: Offers control over the number of SMS messages that can be sent within a certain period
+		USSD: Ensures sending and reading Unstructured Supplementary Service Data messages
+		Status: IMSI, ICCID, operator, operator state, data connection state, network type, bandwidth, connected band,
+		Status: signal strength (RSSI), SINR, RSRP, RSRQ, EC/IO, RSCP, mobile signal graphs, data sent/received, LAC, TAC,
+		Status: cell ID, ARFCN, UARFCN, EARFCN, MCC, and MNC
+		Deny Data on Roaming: Offers mobile data prohibition when module registers on a roaming network
+		Low Signal Reconnect: Ensures mobile data reconnection in case of poor signal
+		Bridge Mode: Direct connection (bridge) between mobile ISP and device on LAN
+		Passthrough Mode: Router assigns it's mobile WAN IP address to another device on LAN
+	detail if FRAMED_ROUTING
+		Framed Routing: Supports an IP network behind a 5G UE
+	tooltip value
+		Band Management: Availability varies by order code
+		Block/Allow List: Availability varies by order code
+		Operator Selection Modes: Availability varies by order code
+		Multiple PDN: Availability varies by order code
+		VoLTE: Availability varies by order code
+		USSD: Availability varies by order code
+		Low Signal Reconnect: Availability varies by order code
+
+config APN_DATABASE_WEBUI_SUPPORT
+	tristate "APN Database Management"
+	label "Mobile Management"
+	maintainer "Mobile"
+	depends on PKG_SUPPORT && MOBILE_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-apn-database-ui
+	detail
+		Enables access to add, delete or edit records of APN database for auto APN functionality
+
+config MOBILE_USAGE_SUPPORT
+	bool "Mobile Data Management"
+	label "Mobile Management"
+	maintainer "Mobile"
+	depends on MOBILE_SUPPORT
+	default y
+	imply PACKAGE_quota_limit if !BYPASS_MOBILE_COUNTERS
+	imply PACKAGE_mdcollectd
+	imply PACKAGE_vuci-app-mobile-usage-ui
+	detail
+		Mobile Data Usage: Enables tracking of mobile data usage across daily, weekly, monthly periods, or in total
+	detail if !BYPASS_OFFLOAD_FEATURE
+		Mobile Data Limit: Provides warnings about limit and control to used data within customizable period
+
+config GSM_CHECKER_SUPPORT
+	bool
+	label "Mobile Management"
+	maintainer "Mobile"
+	depends on MOBILE_SUPPORT
+	imply PACKAGE_gsmchecker
+	detail
+		GSM checker offers basic module functionality tests
+		Possibility to automatically check mobile module functions
+
+config MODEM_LOGGER_SUPPORT
+	tristate
+	label "Mobile Management"
+	maintainer "Mobile"
+	depends on PKG_SUPPORT && MOBILE_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_modem_logger-offline if !TEST_IMAGE
+	imply PACKAGE_modem_logger
+	imply PACKAGE_qlog
+	imply PACKAGE_qc_trace_collector
+	detail
+		Possibility to gather mobile module logs to desired server or save it locally
+
+config APP_MODEM_CONTROL
+	bool
+	maintainer "Apps/Apps2"
+	label "Mobile Management"
+	depends on SERIAL_SUPPORT && MOBILE_SUPPORT
+	default y
+	imply PACKAGE_modem_control
+	imply PACKAGE_vuci-app-modem-control-ui
+
+#
+# SIM management
+#
+
+config SIM_PIN_MANAGEMENT
+	bool "SIM PIN Code Management"
+	label "SIM Management"
+	maintainer "Mobile"
+	depends on MOBILE_SUPPORT
+	default y
+	detail
+		Enables setting, changing, or disabling the SIM card's PIN
+
+config SIM_IDLE_PROTECTION_SUPPORT
+	tristate "SIM Idle Protection"
+	label "SIM Management"
+	maintainer "Mobile"
+	depends on PKG_SUPPORT && DUAL_SIM_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-sim-idle-protection-ui
+	detail
+		Ensures periodic activation of unused SIM slots to prevent SIM card blocking
+
+config DUAL_SIM_SUPPORT
+	bool "SIM Switch"
+	label "SIM Management"
+	maintainer "Mobile"
+	depends on MOBILE_SUPPORT
+	default y if ESIM_SUPPORT
+	imply PACKAGE_sim_switch
+	detail
+		Enables automatic switching between SIM card slots based on user-configured criteria
+	tooltip key if ESIM_SUPPORT
+		Availability varies by order code
+
+config ESIM_SUPPORT
+	bool "eSIM Management"
+	label "SIM Management"
+	maintainer "Mobile"
+	depends on MOBILE_SUPPORT
+	detail
+		Management of eSIM profiles, including downloading and deleting operations, tracking and executing pending notifications and parsing of eSIM ID
+	tooltip key
+		Feature availability varies by order code
+
+#
+# Mobile Utilities
+#
+
+config MOBILE_UTILS_SUPPORT
+	bool "Mobile Utilities"
+	label "Mobile Utilities"
+	maintainer "Apps/Apps1"
+	depends on MOBILE_SUPPORT
+	default y
+	imply PACKAGE_mobutils
+	imply PACKAGE_vuci-app-mobile-utilities-ui
+	imply PACKAGE_mobutils-call_utilities
+	imply PACKAGE_vuci-app-call-utilities-ui
+	imply PACKAGE_mobutils-sms_utilities
+	imply SMS_UTILS_HANDLER_IO if IO_SUPPORT
+	imply SMS_UTILS_HANDLER_WIFI if WIFI_SUPPORT
+	imply SMS_UTILS_HANDLER_GPS if GPS_SUPPORT
+	imply CALL_UTILS_HANDLER_IO if IO_SUPPORT
+	imply CALL_UTILS_HANDLER_WIFI if WIFI_SUPPORT
+	detail
+		SMS Utilities: Rules that perform certain actions when they are activated by SMS messages
+		SMS Forwarding: To HTTP, SMS and Email
+		Email Forwarding: To SMS
+		Auto Reply: Automatic replying to SMS messages that the device receives
+		Messages: Sending and reading of SMS messages
+		Call Utilities: Rules that perform certain actions when they are activated by a call
+
+config SMPP_SUPPORT
+	tristate "SMPP"
+	label "Mobile Utilities"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT && MOBILE_SUPPORT && !BASIC_ROUTER
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-smpp-ui
+	detail
+		SMPP protocol services for flexible short message data transfer
+
+config LPAC_APP
+	bool
+	maintainer "Embedded/BBU"
+	label "Mobile Utilities"
+	depends on MOBILE_SUPPORT
+	default y
+	imply PACKAGE_esim-lpac
+	imply PACKAGE_lua_lpac
+	imply PACKAGE_rpc_esim
+	imply BUSYBOX_CONFIG_TIMEOUT
+
+
+config RNDIS_SUPPORT
+	bool
+	maintainer "Embedded/PoC"
+	label "Mobile Utilities"
+	depends on MOBILE_SUPPORT
+	imply PACKAGE_kmod-usb-net-rndis
+
+config USB_NCM_SUPPORT
+	bool
+	maintainer "Embedded/PoC"
+	label "Mobile Utilities"
+	depends on MOBILE_SUPPORT
+	imply PACKAGE_kmod-usb-net-cdc-ncm
+
+config EMAIL_TO_SMS_SUPPORT
+	tristate
+	maintainer "Apps/Apps1"
+	label "Mobile Utilities"
+	depends on MOBILE_SUPPORT
+	default m if SMALL_FLASH && PKG_SUPPORT && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-email-to-sms-ui
+	imply PACKAGE_email_to_sms
+
+#
+# Wi-Fi
+#
+
+config WIFI_SUPPORT
+	bool "Wi-Fi"
+	maintainer "Network"
+	label "Wi-Fi"
+	imply PACKAGE_iwinfo
+	imply PACKAGE_wireless-tools if USES_VENDOR_WIFI_DRIVER
+	imply PACKAGE_vuci-app-channel-analysis-ui
+	imply PACKAGE_wpad-openssl if !USES_VENDOR_WIFI_DRIVER
+	imply PACKAGE_vuci-app-wireless-ui
+	imply PACKAGE_vuci-app-multi-ap-ui
+	imply PACKAGE_multiple_ap if !AP_DEVICE
+	detail if !AP_DEVICE
+		Wi-Fi Modes: Access Point (AP), Client (STA), Mesh (802.11s), Multi AP
+		Wi-Fi Access Point: Fast roaming (802.11r), Radio Resource Measurement (802.11k), BSS Transition Management (802.11v), Client isolation, Hide SSID, WMM
+		Wi-Fi Encryptions: WPA-PSK, WPA2-PSK, WPA3-SAE, WPA-EAP, OWE, WPA2-EAP, WPA3-EAP
+		Wi-Fi Ciphers: CCMP, TKIP
+		Wi-Fi EAP Methods: TLS, TTLS, PEAP, FAST
+		Wi-Fi Features: WDS, MAC filter, Fast roaming, credentials QR code generator, PKCS#12 format support
+	detail if AP_DEVICE
+		Wi-Fi Modes: Access Point (AP), Mesh (802.11s)
+		Wi-Fi Access Point: Fast roaming (802.11r), Radio Resource Measurement (802.11k), BSS Transition Management (802.11v), Client isolation, Hide SSID, WMM
+		Wi-Fi Encryptions: WPA-PSK, WPA2-PSK, WPA3-SAE, WPA-EAP, OWE, WPA2-EAP, WPA3-EAP
+		Wi-Fi Ciphers: CCMP, TKIP
+		Wi-Fi Features: WDS, MAC filter, Fast roaming, credentials QR code generator
+
+config MT7628_HOTSPOT20
+	bool
+	maintainer "Embedded/PoC"
+	label "Wi-Fi"
+	depends on USES_VENDOR_WIFI_DRIVER
+	default y
+
+config HOTSPOT20_SUPPORT
+	tristate "HotSpot 2.0"
+	maintainer "SysApp"
+	label "Wi-Fi"
+	depends on (PKG_SUPPORT && HOTSPOT_SUPPORT && WIFI_SUPPORT) || AP_DEVICE
+	default y if (NAND_SUPPORT && !GATEWAY_DEVICE) || AP_DEVICE || TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-hotspot2-ui
+	detail
+		Hotspot 2.0 is a Wi-Fi technology that enables seamless and secure roaming between different Wi-Fi networks
+
+config TRAVELMATE_SUPPORT
+	tristate "Travelmate"
+	maintainer "Network"
+	label "Wi-Fi"
+	depends on PKG_SUPPORT && WIFI_SUPPORT
+	default y if NAND_SUPPORT || TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-travelmate-ui
+	detail
+		Forward Wi-Fi hotspot landing page to subsequent connected device
+
+#
+# Network
+#
+
+config CORE_NETWORK_PACKAGES
+	bool
+	default y
+	maintainer "Network"
+	label "Network"
+	imply PACKAGE_ip-full
+	imply PACKAGE_udhcpc
+	imply PACKAGE_kmod-br-netfilter if AP_DEVICE
+	imply PACKAGE_vuci-app-network-ui if !AP_DEVICE
+	imply PACKAGE_vuci-app-network-tap-ui if AP_DEVICE
+	imply PACKAGE_vuci-app-network-devices-api
+
+config ADVANCED_NETWORK
+	bool "Network"
+	maintainer "Network"
+	depends on !AP_DEVICE
+	default y
+	label "Network"
+	imply PACKAGE_vuci-app-ports-settings-ui if PORT_LINK
+	imply PACKAGE_ethtool
+	imply BUSYBOX_DEFAULT_ARPING
+	imply PACKAGE_vuci-app-dhcp-ui
+	imply PACKAGE_odhcpd-ipv6only
+	imply PACKAGE_vuci-app-routes-ui
+	imply PACKAGE_vuci-app-dns-ui
+	imply PACKAGE_vuci-app-vlan-ui
+	imply PACKAGE_vuci-app-network-devices-ui if DSA_SUPPORT
+	detail
+		Status: LAN networks, DHCP leases, Firewall rules and policies, IPv4/IPv6 routes, ARP table, IPv6 neighours
+		Interfaces: Static IP, DHCP client, DHCPv6 client, PPPoE client, IPv6 prefix management, IPv6 SLAAC, WAN, LAN
+		VLAN: Tagged, untagged
+		Routing: Static routing, policy based routing, routing rules
+		DHCPv4: Status, server mode, relay mode, custom DHCP options, static leases
+		DHCPv6: Status, server mode, statless mode, statefull mode, relay mode, hybrid mode, Router advertisement service, NDP proxy, static leases
+		DNS: Caching DNS server, DNS forwardings, rebind protection, static DNS entries
+		Ports Control: View, enable, disable, auto-configuration control, transmission speed control
+		Network Protocols: IPv4, IPv6, PPP, ARP, IPsec, IP NAT
+		Transport Protocols: TCP, UDP, ICMP, GRE, ESP, RIP, OSPF, BGP, IPsec
+	detail if FRR_SUPPORT || FRR5_SUPPORT
+		Routing: \, dynamic routing
+
+
+config FRR_SUPPORT
+	tristate "Dynamic Route Protocols"
+	label "Network"
+	maintainer "SysApp"
+	depends on !64MB_RAM && PKG_SUPPORT && ADVANCED_NETWORK
+	default m if !x86_64 && (!NAND_SUPPORT || (NAND_SUPPORT && GATEWAY_DEVICE)) && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-dynamic-routes-rip-ui
+	imply PACKAGE_vuci-app-dynamic-routes-ospf-ui
+	imply PACKAGE_vuci-app-dynamic-routes-eigrp-ui
+	imply PACKAGE_vuci-app-dynamic-routes-bgp-ui
+	imply PACKAGE_vuci-app-dynamic-routes-nhrp-ui
+	detail
+		RIP, OSPF, EIGRP, BGP, NHRP
+
+config FRR5_SUPPORT
+	tristate "Dynamic Route Protocols"
+	label "Network"
+	maintainer "SysApp"
+	depends on 64MB_RAM && PKG_SUPPORT && ADVANCED_NETWORK
+	default m if (!NAND_SUPPORT || (NAND_SUPPORT && GATEWAY_DEVICE)) && !TEST_IMAGE
+	default y
+	imply PACKAGE_frr5
+	imply PACKAGE_frr5-zebra
+	imply PACKAGE_frr5-libfrr
+	imply PACKAGE_vuci-app-dynamic-routes-rip5-ui
+	imply PACKAGE_vuci-app-dynamic-routes-ospf5-ui
+	imply PACKAGE_vuci-app-dynamic-routes-eigrp5-ui
+	imply PACKAGE_vuci-app-dynamic-routes-bgp5-ui
+	imply PACKAGE_vuci-app-dynamic-routes-nhrp5-ui
+	detail
+		RIP, OSPF, EIGRP, BGP, NHRP
+
+config BFD_FRR_SUPPORT
+	tristate
+	maintainer "Network"
+	label "Network"
+	depends on PKG_SUPPORT && FRR_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	detail
+		Protocol intended to detect faults in the bidirectional path between two forwarding engines
+	imply PACKAGE_vuci-app-bfd-ui
+
+config FIREWALL_SUPPORT
+	bool "Firewall"
+	maintainer "Network"
+	label "Firewall"
+	depends on !AP_DEVICE
+	default y
+	imply PACKAGE_vuci-app-firewall-ui
+	imply PACKAGE_iptables-mod-conntrack-extra
+	imply PACKAGE_kmod-nf-nathelper-extra
+	imply PACKAGE_kmod-nf-nathelper
+	imply PACKAGE_kmod-ipt-raw6
+	detail
+		Firewall: IPv4, IPv6, connection tracking, statefull firewall, logging, zone based firewall, custom rules, DMZ, firewall statistics, rules list, tables list
+		Port Forward: By port/protocol/IP address, NAT loopback
+		Traffic Rules: Time-based restrictions, input/output/forward control, by protocol/port/IP address/MAC address
+		Targets: Accept, drop, reject, do not track, mark, change TTL, change DSCP
+		NAT Rules: Source NAT, destination NAT, PAT, static NAT, dynamic NAT, NAT mapping
+		Tables: Raw, mangle, nat, filter
+		Attack Prevention: DDOS prevention, SYN flood protection, SSH attack prevention, HTTP/HTTPS attack prevention, port scan prevention (SYN-FIN, SYN-RST, X-mas, NULL flags, FIN scan attacks)
+		Conntrack Helpers: FTP, PPTP, SIP, SNMP, TFTP, IRC
+
+config IPTABLES_NAT_EXTRA_SUPPORT
+	tristate
+	maintainer "Network"
+	label "Network"
+	depends on !AP_DEVICE && PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_iptables-mod-nat-extra
+	detail
+		Iptables extensions for extra NAT targets. Adds targets\: MIRROR and NETMAP
+
+config IPTABLES_FILTER_EXTENSION
+	tristate
+	maintainer "Network"
+	label "Network"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_iptables-mod-filter
+
+config NFTABLES_SUPPORT
+	bool
+	maintainer "Embedded/PoC"
+	label "Network"
+	depends on !HAS_DOWNSTREAM_KERNEL
+	default y
+	imply PACKAGE_kmod-nft-netdev
+
+config NFTABLES_NOJSON_SUPPORT
+	tristate
+	maintainer "Embedded/PoC"
+	label "Network"
+	depends on NFTABLES_SUPPORT
+	default m if SMALL_FLASH
+	default y
+	imply PACKAGE_nftables-nojson
+
+config EBTABLES_DNS_SUPPORT
+	bool
+	maintainer "Network"
+	label "Network"
+	depends on AP_DEVICE
+	default y
+	imply PACKAGE_ebtables-dns
+
+config VXLAN_SUPPORT
+	tristate "VXLAN"
+	maintainer "Network"
+	label "Network"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-vxlan-ui
+	detail
+		VXLAN is a tunneling technology used on large Layer 2 networks, and transmits packets over a VXLAN tunnel between source and destination devices
+
+config JOOL_SUPPORT
+	tristate "NAT64"
+	maintainer "Network"
+	depends on PKG_SUPPORT && NAND_SUPPORT && !GATEWAY_DEVICE
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-jool-ui
+	label "Network"
+	detail
+		NAT64 is an IPv6 transition mechanism that facilitates communication between IPv6 and IPv4 hosts by using a form of network address translation
+
+config DOT1X_CLIENT_SUPPORT
+	tristate "802.1X Client"
+	maintainer "SysApp"
+	label "Network"
+	depends on HAS_DOT1X_CLIENT
+	default m if !NAND_SUPPORT && !x86_64 && !(INDUSTRIAL_AP || AP_DEVICE || DSA_SUPPORT || GATEWAY_DEVICE) && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-port-security-ui if !AP_DEVICE
+	imply PACKAGE_vuci-app-dot1x-client-tap-ui if AP_DEVICE
+	detail
+		MD5, TLS, PWD, Tunneled TLS, PEAP
+
+config DOT1X_SERVER_SUPPORT
+	tristate "802.1X Server"
+	maintainer "SysApp"
+	label "Network"
+	depends on !(INDUSTRIAL_AP || AP_DEVICE) && HAS_DOT1X_SERVER
+	default y if HAS_SINGLE_ETH_PORT || DSA_SUPPORT || x86_64 || TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-port-security-ui
+	detail
+		Port-based multi-host 802.1X NAC, RADIUS-assigned VLANs, accept VLANs, reject VLANs
+
+config UMDNS_SUPPORT
+	bool
+	maintainer "Apps/Apps1"
+	label "Network"
+	depends on AP_DEVICE
+	default y
+	imply PACKAGE_umdns
+
+config IP_BRIDGE_SUPPORT
+	bool
+	maintainer "Network"
+	label "Network"
+	depends on DSA_SUPPORT
+	default y
+	imply PACKAGE_ip-bridge
+
+#
+# Network Utilities
+#
+
+config MULTIWAN_SUPPORT
+	tristate "Multiwan"
+	maintainer "Network"
+	label "Network Utilities"
+	depends on PKG_SUPPORT && (!GATEWAY_DEVICE || (GATEWAY_DEVICE && !CUSTOM_DATA_LIMIT))
+	default m if (HAS_SINGLE_ETH_PORT || NETWORKS_EXTERNAL) && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-mwan3-ui
+	detail
+		Failover: Switch automatically and seamlessly to a reliable backup connection
+		Load Balancing: Distribute traffic among multiple WAN connections to improve performance and reliability
+
+config CONNCHECKER_SUPPORT
+	tristate "Internet Status"
+	maintainer "Network"
+	label "Network Utilities"
+	depends on PKG_SUPPORT && !AP_DEVICE
+	default m if !NAND_SUPPORT && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-internet-ui
+	detail
+		Internet status track and log changes about availability of public Internet
+
+config IGMPPROXY_SUPPORT
+	tristate "Multicast"
+	maintainer "Network"
+	label "Network Utilities"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-igmp-proxy-ui
+	detail
+		IGMP proxy forward multicast traffic using IGMP signalling
+
+config QOS_SUPPORT
+	tristate "Network Traffic Control"
+	maintainer "Network"
+	label "Network Utilities"
+	depends on PKG_SUPPORT && !BYPASS_OFFLOAD_FEATURE
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-qos-ui
+	detail
+		Traffic control does packet prioritizing, traffic shaping, bandwidth limiting, AQM (Active Queue Management) and QoS (Quality of Service)
+
+config SQM_SUPPORT
+	tristate "Smart Queue Management"
+	maintainer "Network"
+	label "Network Utilities"
+	depends on PKG_SUPPORT && !BYPASS_OFFLOAD_FEATURE
+	default m if (!NAND_SUPPORT || (NAND_SUPPORT && GATEWAY_DEVICE)) && !TEST_IMAGE && !x86_64
+	default y
+	imply PACKAGE_vuci-app-sqm-ui
+	detail
+		Smart Queue Management performs per-packet/per flow network scheduling, active queue length management (AQM), traffic shaping/rate limiting, and QoS (prioritisation)
+
+config RELAYD_SUPPORT
+	tristate "Relayd"
+	maintainer "Network"
+	label "Network Utilities"
+	depends on PKG_SUPPORT && !GATEWAY_DEVICE && !BASIC_ROUTER && !NETWORKS_EXTERNAL && !x86_64
+	default y if NAND_SUPPORT || TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-relayd-ui
+	detail
+		Relayd create transparent wireless bridge between Wi-Fi STA and LAN network
+
+config NETWORK_MAP_SUPPORT
+	tristate "Topology"
+	label "Network Utilities"
+	maintainer "SysApp"
+	depends on !AP_DEVICE
+	default m if SMALL_FLASH && PKG_SUPPORT
+	default y
+	imply PACKAGE_vuci-app-networkmap-ui
+	detail
+		Displays network devices that belong to the same network
+
+config NETWORK_USAGE_SUPPORT
+	bool "Network Usage"
+	label "Network Utilities"
+	maintainer "SysApp"
+	depends on NETWORK_MAP_SUPPORT && !SMALL_FLASH
+	default y
+	imply PACKAGE_vuci-app-network-usage-ui
+
+config UDPRELAY_SUPPORT
+	tristate "UDP Relay"
+	maintainer "Network"
+	label "Network Utilities"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-udprelay-ui
+	detail
+		UDP relay forward broadcast packets from a specified UDP port to configured interface
+
+config VRF_SUPPORT
+	tristate "VRF"
+	maintainer "Network"
+	label "Network Utilities"
+	detail
+		Virtual routing and forwarding, IP technology allows users to configure multiple routing table instances to simultaneously co-exist within the same router
+	depends on PKG_SUPPORT
+	default y if NAND_SUPPORT || TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-vrf-ui
+
+config VRRP_SUPPORT
+	tristate "VRRP"
+	maintainer "Network"
+	label "Network Utilities"
+	depends on PKG_SUPPORT && ADVANCED_NETWORK
+	default m if (!NAND_SUPPORT || GATEWAY_DEVICE) && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-vrrp-ui
+	detail
+		Virtual Router Redundancy Protocol is a computer networking protocol that provides for automatic assignment of available Internet Protocol (IP) routers to participating hosts
+
+config HOTSPOT_SUPPORT
+	tristate "HotSpot"
+	maintainer "SysApp"
+	label "Network Utilities"
+	depends on PKG_SUPPORT
+	default y if (NAND_SUPPORT && !GATEWAY_DEVICE && !NETWORKS_EXTERNAL) || TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-coovachilli-ui
+	imply COOVACHILLI_CHILLIQUERY
+	imply IP_BLOCKD_MAC_SUPPORT
+	detail
+		Captive portal (Hotspot), internal/external Radius server, SMS/SSO/MAC authorisation, internal/external
+		landing page, walled garden, user scripts, URL parameters, user groups, individual user or group
+		limitations, user management, 9 default customizable themes and option to upload and download
+		customised hotspot themes
+
+config HOTSPOT_THEMES_SUPPORT
+	tristate
+	maintainer "SysApp"
+	label "Network Utilities"
+	depends on PKG_SUPPORT && HOTSPOT_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_hs_theme_airport
+	imply PACKAGE_hs_theme_airport2
+	imply PACKAGE_hs_theme_bus
+	imply PACKAGE_hs_theme_coffee_shop
+	imply PACKAGE_hs_theme_grocery_store
+	imply PACKAGE_hs_theme_office
+	imply PACKAGE_hs_theme_park
+	imply PACKAGE_hs_theme_ship
+	imply PACKAGE_hs_theme_station
+
+#
+# VPN
+#
+
+config STRONGSWAN_SUPPORT
+	bool "IPsec"
+	label "VPN"
+	maintainer "SysApp"
+	depends on ADVANCED_NETWORK
+	default y
+	imply PACKAGE_strongswan
+	imply PACKAGE_strongswan-minimal
+	imply PACKAGE_strongswan-mod-tpm if TPM_SUPPORT
+	imply PACKAGE_kmod-xfrm-interface
+	imply PACKAGE_xfrm
+	imply PACKAGE_vuci-app-strong-swan-ui
+	imply PACKAGE_swanmon
+	detail
+		Tunnel, Transport, XFRM modes, Pre-shared key, X.509, PKCS#12, EAP, XAUTH, RSA authentication methods,
+		IKEv1, IKEv2, 14 encryption methods, MD5, SHA1, SHA256, SHA348, SHA512 authentication algorithms
+
+config OPENVPN_SUPPORT
+	bool "OpenVPN"
+	label "VPN"
+	maintainer "SysApp"
+	depends on ADVANCED_NETWORK || (AP_DEVICE && SMALL_FLASH && !LEDMAN_LITE)
+	default y
+	imply PACKAGE_vuci-app-openvpn-ui
+	detail
+		Client and server modes, Tunnel (TUN) or Bridged (TAP) types, NordVPN, ExpressVPN external providers
+		static key, TLS, password, PKCS#12 authentication methoods, 27 encryption methods
+
+config STUNNEL_SUPPORT
+	tristate "Stunnel"
+	label "VPN"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT && ADVANCED_NETWORK
+	default m if (!NAND_SUPPORT || (NAND_SUPPORT && GATEWAY_DEVICE)) && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-stunnel-ui
+	detail
+		Proxy designed to add TLS encryption functionality to existing clients and servers
+
+config L2TP_SUPPORT
+	bool "L2TP"
+	label "VPN"
+	maintainer "SysApp"
+	depends on ADVANCED_NETWORK
+	default y
+	imply PACKAGE_vuci-app-l2tp-ui
+	detail
+		Server, client, L2TP over IPSec
+	detail if L2TPV6_SUPPORT
+		\, IPv6 support
+
+config L2TPV6_SUPPORT
+	tristate
+	label "VPN"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT && L2TP_SUPPORT
+	default m if SMALL_FLASH
+	default y
+	imply PACKAGE_xl2tpd6
+	detail
+		Daemon that manages Layer 2 Tunneling Protocol (L2TP) tunnels
+		It is based on xl2tpd with added IPv6 support
+
+config L2TPv3_SUPPORT
+	tristate "L2TPv3"
+	label "VPN"
+	maintainer "SysApp"
+	default y
+	detail
+		Tunneling protocol that can be used as an alternative protocol to Multiprotocol
+		Label Switching (MPLS) for encapsulation of multiprotocol Layer 2 communications traffic over IP networks
+
+config PPTP_SUPPORT
+	bool "PPTP"
+	label "VPN"
+	maintainer "SysApp"
+	depends on ADVANCED_NETWORK
+	default y
+	imply PACKAGE_vuci-app-pptp-ui
+	imply PACKAGE_ppp
+	detail
+		PPTP: Server, client
+
+config SSTP_SUPPORT
+	tristate "SSTP Client"
+	label "VPN"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT && ADVANCED_NETWORK
+	default m if (!NAND_SUPPORT || (NAND_SUPPORT && GATEWAY_DEVICE)) && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-sstp-ui
+	detail
+		SSTP client is a is a VPN tunnel that provides a mechanism to transport PPP traffic through an SSL/TLS channel
+
+config DMVPN_SUPPORT
+	tristate "DMVPN"
+	label "VPN"
+	maintainer "SysApp"
+	depends on !64MB_RAM && PKG_SUPPORT && GRE_SUPPORT && STRONGSWAN_SUPPORT && FRR_SUPPORT
+	default m if (!NAND_SUPPORT || (NAND_SUPPORT && GATEWAY_DEVICE)) && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-dmvpn-ui
+	detail
+		Spoke and Hub modes, GRE, IPSec, NHRP technologies
+
+config DMVPN_FRR5_SUPPORT
+	tristate "DMVPN"
+	label "VPN"
+	maintainer "SysApp"
+	depends on 64MB_RAM && PKG_SUPPORT && GRE_SUPPORT && STRONGSWAN_SUPPORT && FRR5_SUPPORT
+	default m if (!NAND_SUPPORT || (NAND_SUPPORT && GATEWAY_DEVICE)) && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-dmvpn5-ui
+	detail
+		Spoke and Hub modes, GRE, IPSec, NHRP technologies
+
+config GRE_SUPPORT
+	bool "GRE"
+	label "VPN"
+	maintainer "SysApp"
+	depends on ADVANCED_NETWORK
+	default y
+	imply PACKAGE_gre
+	imply PACKAGE_gkeepalive
+	imply PACKAGE_vuci-app-gre-ui
+	detail
+		Tunnel, GRE tunnel over IPSec modes
+
+config ZEROTIER_SUPPORT
+	tristate "ZeroTier"
+	label "VPN"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-zerotier-ui
+	detail
+		VPN which offers peer-to-peer mesh connections
+
+config TINC_SUPPORT
+	tristate "Tinc"
+	label "VPN"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-tinc-ui
+	detail
+		VPN that uses tunnelling and encryption to create a secure private network between hosts on the Internet
+
+config WIREGUARD_SUPPORT
+	bool "WireGuard"
+	label "VPN"
+	maintainer "SysApp"
+	depends on !AP_DEVICE
+	default y
+	imply PACKAGE_wireguard-tools if !HAS_DOWNSTREAM_KERNEL
+	imply PACKAGE_wireguard-trb5 if HAS_DOWNSTREAM_KERNEL
+	imply PACKAGE_vuci-app-wireguard-ui
+	detail
+		VPN that and was designed with the goals of ease of use, high speed performance, and low attack surface
+
+config TAILSCALE_SUPPORT
+	tristate "Tailscale"
+	label "VPN"
+	maintainer "SysApp"
+	depends on !SMALL_FLASH && !64MB_RAM && (!128MB_RAM || USB_GADGET_SUPPORT) && PKG_SUPPORT && ( !GATEWAY_DEVICE || BYPASS_OFFLOAD_FEATURE || USB_GADGET_SUPPORT )
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-tailscale-ui
+	detail
+		Zero config VPN for building secure networks
+
+config NETBIRD_SUPPORT
+	tristate "Netbird"
+	label "VPN"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT && HIGH_STORAGE
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-netbird-ui
+	detail
+		Open-source VPN management platform built on top of WireGuard® making it easy to create secure private networks for your organization or home
+
+config EOIP_SUPPORT
+	tristate "EoIP"
+	label "VPN"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-eoip-ui
+	detail
+		Ethernet over IP (EoIP) Tunneling is a MikroTik RouterOS protocol based on GRE RFC 1701 that creates an Ethernet tunnel between two routers on top of an IP connection
+
+config OPENCONNECT_SUPPORT
+	tristate "OpenConnect"
+	label "VPN"
+	maintainer "SysApp"
+	depends on !SMALL_FLASH && PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-openconnect-ui
+	detail
+		Cross-platform multi-protocol SSL VPN client which supports a number of VPN protocols
+#
+# IoT Platforms
+#
+
+config AZURE_SUPPORT
+	tristate "Azure IoT Hub"
+	label "IoT Platforms"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-azure-iothub-ui
+	detail
+		Data to Server support, direct method support, plug & play integration, DPS
+
+config AWS_SUPPORT
+	tristate "AWS"
+	label "IoT Platforms"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-aws-ui
+	detail
+		Call device's API by using AWS Jobs functionality
+
+config CUMULOCITY_SUPPORT
+	tristate "Cumulocity / Cloud of Things"
+	label "IoT Platforms"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-cumulocity-ui
+	detail
+		Reboot and firmware upgrade actions; device, network
+	detail if MOBILE_SUPPORT
+		and mobile
+	detail
+		parameters monitoring
+
+config THINGWORX_SUPPORT
+	tristate "Thingworx"
+	label "IoT Platforms"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-thingworx-ui
+	detail
+		Network
+	detail if MOBILE_SUPPORT
+		and mobile
+	detail
+		parameters monitoring
+
+config RMS_SUPPORT
+	bool "RMS"
+	label "IoT Platforms"
+	maintainer "Apps/Apps1"
+	default n if x86_64 && !TEST_IMAGE
+	default y
+	imply PACKAGE_rms_json
+	imply PACKAGE_rms_mqtt
+	imply PACKAGE_vuci-app-cloud-solutions-ui
+	detail
+		Teltonika Remote Management System https\://teltonika-networks.com/products/rms
+
+#
+# Industrial protocols
+#
+
+config IO_MODBUS_SUPPORT
+	tristate "Modbus"
+	label "Industrial Protocols"
+	maintainer "Apps/Apps2"
+	depends on PKG_SUPPORT
+	default m if !HAS_MODBUS
+	default y
+	imply PACKAGE_vuci-app-modbus-server-ui
+	imply PACKAGE_vuci-app-modbus-client-ui
+	imply PACKAGE_vuci-app-modbus-serial-ui if SERIAL_SUPPORT
+	imply PACKAGE_vuci-app-modbus-gateway-ui
+	detail
+		Client, Server, MQTT Gateway modes, 14 data types, TCP
+	detail if USB_SUPPORT_EXTERNAL
+		\, USB
+	detail if HAS_RS232
+		\, RTU(RS232)
+	detail if HAS_RS485
+		\, RTU(RS485)
+	detail
+		connection types
+
+config DNP3_SUPPORT
+	tristate "DNP3"
+	label "Industrial Protocols"
+	maintainer "Apps/Apps2"
+	depends on PKG_SUPPORT
+	default m
+	imply PACKAGE_vuci-app-dnp3-ui
+	detail
+		Station, Outstation modes, TCP
+	detail if USB_SUPPORT_EXTERNAL
+		\, USB
+	detail if HAS_RS232
+		\, RTU(RS232)
+	detail if HAS_RS485
+		\, RTU(RS485)
+	detail
+		connection types
+
+config BACNET_SUPPORT
+	tristate "Bacnet"
+	label "Industrial Protocols"
+	maintainer "Apps/Apps2"
+	depends on PKG_SUPPORT
+	default m
+	imply PACKAGE_vuci-app-bacnet-ui
+	detail
+		Router mode, RTU(RS485) connection mode
+
+config MBUS_SUPPORT
+	bool "MBUS"
+	label "Industrial Protocols"
+	maintainer "Apps/Apps2"
+	imply PACKAGE_libmbus-util
+	imply PACKAGE_mbus_client
+	imply PACKAGE_vuci-app-mbus-ui
+	detail
+		Client, Gateway modes, ability to communicate with Mbus meter via IP network,
+		can support up to 250 client devices and can power up to 6 client devices
+
+config OPCUA_SUPPORT
+	tristate "OPC UA"
+	label "Industrial Protocols"
+	maintainer "Apps/Apps2"
+	depends on PKG_SUPPORT
+	default m
+	imply PACKAGE_vuci-app-opcua-ui
+	imply PACKAGE_vuci-app-opcua-server-ui
+	detail
+		Client, Server modes
+
+config DLMS_SUPPORT
+	tristate "DLMS/Cosem"
+	label "Industrial Protocols"
+	maintainer "Apps/Apps2"
+	depends on PKG_SUPPORT
+	default m
+	imply PACKAGE_vuci-app-dlms-ui
+	imply PACKAGE_libdlms
+	detail
+		Client mode, HDLC, Wrapper, IEC 62056-21(mode E) interfaces, TCP
+	detail if USB_SUPPORT_EXTERNAL
+		\, USB
+	detail if HAS_RS232
+		\, RTU(RS232)
+	detail if HAS_RS485
+		\, RTU(RS485)
+	detail
+		connection types
+
+#
+# Monitoring & Management
+#
+
+config EVENTS_SUBSYSTEM
+	bool "Events Reporting"
+	label "Monitoring & Management"
+	maintainer "Apps/Apps1"
+	depends on !AP_DEVICE
+	default n if CONSUMER_AP
+	default y
+	imply PACKAGE_vuci-app-events-reporting-ui
+	imply BUSYBOX_CONFIG_PASSWD
+	detail
+		Notification sending to email
+	detail if MOBILE_SUPPORT
+		and SMS
+
+config EASYCWMP_SUPPORT
+	tristate "TR-069"
+	label "Monitoring & Management"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE || CONSUMER_AP
+	default m
+	imply PACKAGE_vuci-app-tr069-ui
+	detail
+		Device reboot, firmware upgrade and configuration setting, Device, network
+	detail if MOBILE_SUPPORT
+		and mobile
+	detail
+		monitoring parameters
+
+config SNMP_SUPPORT
+	tristate "SNMP"
+	label "Monitoring & Management"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT
+	default m if !NAND_SUPPORT && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-snmp-ui
+	imply SNMPTRAP_GSM if MOBILE_SUPPORT
+	imply SNMPTRAP_IO if IO_SUPPORT
+	imply SNMPTRAP_CHILLI if HOTSPOT_SUPPORT
+	detail
+		Available versions v1, v2 and v3
+	detail if MOBILE_SUPPORT
+		\, Signal strength, network type
+	detail
+		\, Input/Output and events log notifications traps
+
+config MQTT_SUPPORT
+	tristate "MQTT"
+	label "Monitoring & Management"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT
+	default m if !NAND_SUPPORT && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-mqtt-ui
+	detail
+		MQTT Broker: System which coordinates messages between different clients
+		MQTT Publisher: Client instance that can send messages to the Broker, who can forward these messages to other clients (subscribers)
+
+config NF_LOGGING_SUPPORT
+	tristate "Traffic Logging"
+	label "Monitoring & Management"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT && !BYPASS_OFFLOAD_FEATURE
+	default m if !NAND_SUPPORT && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-ulog-ui
+	imply PACKAGE_iptables-mod-nflog
+	detail
+		Netfilter userpace logging that provides the ability to set up periodic transfers of the selected traffic log to an FTP server
+
+config EVENT_JUGGLER_SUPPORT
+	tristate "Event Juggler"
+	label "Monitoring & Management"
+	maintainer "Apps/Apps1"
+	default y
+	depends on !AP_DEVICE
+	select PACKAGE_event-juggler
+	select PACKAGE_vuci-app-event-juggler-ui
+	select PACKAGE_EVENT_JUGGLER_EVENT_GPS if GPS_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_EVENT_GSM if MOBILE_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_EVENT_IO if IO_SUPPORT || POWER_CONTROL_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_EVENT_QUOTA if MOBILE_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_ACTION_SIM_SWITCH if DUAL_SIM_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_ACTION_SMS if MOBILE_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_ACTION_CALL if MOBILE_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_ACTION_OUT if IO_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_ACTION_WIFI if WIFI_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_ACTION_MODEM if MOBILE_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_CONDITION_IO if IO_SUPPORT
+	select PACKAGE_EVENT_JUGGLER_CONDITION_GPS if GPS_SUPPORT
+	detail
+		Event Juggler Events: Device boot, time, Hotspot connections, astronomical time, device logs
+	detail if GPS_SUPPORT
+		Event Juggler Events: \, GPS
+	detail if MOBILE_SUPPORT
+		Event Juggler Events: \, GSM, mobile data limit
+	detail if IO_SUPPORT || POWER_CONTROL_SUPPORT
+		Event Juggler Events: \, input/output changes
+	detail
+		Event Juggler Actions: Connection management, MQTT message, Email, HTTP request, Lua and other script execution, RMS management, profile change, device reboot
+	detail if MOBILE_SUPPORT
+		Event Juggler Actions: \, SMS, call, modem restart
+	detail if DUAL_SIM_SUPPORT
+		Event Juggler Actions: \, SIM switch
+	detail if IO_SUPPORT
+		Event Juggler Actions: \, output management
+	detail if WIFI_SUPPORT
+		Event Juggler Actions: \, Wi-Fi management
+
+config DATA_SENDER_SUPPORT
+	tristate "Data to Server"
+	label "Monitoring & Management"
+	maintainer "Apps/Apps1"
+	default y
+	imply PACKAGE_data-sender
+	imply PACKAGE_vuci-app-data-sender-ui
+	imply PACKAGE_data-sender-mod-base
+	imply PACKAGE_data-sender-mod-mnfinfo
+	imply PACKAGE_vuci-app-data-sender-api-mod-lua_format
+	imply PACKAGE_DATA_SENDER_SCHEDULER
+	imply PACKAGE_DATA_SENDER_BASE64
+	imply PACKAGE_vuci-app-data-sender-api-mod-gsm if MOBILE_SUPPORT
+	imply PACKAGE_vuci-app-data-sender-api-mod-mdcollect if MOBILE_SUPPORT
+	imply PACKAGE_vuci-app-data-sender-api-mod-bluetooth if BLUETOOTH_SUPPORT
+	imply PACKAGE_vuci-app-data-sender-api-mod-mbus if MBUS_SUPPORT
+	imply PACKAGE_vuci-app-data-sender-api-mod-http
+	imply PACKAGE_vuci-app-data-sender-api-mod-mqtt-in
+	imply PACKAGE_vuci-app-data-sender-api-mod-mqtt-out
+	imply PACKAGE_vuci-app-data-sender-api-mod-ubus
+	imply PACKAGE_vuci-app-data-sender-api-mod-lua-in
+	imply PACKAGE_vuci-app-data-sender-api-mod-format-custom
+	detail
+		Device, manufactoring information, MQTT, Lua script
+	detail if MOBILE_SUPPORT
+		\, GSM, Mobile usage
+	detail if WIFI_SCANNER_SUPPORT
+		\, Wi-Fi Scanner
+	detail if BLUETOOTH_SUPPORT
+		\, Bluetooth
+	detail if DLMS_SUPPORT
+		\, DLMS
+	detail if DNP3_SUPPORT
+		\, DNP3
+	detail if MBUS_SUPPORT
+		\, M-Bus
+	detail if IMPULSE_COUNTER_SUPPORT
+		\, Impulse Counter
+	detail if IO_MODBUS_SUPPORT
+		\, Modbus, Modbus alarms
+	detail if OPCUA_SUPPORT
+		\, OPC UA
+	detail if DATA_SENDER_ADVANCED_SUPPORT && MOBILE_SUPPORT
+		\, SMS
+	detail if DATA_SENDER_ADVANCED_SUPPORT && IO_SUPPORT
+		\, I/O
+	detail if DATA_SENDER_ADVANCED_SUPPORT && GPS_SUPPORT
+		and GPS
+	detail
+		data inputs; HTTP, MQTT
+	detail if DATA_SENDER_ADVANCED_SUPPORT && MOBILE_SUPPORT
+		\, SMS
+	detail if DATA_SENDER_ADVANCED_SUPPORT
+		\, FTP, SMTP, Socket, Lua script
+	detail if AZURE_SUPPORT
+		and Azure IoT Hub
+	detail
+		servers
+
+config DATA_SENDER_ADVANCED_SUPPORT
+	tristate "Data to Server"
+	maintainer "Apps/Apps1"
+	depends on DATA_SENDER_SUPPORT && PKG_SUPPORT
+	default m if SMALL_FLASH
+	default y
+	imply PACKAGE_vuci-app-data-sender-api-mod-advanced
+
+config JSON_RPC
+	tristate "JSON-RPC"
+	label "Monitoring & Management"
+	maintainer "SysApp"
+	default y
+	detail
+		Remote procedure call (RPC) system configuration protocol
+
+config SSH
+	tristate "SSH"
+	label "Monitoring & Management"
+	maintainer "SysApp"
+	default y
+	detail
+		Network protocol that enables secure communication between two computers over an unsecured network
+
+config WebUI
+	tristate "WebUI"
+	label "Monitoring & Management"
+	maintainer "SysApp"
+	default y
+	detail
+		Graphical interface that allows users to interact with system through a web browser
+
+config API
+	tristate "API"
+	label "Monitoring & Management"
+	maintainer "Apps/Apps2"
+	default y
+	detail
+		Interface that allows different software applications to communicate and exchange data
+
+config HTTP
+	tristate "HTTP/HTTPS"
+	label "Monitoring & Management"
+	maintainer "Apps/Apps2"
+	default y
+	detail
+		HTTP and HTTPS protocols used for communication between web browsers and devices
+
+config SERIAL_SUPPORT
+	bool
+	maintainer "Apps/Apps2"
+	label "Monitoring & Management"
+	imply PACKAGE_serial
+	imply PACKAGE_modbusgwd
+	imply PACKAGE_vuci-app-overip-ui
+	imply PACKAGE_vuci-app-modbus-serial-gateway-ui
+	imply PACKAGE_vuci-app-getty-ui
+	imply BUSYBOX_DEFAULT_STTY
+
+config SERIAL_USB_DRIVERS
+	bool
+	maintainer "Embedded/BBU"
+	label "Monitoring & Management"
+	depends on SERIAL_SUPPORT
+	default y
+	imply PACKAGE_kmod-usb-acm
+	imply PACKAGE_kmod-usb-serial-pl2303
+	imply PACKAGE_kmod-usb-serial-ftdi
+	imply PACKAGE_kmod-usb-serial-ch343
+	detail
+		Support of usb serial drivers used inside devices
+
+config SERIAL_USB_DRIVERS_EXT
+	bool
+	maintainer "Embedded/BBU"
+	label "Monitoring & Management"
+	depends on SERIAL_SUPPORT && USB_SUPPORT_EXTERNAL
+	default y
+	imply PACKAGE_kmod-usb-serial-ch341
+	imply PACKAGE_kmod-usb-serial-ark3116
+	imply PACKAGE_kmod-usb-serial-belkin
+	imply PACKAGE_kmod-usb-serial-cp210x
+	imply PACKAGE_kmod-usb-serial-cypress-m8
+	detail
+		Support of usb serial drivers available as plugable module
+
+config USB_STORAGE_SUPPORT
+	bool
+	maintainer "Embedded/BBU"
+	label "Monitoring & Management"
+	depends on USB_SUPPORT_EXTERNAL
+	default y
+	imply PACKAGE_kmod-usb-storage
+	imply PACKAGE_kmod-fs-exfat-oot if !LINUX_6_6
+	imply PACKAGE_kmod-fs-exfat if LINUX_6_6
+	imply PACKAGE_kmod-fs-ntfs
+	imply PACKAGE_kmod-fs-msdos if !x86_64
+	imply PACKAGE_exfat-mkfs
+	imply PACKAGE_kmod-fs-autofs4
+	imply PACKAGE_kmod-fs-ext4
+	imply PACKAGE_block-mount
+	imply PACKAGE_storage-memory-expansion if !x86_64
+	imply PACKAGE_vuci-app-memory-expansion-ui if !x86_64
+	imply PACKAGE_vuci-app-usb-tools-ui
+	imply PACKAGE_fmt-usb-msd if x86_64
+	imply BUSYBOX_CONFIG_FDISK
+	imply BUSYBOX_CONFIG_FEATURE_FDISK_WRITABLE
+	imply BUSYBOX_CONFIG_FEATURE_FDISK_ADVANCED
+	imply BUSYBOX_CONFIG_FDISK_SUPPORT_LARGE_DISKS
+	imply BUSYBOX_CONFIG_PARTPROBE
+	imply KERNEL_EXT4_FS_SECURITY
+
+config APP_SAMBA
+	tristate "Network Shares"
+	label "Monitoring & Management"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT && USB_STORAGE_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-samba-ui
+	detail
+		Samba enables file sharing between devices over a network
+
+config PRINTER_SUPPORT
+	tristate "Printer Server"
+	label "Monitoring & Management"
+	maintainer "Apps/Apps2"
+	depends on USB_SUPPORT_EXTERNAL && PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_kmod-usb-printer
+	imply PACKAGE_p910nd
+	imply PACKAGE_vuci-app-p910nd-ui
+	detail
+		Printers that are connected to the router can be shared over the network and receive print jobs from multiple devices
+
+#
+# Location Tracking
+#
+
+config GPS_SUPPORT
+	bool "Location Tracking"
+	maintainer "Apps/Apps2"
+	label "Location Tracking"
+	imply PACKAGE_gpsctl
+	imply PACKAGE_ntp_gps
+	imply PACKAGE_vuci-app-gps-ui
+	imply PACKAGE_avl
+	detail
+		GNSS: GPS, GLONASS, BeiDou, Galileo and QZSS
+		Coordinates: GNSS coordinates via WebUI, SMS, TAVL, RMS, API
+		NMEA: 0183
+		Server Software: TAVL, RMS
+		Geofencing: Configurable multiple geofence zones
+
+config NTRIP_MODULE_SUPPORT
+	bool
+	maintainer "Apps/Apps2"
+	label "Location Tracking"
+
+config NTRIP_SUPPORT
+	tristate "NTRIP"
+	maintainer "Apps/Apps2"
+	label "Location Tracking"
+	depends on PKG_SUPPORT && NTRIP_MODULE_SUPPORT
+	default m
+	imply PACKAGE_vuci-app-ntrip-ui
+	detail
+		Client mode,
+	detail if USB_SUPPORT_EXTERNAL
+		USB
+	detail if HAS_RS232 && USB_SUPPORT_EXTERNAL
+		\,
+	detail if HAS_RS232
+		RTU(RS232)
+	detail if HAS_RS232 || USB_SUPPORT_EXTERNAL
+		\,
+	detail if HAS_RS485
+		RTU(RS485)
+	detail
+		connection types
+
+#
+# Input/Output
+#
+
+config IO_UTILS
+	bool "Input/Output"
+	label "Input/Output"
+	maintainer "Apps/Apps1"
+	depends on IO_SUPPORT
+	default y
+	imply PACKAGE_vuci-app-io-ui
+	detail
+		Status: Controlling and monitoring of current I/O pin status
+		I/O Juggler: Utility to create automated rules that perform certain actions based on Input state changes and other conditions
+
+config IO_SUPPORT
+	bool
+	label "Input/Output"
+	detail
+		Hardware input/output control service
+	maintainer "Embedded/BBU"
+	depends on HAS_IO
+	default y
+	imply PACKAGE_input_output
+	imply PACKAGE_gpiod-tools
+
+config IO_SCHEDULER
+	tristate
+	label "Input/Output"
+	maintainer "Apps/Apps1"
+	depends on IO_SUPPORT
+	default m if SMALL_FLASH && PKG_SUPPORT
+	default y
+	imply PACKAGE_vuci-app-io-scheduler-ui
+
+config POWER_CONTROL_SUPPORT
+	bool "Power Control"
+	maintainer "Apps/Apps1"
+	label "Input/Output"
+	depends on HAS_POWER_CONTROL
+	default y
+	imply PACKAGE_vuci-app-power-control-ui
+	detail
+		Power Control monitoring with device shut down configuration on low battery and ignition changes
+
+#
+# System
+#
+
+config NTP_SUPPORT
+	bool "NTP"
+	label "System"
+	maintainer "Apps/Apps1"
+	default y
+	imply PACKAGE_ntpclient
+	imply PACKAGE_vuci-app-ntp-ui
+	imply PACKAGE_untpd
+	detail
+		NTP Client: NTP client for setting system time from NTP servers
+		NTP Server: Act as a NTP server to broadcast time for other devices
+	detail if NTPD_SUPPORT
+		NTPD: Utility with advanced NTP features which includes NTPv4
+
+config NTPD_SUPPORT
+	tristate
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-ntpd-ui
+
+config PROFILES_SUPPORT
+	bool "Configuration Profiles"
+	label "System"
+	maintainer "SysApp"
+	default y
+	imply PACKAGE_vuci-app-profiles-ui
+	detail
+		Switching between multiple profiles, profile scheduler
+
+config PKG_SUPPORT
+	bool "Package Manager"
+	label "System"
+	maintainer "Apps/Apps1"
+	depends on !AP_DEVICE
+	default y
+	imply PACKAGE_package_restore
+	imply PACKAGE_vuci-app-package-manager-ui
+	detail
+		Download/upgrade from server, offline upload
+
+config FOTA_SUPPORT
+	bool "Firmware From Server (FOTA)"
+	label "System"
+	maintainer "SysApp"
+	default y
+	imply PACKAGE_vuci-app-rut-fota-ui
+	detail
+		Download suggested firmware from server
+
+config MOBILE_DFOTA_SUPPORT
+	bool "Module Firmware Update From Server"
+	label "System"
+	maintainer "Mobile"
+	depends on MOBILE_SUPPORT && !BASEBAND_SUPPORT
+	default y
+	imply PACKAGE_dfota
+	detail
+		Mobile module firmware update from server
+	tooltip key
+		Availability varies by order code
+
+config MODEM_UPDATER_SUPPORT
+	tristate
+	label "System"
+	maintainer "Mobile"
+	depends on PKG_SUPPORT && MOBILE_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_modem_updater-offline if !TEST_IMAGE
+	imply PACKAGE_modem_updater
+	imply PACKAGE_quectel_flash
+	imply PACKAGE_Meig_Firehose
+	imply PACKAGE_QDLoader
+	imply PACKAGE_fbfdownloader
+	imply PACKAGE_uxfp
+	imply PACKAGE_qdownload
+	detail
+		Possibility to upgrade/downgrade mobile module using suggested firmwares from server or perform procedure locally
+
+config LED_SUPPORT
+	bool "LED Management"
+	label "System"
+	maintainer "Embedded/BBU"
+	depends on !x86_64
+	default y
+	imply PACKAGE_ledman if LEDMAN_LITE
+	imply PACKAGE_ledman-full if !LEDMAN_LITE
+	detail
+		Provides services for controlling hardware LEDs
+
+config PAM_SUPPORT
+	tristate "Privileged Access Management (PAM)"
+	label "System"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-pamd-ui
+	imply DROPBEAR_UBUS_PAM
+	imply RPCD_PAM
+	detail
+		Authorisation service priority, external users support, required/requisite/sufficient/optional types
+
+config PORT_MIRRORING_SUPPORT
+	tristate "Port Mirroring"
+	label "System"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT && HAS_PORT_MIRRORING
+	default m if !NAND_SUPPORT && USES_SOFT_PORT_MIRROR && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-port-mirroring-ui
+	imply PACKAGE_vuci-app-port-mirroring-api if !USES_SOFT_PORT_MIRROR
+	imply PACKAGE_vuci-app-software-port-mirroring-api if USES_SOFT_PORT_MIRROR
+	detail
+		Used on a network switch to send a copy of network packets seen on one switch
+		port to a network monitoring connection on another switch port
+
+config ENCHANCED_SECURITY_SUPPORT
+	bool "Enhanced Security"
+	label "System"
+	maintainer "Apps/Apps1"
+	default y
+	imply PACKAGE_libcap-bin
+	imply KERNEL_UBIFS_FS_SECURITY
+	imply KERNEL_JFFS2_FS_SECURITY
+	imply KERNEL_EXT4_FS_SECURITY if x86_64
+
+config REALTIME_GRAPH_SUPPORT
+	bool "Realtime Data"
+	label "System"
+	maintainer "Network"
+	default y
+	imply PACKAGE_vuci-app-realtime-ui
+	detail
+		CPU utilisation, data usage and history, active network connections
+	detail if WIFI_SUPPORT
+		\, real time wireless signal
+	detail if MOBILE_SUPPORT
+		\, real time mobile signal strength values, mobile data usage values over different periods of time
+
+config CERTIFICATE_SUPPORT
+	bool "Certificate Manager"
+	label "System"
+	maintainer "SysApp"
+	default y
+	imply PACKAGE_vuci-app-certificates-ui
+	imply PACKAGE_tpm2_importer if TPM_SUPPORT
+	detail
+		Certificate creation tool allows to create CA, server, client
+	detail if LETS_ENCRYPT_SUPPORT
+		\, let's encrypt
+	detail if SCEP_SUPPORT
+		\, SCEP
+	detail
+		certificates
+
+config LETS_ENCRYPT_SUPPORT
+	tristate "Lets Encrypt Certificate Generation"
+	label "System"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT && CERTIFICATE_SUPPORT
+	default m if SMALL_FLASH
+	default y
+	imply PACKAGE_letsencrypt
+
+config RECIPIENTS_SUPPORT
+	bool
+	maintainer "SysApp"
+	label "System"
+	depends on MOBILE_UTILS_SUPPORT || EVENTS_SUBSYSTEM || IO_UTILS
+	default y
+	imply PACKAGE_vuci-app-recipients-ui
+
+config IP_BLOCK_SUPPORT
+	bool "IP Block"
+	label "System"
+	maintainer "SysApp"
+	default y
+	imply PACKAGE_vuci-app-access-control-ui
+	imply BUSYBOX_CONFIG_FEATURE_IP_BLOCKD
+	detail
+		Blocks IP addresses after a configured number of unsuccessful
+		authorisation attempts, supports timed or permanent blocking
+
+config MULTIUSERS_SUPPORT
+	bool "Multiple Users"
+	label "System"
+	maintainer "SysApp"
+	depends on !AP_DEVICE
+	default y
+	imply PACKAGE_vuci-app-multiusers-ui
+	detail
+		Multiple Web users with configurable access permissions
+
+config MULTI_LANGUAGE_SUPPORT
+	tristate "Multi Language"
+	label "System"
+	maintainer "SysApp"
+	depends on PKG_SUPPORT && CORE_UI_PACKAGES
+	default m
+	imply PACKAGE_vuci-i18n-german
+	imply PACKAGE_vuci-i18n-turkish
+	imply PACKAGE_vuci-i18n-spanish
+	imply PACKAGE_vuci-i18n-portuguese
+	imply PACKAGE_vuci-i18n-japanese
+	imply PACKAGE_vuci-i18n-ukrainian
+	detail
+		Change the WebUI language from English to German, Turkish, Spanish, Portuguese, Japanese or Ukrainian
+
+config WEB_CLI_SUPPORT
+	bool "CLI"
+	label "System"
+	maintainer "SysApp"
+	default y
+	imply PACKAGE_vuci-app-cli-ui
+	detail
+		Command line interface in Web
+
+config SMTP
+	tristate "SMTP"
+	label "System"
+	maintainer "SysApp"
+	default y
+	detail
+		Comunnication protocol used for sending and relaying emails between mail servers over the Internet
+
+config JWT_SUPPORT
+	bool
+	maintainer "SysApp"
+	label "System"
+	depends on AP_DEVICE
+	default y
+	imply PACKAGE_vuci-app-jwt-ui
+
+config PORT_EVENTS_SUPPORT
+	bool
+	maintainer "SysApp"
+	label "System"
+	default y
+	imply PACKAGE_port_eventsd
+
+config TPM_SUPPORT
+	bool "TPM"
+	label "System"
+	maintainer "Embedded/PoC"
+	detail
+		Identification and authentication module, TPM 2.0 standard
+
+#
+# Utilities
+#
+
+config REBOOT_UTILS
+	bool "Auto Reboot"
+	maintainer "Apps/Apps1"
+	label "Utilities"
+	default y
+	imply PACKAGE_vuci-app-auto-reboot-ui
+	detail
+		Periodic device reboot and automatic reboot on failed ping/wget requests
+	detail
+		\, device reboot
+	detail if MOBILE_SUPPORT
+		\, modem reboot
+	detail if POE_SUPPORT
+		\, power over Ethernet control service restart
+
+config HTTPS_DNS_PROXY_SUPPORT
+	tristate "DNS over HTTPS"
+	maintainer "Network"
+	label "Utilities"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-https-dns-proxy-ui
+	detail
+		DNS over HTTPS proxy enables secure DNS resolution by routing DNS queries over HTTPS
+
+config SCEP_SUPPORT
+	tristate "SCEP"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on PKG_SUPPORT && CERTIFICATE_SUPPORT && STRONGSWAN_SUPPORT
+	default m if (!NAND_SUPPORT || (NAND_SUPPORT && GATEWAY_DEVICE)) && !TEST_IMAGE
+	default y
+	imply PACKAGE_scep
+	detail
+		SCEP (Simple Certificate Enrollment Protocol) is a standard protocol used for the automated issuance and management of digital certificates
+
+config FRR_VTYSH_SUPPORT
+	tristate "VTYSH"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on !64MB_RAM && PKG_SUPPORT && ADVANCED_NETWORK && FRR_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_frr-vtysh
+	detail
+		Command line interface for dynamic route protocols
+
+config TCP_DUMP_SUPPORT
+	tristate "Tcpdump"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on PKG_SUPPORT
+	default m if (!NAND_SUPPORT || (NAND_SUPPORT && GATEWAY_DEVICE)) && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-tcpdump-ui
+	detail
+		Incoming/Outgoing Internet packet analyzer for troubleshooting connectivity issues
+
+config WOL_SUPPORT
+	tristate "Wake On LAN"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on PKG_SUPPORT
+	default y if (NAND_SUPPORT && !NETWORKS_EXTERNAL) || TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-wol-ui
+	detail
+		Allows waking up a network device from sleep mode, supports Broadcast, wake on boot, wake all saved devices
+
+config SPEEDTEST_SUPPORT
+	tristate "Speedtest"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on PKG_SUPPORT
+	default m if (!NAND_SUPPORT || (NAND_SUPPORT && GATEWAY_DEVICE)) && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-speed-test-ui
+	detail
+		Provides a quick snapshot of Internet connection speed performance
+
+config DDNS_SUPPORT
+	tristate "Dynamic DNS"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on PKG_SUPPORT && ADVANCED_NETWORK
+	default m if !NAND_SUPPORT && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-ddns-ui
+	detail
+		77 service providers, others can be configured manually
+
+config WEB_FILTER_SUPPORT
+	tristate "Web Filter"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on PKG_SUPPORT && ADVANCED_NETWORK
+	default y if (NAND_SUPPORT && !GATEWAY_DEVICE) || TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-webfilter-ui
+	detail
+		Helps control access to Internet web pages, supports blocklist or allowlist
+
+config UPNP_SUPPORT
+	tristate "UPNP"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-upnp-ui
+	detail
+		Automatically opens ports to allow devices to discover each other and establish communication on the same network
+
+config DLNA_SUPPORT
+	tristate "DLNA"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on PKG_SUPPORT && USB_STORAGE_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-minidlna-ui
+	detail
+		Shares media among multimedia devices through a network
+
+config SSHFS_SUPPORT
+	tristate "SSHFS"
+	maintainer "Network"
+	label "Utilities"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-sshfs-ui
+	imply PACKAGE_kmod-fuse
+	detail
+		SSHFS filesystem client for mounting remote directories over a Secure Shell connection
+
+config TELNET_SUPPORT
+	tristate "Telnet"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on !AP_DEVICE
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-telnet-api
+	detail
+		Telnet is a network protocol used to connect to remote machines and manage them through network
+
+config EMAILRELAY
+	tristate "Emailrelay"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-email-relay-ui
+	detail
+		Lightweight SMTP store-and-forward mail server, supports Server, Proxy, Command line modes
+
+config IMPULSE_COUNTER_SUPPORT
+	tristate "Impulse Counter"
+	maintainer "Apps/Apps2"
+	label "Utilities"
+	depends on HAS_IO && PKG_SUPPORT
+	default m if SMALL_FLASH
+	default y
+	imply PACKAGE_vuci-app-impulse-counter-ui
+	imply PACKAGE_impulse-counter
+	detail
+		Counts impulses on selected I/O pins and stores the counts to db
+
+config WIFI_SCANNER_SUPPORT
+	tristate "Wi-Fi Scanner"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on WIFI_SUPPORT || TEST_IMAGE
+	default m if PKG_SUPPORT && !NAND_SUPPORT && !TEST_IMAGE
+	default y
+	imply PACKAGE_vuci-app-wifi-scanner-ui
+	detail
+		Wi-Fi Scanner scans and collects information about wireless devices in surrounding area
+
+config WPA_CLI_SUPPORT
+	tristate "WPA CLI"
+	maintainer "Network"
+	label "Utilities"
+	depends on WIFI_SUPPORT && !USES_VENDOR_WIFI_DRIVER
+	default m if SMALL_FLASH && PKG_SUPPORT
+	default y
+	imply PACKAGE_wpa-cli
+	detail
+		WPA Supplicant command line control utility
+
+config IPERF3_SUPPORT
+	tristate
+	maintainer "Network"
+	label "Utilities"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_iperf3
+
+config 7Z_ARCHIVER_SUPPORT
+	tristate "7-zip"
+	maintainer "Apps/Apps1"
+	label "Utilities"
+	depends on PKG_SUPPORT
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_7zip
+	detail
+		Minified 7-zip archiver with 7z archive and AES-256 encryption
+
+config DOCKER_SUPPORT
+	tristate "Docker"
+	label "Utilities"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT && HIGH_STORAGE
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_vuci-app-docker-ui
+	imply PACKAGE_dockerd
+	imply PACKAGE_docker
+	imply LIBCURL_UNIX_SOCKETS
+	imply USE_FS_ACL_ATTR
+	imply KERNEL_EXT4_FS_SECURITY
+	detail
+		Open-source platform that enables developers to build, deploy, run, update and manage containers
+
+config APP_SOCAT
+	tristate "Socat"
+	maintainer "Apps/Apps2"
+	label "Utilities"
+	depends on PKG_SUPPORT
+	default m
+	imply PACKAGE_socat
+	detail
+		Command line based utility that establishes two bidirectional byte streams and transfers data between them
+
+config FREERADIUS_SUPPORT
+	tristate "FreeRADIUS"
+	maintainer "SysApp"
+	label "Utilities"
+	depends on PKG_SUPPORT && !SMALL_FLASH
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_freeradius3
+	detail
+		One of the top open source RADIUS servers, can be used as an Authentication Server in 802.1X and therefore for WPA/WPA2/WPA3 Enterprise setup
+
+#
+# Other
+#
+
+config FIRMWARE_CUSTOMISATION
+	bool "Firmware Customisation"
+	label "Other"
+	maintainer "Embedded"
+	default y
+	detail
+		Operating System: RutOS (OpenWrt based Linux OS)
+		Supported Languages: Busybox shell (ash), Lua 5.1, C, C++
+		Development Tools: SDK archive with a provided build environment
+		SDK Customisation: You can create your own custom-branded firmware and web page application
+		SDK Customisation: by changing colors, logos, and other elements in our firmware to fit your or your clients' needs.
+	detail if PYTHON_SUPPORT
+		Supported Languages: \, Python
+	detail if JAVA_SUPPORT
+		Supported Languages: \, Java
+
+config PYTHON_SUPPORT
+	tristate "Python"
+	label "Other"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT && (USB_SUPPORT_EXTERNAL || !SMALL_FLASH)
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_python3
+
+config JAVA_SUPPORT
+	tristate "JAVA"
+	label "Other"
+	maintainer "Apps/Apps1"
+	depends on PKG_SUPPORT && (USB_SUPPORT_EXTERNAL || !SMALL_FLASH)
+	default y if TEST_IMAGE
+	default m
+	imply PACKAGE_jamvm
+
+#
+# Core
+#
+
+config CORE_UI_PACKAGES
+	bool
+	maintainer "SysApp"
+	default y
+	imply PACKAGE_vuci-app-ui-api
+	imply PACKAGE_vuci-app-system-info-api
+	imply PACKAGE_vuci-app-system-status-ui
+	imply PACKAGE_vuci-app-core-ui
+	imply PACKAGE_vuci-app-administration-ui
+	imply PACKAGE_vuci-app-firmware-ui
+	imply PACKAGE_vuci-app-backup-ui
+	imply PACKAGE_vuci-app-reset-ui
+	imply PACKAGE_vuci-app-logs-ui
+	imply PACKAGE_vuci-app-troubleshoot-ui
+	imply PACKAGE_vuci-app-password-policy-ui
+	imply PACKAGE_vuci-app-change-password-ui if !MULTIUSERS_SUPPORT
+	imply PACKAGE_vuci-app-overview-ui if !AP_DEVICE
+	imply PACKAGE_vuci-app-overview-tap-ui if AP_DEVICE
+	imply PACKAGE_vuci-app-setup-wizard-ui if !AP_DEVICE
+	imply PACKAGE_vuci-app-side-widget-ui if !AP_DEVICE
+	imply PACKAGE_vuci-app-services-status-ui if !AP_DEVICE
+	imply PACKAGE_vuci-app-uscripts-ui if !AP_DEVICE
+	imply BUSYBOX_CONFIG_PASSWD
+	imply BUSYBOX_CONFIG_CHPASSWD
+	imply BUSYBOX_CONFIG_FEATURE_PASSWORD_POLICY
+
+config POE_SUPPORT
+	bool
+	maintainer "Embedded/BBU"
+	imply PACKAGE_poeman
+	imply PACKAGE_gpiod-tools
+	detail
+		Power over ethernet control service
+
+config SU_SUPPORT
+	bool
+	default y
+	imply BUSYBOX_CONFIG_SU
+	detail
+		Allows to run a command as another user
+
+config NETCAT_SERVER
+	bool "Netcat Server"
+	default y if TEST_IMAGE
+	default n
+	imply BUSYBOX_CONFIG_NC_SERVER
+	detail
+		Allows netcat to act as a server
+
+config EMMC_SUPPORT
+	bool
+	maintainer "Embedded/BBU"
+	imply BUSYBOX_CONFIG_BLKDISCARD
+
+config BLUETOOTH_SUPPORT
+	bool "Bluetooth"
+	maintainer "Apps/Apps2"
+	imply PACKAGE_blesemd
+	imply PACKAGE_vuci-app-bluetooth-ui
+	imply PACKAGE_rtl8761bu-firmware
+
+#
+# Crypto, HNAT
+#
+
+config CRYPTO
+	bool
+	default y
+	maintainer "Embedded/PoC"
+	imply PACKAGE_kmod-crypto-crc32c
+	imply PACKAGE_kmod-crypto-sha512
+	imply PACKAGE_kmod-crypto-gcm
+
+config HNAT
+	bool
+	maintainer "Embedded/PoC"
+	imply PACKAGE_qssdk-hnat
+
+#
+# TPM
+#
+
+config TPM_MOD
+	tristate
+	maintainer "Embedded/PoC"
+	depends on TPM_SUPPORT
+	default y
+	imply PACKAGE_kmod-tpm-tis-i2c
+	detail
+		Kernel modules meant for communicating with TPM devices
+
+config TPM_TSS
+	tristate
+	maintainer "Embedded/PoC"
+	depends on TPM_SUPPORT
+	default y
+	imply PACKAGE_tpm2-tss
+	detail
+		Framework meant to communicate with TPM devices
+
+config TPM_TOOLS
+	tristate
+	maintainer "Embedded/PoC"
+	depends on TPM_SUPPORT
+	default y
+	imply PACKAGE_tpm2-tools
+	detail
+		Ctl based utility that includes
+		unique identifier and secure storage support
+
+config TPM_OPENSSL
+	tristate
+	maintainer "Embedded/PoC"
+	depends on TPM_SUPPORT
+	default y
+	imply PACKAGE_tpm2-openssl
+	detail
+		Library that provides OpenSSL API for handling TPM
+
+config TPM_MANAGER
+	tristate
+	maintainer "Embedded/PoC"
+	depends on TPM_SUPPORT
+	default y
+	imply PACKAGE_tpm_manager
+	detail
+		Daemon meant for handling key and certificate functionalities in TPM
+
+config TPM_FLASHER
+	tristate
+	maintainer "Embedded/PoC"
+	depends on TPM_SUPPORT
+	default y
+	imply PACKAGE_tpm_flasher
+	detail
+		Utility meant for flashing TPM devices
+
+endmenu

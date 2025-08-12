@@ -1,0 +1,12 @@
+{
+    "system/maintenance": {
+        "title": "Maintenance",
+        "index": 20
+    },
+    "system/maintenance/uscripts": {
+        "title": "Custom Scripts",
+        "acls": [ "system/maintenance/uscripts" ],
+        "view": "system/UScripts",
+        "index": 90
+    }
+}

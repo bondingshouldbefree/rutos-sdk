@@ -1,0 +1,10 @@
+--- a/iwinfo.c
++++ b/iwinfo.c
+@@ -1066,5 +1066,6 @@
+ 
+ struct rpc_plugin rpc_plugin = {
+ 	.init = rpc_iwinfo_api_init,
+-	.capabilities = "cap_net_admin=ep"
++	.capabilities = "cap_net_admin=ep",
++	.user = "iwinfo"
+ };

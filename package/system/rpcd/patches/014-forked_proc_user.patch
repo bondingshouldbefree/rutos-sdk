@@ -1,0 +1,154 @@
+Index: rpcd-2021-03-11-ccb75178/exec.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/exec.c
++++ rpcd-2021-03-11-ccb75178/exec.c
+@@ -16,6 +16,7 @@
+  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+  */
+ 
++#include "include/rpcd/exec.h"
+ #include <fcntl.h>
+ #include <errno.h>
+ #include <unistd.h>
+@@ -25,6 +26,8 @@
+ #include <dirent.h>
+ #include <sys/stat.h>
+ #include <sys/wait.h>
++#include <grp.h>
++#include <pwd.h>
+ 
+ #include <rpcd/exec.h>
+ 
+@@ -276,11 +279,25 @@ rpc_exec_epipe_state_cb(struct ustream *
+ 		rpc_exec_reply(c, UBUS_STATUS_OK);
+ }
+ 
++
++static int change_user_and_group(int uid, int gid) {
++	uid = (uid == NO_USER) || uid;
++	gid = (gid == NO_GROUP) || gid;
++
++	if (initgroups(getpwuid(uid)->pw_name, gid) != 0)
++		return -1;
++
++	if (setgid(gid) || setuid(uid))
++		return -1;
++
++	return 0;
++}
++
+ int
+ rpc_exec(const char **args, rpc_exec_write_cb_t in,
+          rpc_exec_read_cb_t out, rpc_exec_read_cb_t err,
+          rpc_exec_done_cb_t end, void *priv, struct ubus_context *ctx,
+-         struct ubus_request_data *req)
++         struct ubus_request_data *req, int uid, int gid)
+ {
+ 	pid_t pid;
+ 
+@@ -317,7 +334,9 @@ rpc_exec(const char **args, rpc_exec_wri
+ 
+ 	case 0:
+ 		uloop_done();
+-
++		if (change_user_and_group(uid, gid) != 0) {
++			fprintf(stderr, "Failed to change user and group\n");
++		}
+ 		dup2(ipipe[0], 0);
+ 		dup2(opipe[1], 1);
+ 		dup2(epipe[1], 2);
+Index: rpcd-2021-03-11-ccb75178/include/rpcd/exec.h
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/include/rpcd/exec.h
++++ rpcd-2021-03-11-ccb75178/include/rpcd/exec.h
+@@ -25,6 +25,8 @@
+ 
+ #define RPC_EXEC_MAX_SIZE		(4096 * 64)
+ #define RPC_EXEC_DEFAULT_TIMEOUT	(120 * 1000)
++#define NO_USER -1
++#define NO_GROUP -1
+ 
+ #define ustream_for_each_read_buffer(stream, ptr, len) \
+ 	for (ptr = ustream_get_read_buf(stream, &len);     \
+@@ -84,6 +86,6 @@ const char *rpc_exec_lookup(const char *
+ int rpc_exec(const char **args, rpc_exec_write_cb_t in,
+              rpc_exec_read_cb_t out, rpc_exec_read_cb_t err,
+              rpc_exec_done_cb_t end, void *priv, struct ubus_context *ctx,
+-             struct ubus_request_data *req);
++             struct ubus_request_data *req, int uid, int gid);
+ 
+ #endif
+Index: rpcd-2021-03-11-ccb75178/include/rpcd/plugin.h
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/include/rpcd/plugin.h
++++ rpcd-2021-03-11-ccb75178/include/rpcd/plugin.h
+@@ -53,7 +53,7 @@ struct rpc_daemon_ops {
+                 rpc_exec_write_cb_t in, rpc_exec_read_cb_t out,
+                 rpc_exec_read_cb_t err, rpc_exec_done_cb_t end,
+                 void *priv, struct ubus_context *ctx,
+-                struct ubus_request_data *req);
++                struct ubus_request_data *req, int uid, int gid);
+     int *exec_timeout;
+ };
+ 
+Index: rpcd-2021-03-11-ccb75178/plugin.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/plugin.c
++++ rpcd-2021-03-11-ccb75178/plugin.c
+@@ -17,6 +17,7 @@
+  */
+ 
+ #include <rpcd/plugin.h>
++#include <pwd.h>
+ 
+ static struct blob_buf buf;
+ 
+@@ -205,6 +206,7 @@ rpc_plugin_call(struct ubus_context *ctx
+ 	int rv = UBUS_STATUS_UNKNOWN_ERROR;
+ 	struct call_context *c;
+ 	char *plugin, *mptr;
++	struct stat st;
+ 
+ 	c = calloc_a(sizeof(*c), &mptr, strlen(method) + 1);
+ 
+@@ -226,13 +228,18 @@ rpc_plugin_call(struct ubus_context *ctx
+ 		goto fail;
+ 	}
+ 
++	if (stat(c->path, &st) != 0) {
++		rv = UBUS_STATUS_NOT_FOUND;
++		goto fail;
++	}
++
+ 	c->argv[0] = c->path;
+ 	c->argv[1] = "call";
+ 	c->argv[2] = c->method;
+ 
+ 	rv = rpc_exec(c->argv, rpc_plugin_call_stdin_cb,
+ 	              rpc_plugin_call_stdout_cb, rpc_plugin_call_stderr_cb,
+-	              rpc_plugin_call_finish_cb, c, ctx, req);
++	              rpc_plugin_call_finish_cb, c, ctx, req, st.st_uid, st.st_gid);
+ 
+ 	if (rv == UBUS_STATUS_OK)
+ 		return rv;
+Index: rpcd-2021-03-11-ccb75178/sys.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/sys.c
++++ rpcd-2021-03-11-ccb75178/sys.c
+@@ -16,6 +16,7 @@
+  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+  */
+ 
++#include "include/rpcd/exec.h"
+ #include <libubus.h>
+ 
+ #include <rpcd/exec.h>
+@@ -269,7 +270,7 @@ rpc_sys_upgrade_test(struct ubus_context
+                        struct blob_attr *msg)
+ {
+ 	const char *cmd[4] = { "sysupgrade", "--test", "/tmp/firmware.bin", NULL };
+-	return ops->exec(cmd, NULL, NULL, NULL, NULL, NULL, ctx, req);
++	return ops->exec(cmd, NULL, NULL, NULL, NULL, NULL, ctx, req, NO_USER, NO_GROUP);
+ }
+ 
+ static int

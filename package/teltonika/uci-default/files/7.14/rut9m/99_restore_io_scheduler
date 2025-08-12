@@ -1,0 +1,26 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+PACKAGE_FILE="/etc/package_restore.txt"
+
+check_if_enabled() {
+	local sec="$1"
+
+	config_get enabled "$sec" "enabled"
+	[ "$enabled" == "1" ] && {
+		echo "io_scheduler - I/O Scheduler" >>"$PACKAGE_FILE"
+		exit 0
+	}
+}
+
+#Delete because of possible duplicate dynamically generated user IDs
+! grep -q "iosch:x:2000:iosch" /etc/group && user_exists iosch && {
+	deluser iosch
+	sed --in-place '/iosch:/d' /etc/group
+}
+
+config_load io_scheduler
+config_foreach check_if_enabled scheduler
+
+exit 0

@@ -1,0 +1,79 @@
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -1352,8 +1352,13 @@ static int hostapd_start_beacon(struct h
+ 	if (hapd->driver && hapd->driver->set_operstate)
+ 		hapd->driver->set_operstate(hapd->drv_priv, 1);
+ 
+-	hostapd_ubus_add_bss(hapd);
+-	hostapd_ucode_add_bss(hapd);
++	if (!hapd->ubus_added) {
++		hostapd_ubus_add_bss(hapd);
++	}
++
++	if (!hapd->ucode_added) {
++		hostapd_ucode_add_bss(hapd);
++	}
+ 
+ 	return 0;
+ }
+@@ -2580,6 +2585,8 @@ static int hostapd_setup_interface_compl
+ 		goto fail;
+ 
+ 	hostapd_ubus_add_iface(iface);
++	hostapd_ubus_add_bss(hapd);
++	hostapd_ucode_add_bss(hapd);
+ 	wpa_printf(MSG_DEBUG, "Completing interface initialization");
+ 	if (iface->freq) {
+ #ifdef NEED_AP_MLME
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -215,6 +215,8 @@ struct hostapd_data {
+ 	struct hostapd_ubus_bss ubus;
+ 	struct hostapd_ucode_bss ucode;
+ 	int interface_added; /* virtual interface added for this BSS */
++	int ubus_added;
++	int ucode_added;
+ 	unsigned int started:1;
+ 	unsigned int disabled:1;
+ 	unsigned int reenable_beacon:1;
+--- a/src/ap/ubus.c
++++ b/src/ap/ubus.c
+@@ -1810,6 +1810,8 @@ void hostapd_ubus_add_bss(struct hostapd
+ 	}
+ 	ret = ubus_add_object(ctx, obj);
+ 	hostapd_ubus_ref_inc();
++
++	hapd->ubus_added = 1;
+ }
+ 
+ void hostapd_ubus_free_bss(struct hostapd_data *hapd)
+@@ -1828,6 +1830,7 @@ void hostapd_ubus_free_bss(struct hostap
+ 	if (obj->id) {
+ 		ubus_remove_object(ctx, obj);
+ 		hostapd_ubus_ref_dec();
++		hapd->ubus_added = 0;
+ 	}
+ 
+ 	free(name);
+--- a/src/ap/ucode.c
++++ b/src/ap/ucode.c
+@@ -947,6 +947,8 @@ void hostapd_ucode_bss_cb(struct hostapd
+ 	ucv_put(wpa_ucode_call(3));
+ 	ucv_put(val);
+ 	ucv_gc(vm);
++
++	hapd->ucode_added = 1;
+ }
+ 
+ void hostapd_ucode_free_bss(struct hostapd_data *hapd)
+@@ -960,7 +962,9 @@ void hostapd_ucode_free_bss(struct hosta
+ 	hapd->ucode.idx = 0;
+ 	if (wpa_ucode_call_prepare("bss_remove"))
+ 		return;
+-
++	
++	hapd->ucode_added = 0;
++	
+ 	uc_value_push(ucv_string_new(hapd->conf->iface));
+ 	uc_value_push(val);
+ 	ucv_put(wpa_ucode_call(2));

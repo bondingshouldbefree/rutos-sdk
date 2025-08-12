@@ -1,0 +1,12 @@
+{
+	"network/failover": {
+		"title": "Failover",
+		"index": 50
+	},
+	"network/failover/vrrp": {
+		"title": "VRRP",
+		"index": 20,
+		"view": "services/Vrrp",
+		"acls": [ "network/failover/vrrp" ]
+	}
+}

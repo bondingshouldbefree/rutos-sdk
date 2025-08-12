@@ -1,0 +1,39 @@
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -2858,6 +2858,7 @@ static const struct parse_data ssid_fiel
+ 	{ INT_RANGE(max_idle, 0, 65535)},
+ 	{ INT_RANGE(ssid_protection, 0, 1)},
+ 	{ INT_RANGE(rsn_overriding, 0, 2)},
++	{ STR(config_id) },
+ };
+ 
+ #undef OFFSET
+@@ -3062,6 +3063,7 @@ void wpa_config_free_ssid(struct wpa_ssi
+ #ifdef CONFIG_SAE
+ 	sae_deinit_pt(ssid->pt);
+ #endif /* CONFIG_SAE */
++	os_free(ssid->config_id);
+ 	bin_clear_free(ssid, sizeof(*ssid));
+ }
+ 
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -957,6 +957,7 @@ static void wpa_config_write_network(FIL
+ 	INT(beacon_prot);
+ 	INT(transition_disable);
+ 	INT(sae_pk);
++	STR(config_id);
+ #ifdef CONFIG_HT_OVERRIDES
+ 	INT_DEF(disable_ht, DEFAULT_DISABLE_HT);
+ 	INT_DEF(disable_ht40, DEFAULT_DISABLE_HT40);
+--- a/wpa_supplicant/config_ssid.h
++++ b/wpa_supplicant/config_ssid.h
+@@ -1343,6 +1343,8 @@ struct wpa_ssid {
+ 	 */
+ 	int go_dik_id;
+ 
++	char *config_id;
++
+ };
+ 
+ #endif /* CONFIG_SSID_H */

@@ -1,0 +1,13 @@
+{
+	"services/ntrip": {
+		"title": "NTRIP",
+		"index": 45,
+		"view": "services/Ntrip",
+		"acls": [ "services/ntrip" ],
+		"depends": {
+			"board": {
+				"anyOf": ["has_usb", "has_rs232", "has_rs485", "has_console"]
+			}
+		}
+	}
+}

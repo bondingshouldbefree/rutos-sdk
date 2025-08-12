@@ -1,0 +1,15 @@
+{
+	"user": "dot1x_client",
+	"publish": [ "dot1x_client", "dot1x_client.*" ],
+	"subscribe": [ "port_events" ],
+	"send": [],
+	"listen": [],
+	"access": {
+		"wpa_supplicant": {
+			"methods": ["config_add", "config_remove"]
+		},
+		"wpa_supplicant.*": {
+			"methods": ["reload"]
+		}
+	}
+}

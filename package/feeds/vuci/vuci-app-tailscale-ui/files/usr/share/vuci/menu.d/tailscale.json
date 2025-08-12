@@ -1,0 +1,12 @@
+{
+	"services/vpn": {
+		"title": "VPN",
+		"index": 30
+	},
+	"services/vpn/tailscale": {
+		"title": "Tailscale",
+		"index": 100,
+		"view": "services/Tailscale",
+		"acls": [ "services/vpn/tailscale" ]
+	}
+}

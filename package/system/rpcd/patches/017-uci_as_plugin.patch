@@ -1,0 +1,392 @@
+Index: rpcd-2021-03-11-ccb75178/include/rpcd/session.h
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/include/rpcd/session.h
++++ rpcd-2021-03-11-ccb75178/include/rpcd/session.h
+@@ -53,8 +53,6 @@ struct auth_cb_data {
+ };
+ #endif
+ 
+-extern char apply_sid[RPC_SID_LEN + 1];
+-
+ struct rpc_session {
+ 	struct avl_node avl;
+ 	char id[RPC_SID_LEN + 1];
+Index: rpcd-2021-03-11-ccb75178/include/rpcd/uci.h
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/include/rpcd/uci.h
++++ rpcd-2021-03-11-ccb75178/include/rpcd/uci.h
+@@ -30,6 +30,8 @@
+ #include <libubus.h>
+ #include <uci.h>
+ 
++extern char apply_sid[RPC_SID_LEN + 1];
++
+ #define RPC_UCI_DIR_PREFIX	"/var/run/rpcd"
+ #define RPC_UCI_SAVEDIR_PREFIX	RPC_UCI_DIR_PREFIX "/uci-"
+ #define RPC_SNAPSHOT_FILES	RPC_UCI_DIR_PREFIX "/snapshot-files/"
+@@ -37,8 +39,4 @@
+ #define RPC_UCI_DIR		"/etc/config/"
+ #define RPC_APPLY_TIMEOUT	60
+ 
+-int rpc_uci_api_init(struct ubus_context *ctx);
+-
+-void rpc_uci_purge_savedirs(void);
+-
+ #endif
+Index: rpcd-2021-03-11-ccb75178/main.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/main.c
++++ rpcd-2021-03-11-ccb75178/main.c
+@@ -30,13 +30,57 @@
+ #include <rpcd/rc.h>
+ #include <rpcd/session.h>
+ #include <rpcd/uci.h>
+-
++#define RPC_UCI_DIR_PREFIX	"/var/run/rpcd"
++#define RPC_UCI_SAVEDIR_PREFIX	RPC_UCI_DIR_PREFIX "/uci-"
+ static struct ubus_auto_conn conn;
+ static bool respawn = false;
+ 
+ int rpc_exec_timeout = RPC_EXEC_DEFAULT_TIMEOUT;
+ 
+ static void
++rpc_uci_purge_dir(const char *path)
++{
++	DIR *d;
++	struct stat s;
++	struct dirent *e;
++	char file[PATH_MAX];
++
++	if (stat(path, &s) || !S_ISDIR(s.st_mode))
++		return;
++
++	if ((d = opendir(path)) != NULL)
++	{
++		while ((e = readdir(d)) != NULL)
++		{
++			snprintf(file, sizeof(file) - 1, "%s/%s", path, e->d_name);
++
++			if (stat(file, &s) || !S_ISREG(s.st_mode))
++				continue;
++
++			unlink(file);
++		}
++
++		closedir(d);
++
++		rmdir(path);
++	}
++}
++
++static void rpc_uci_purge_savedirs(void)
++{
++	int i;
++	glob_t gl;
++
++	if (!glob(RPC_UCI_SAVEDIR_PREFIX "*", 0, NULL, &gl))
++	{
++		for (i = 0; i < gl.gl_pathc; i++)
++			rpc_uci_purge_dir(gl.gl_pathv[i]);
++
++		globfree(&gl);
++	}
++}
++
++static void
+ handle_signal(int sig)
+ {
+ 	rpc_session_freeze();
+@@ -69,7 +113,6 @@ exec_self(int argc, char **argv)
+ static void ubus_connect_handler(struct ubus_context *ctx)
+ {
+ 	rpc_session_api_init(ctx);
+-	rpc_uci_api_init(ctx);
+ 	rpc_rc_api_init(ctx);
+ 	rpc_plugin_api_init(ctx);
+ }
+Index: rpcd-2021-03-11-ccb75178/session.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/session.c
++++ rpcd-2021-03-11-ccb75178/session.c
+@@ -49,6 +49,8 @@ void rpc_grant_endpoint_options(struct r
+ static LIST_HEAD(create_callbacks);
+ static LIST_HEAD(destroy_callbacks);
+ 
++char apply_sid[RPC_SID_LEN + 1];
++
+ enum {
+ 	RPC_SN_TIMEOUT,
+ 	__RPC_SN_MAX,
+Index: rpcd-2021-03-11-ccb75178/uci.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/uci.c
++++ rpcd-2021-03-11-ccb75178/uci.c
+@@ -18,6 +18,7 @@
+ 
+ #include <libgen.h>
+ #include <glob.h>
++#include <rpcd/plugin.h>
+ 
+ #include <libubox/blobmsg.h>
+ #include <libubox/blobmsg_json.h>
+@@ -31,7 +32,6 @@ static struct uci_context *cursor;
+ static struct uloop_timeout apply_timer;
+ static struct ubus_context *apply_ctx;
+ 
+-char apply_sid[RPC_SID_LEN + 1];
+ 
+ enum {
+ 	RPC_G_CONFIG,
+@@ -305,20 +305,43 @@ rpc_uci_set_savedir(struct blob_attr *si
+ 	rpc_uci_replace_savedir(path);
+ }
+ 
++static bool rpc_uci_access(struct ubus_context *ctx, char *sid, char *scope, char *object, char *function)
++{
++	uint32_t id;
++	struct blob_buf req = { 0 };
++
++	if (!ctx || !sid || !scope || !object || !function)
++		return false;
++
++	if (ubus_lookup_id(ctx, "session", &id))
++		return false;
++
++	blob_buf_init(&req, 0);
++	blobmsg_add_string(&req, "ubus_rpc_session", sid);
++	blobmsg_add_string(&req, "scope", scope);
++	blobmsg_add_string(&req, "object", object);
++	blobmsg_add_string(&req, "function", function);
++
++	int ret = ubus_invoke(ctx, id, "access", req.head, NULL, NULL, 3000);
++	blob_buf_free(&req);
++
++	return ret==0;
++}
++
+ /*
+  * Test read access to given config. If the passed "sid" blob attribute pointer
+  * is NULL then the precedure was not invoked through the ubus-rpc so we do not
+  * perform access control and always assume true.
+  */
+ static bool
+-rpc_uci_read_access(struct blob_attr *sid, struct blob_attr *config)
++rpc_uci_read_access(struct ubus_context *ctx, struct blob_attr *sid, struct blob_attr *config)
+ {
+ 	rpc_uci_set_savedir(sid);
+ 
+ 	if (!sid)
+ 		return true;
+ 
+-	return rpc_session_access(blobmsg_data(sid), "uci",
++	return rpc_uci_access(ctx, blobmsg_data(sid), "uci",
+ 	                          blobmsg_data(config), "read");
+ }
+ 
+@@ -328,14 +351,14 @@ rpc_uci_read_access(struct blob_attr *si
+  * perform access control and always assume true.
+  */
+ static bool
+-rpc_uci_write_access(struct blob_attr *sid, struct blob_attr *config)
++rpc_uci_write_access(struct ubus_context *ctx, struct blob_attr *sid, struct blob_attr *config)
+ {
+ 	rpc_uci_set_savedir(sid);
+ 
+ 	if (!sid)
+ 		return true;
+ 
+-	return rpc_session_access(blobmsg_data(sid), "uci",
++	return rpc_uci_access(ctx, blobmsg_data(sid), "uci",
+ 	                          blobmsg_data(config), "write");
+ }
+ 
+@@ -614,7 +637,7 @@ rpc_uci_getcommon(struct ubus_context *c
+ 	if (!tb[RPC_G_CONFIG])
+ 		return UBUS_STATUS_INVALID_ARGUMENT;
+ 
+-	if (!rpc_uci_read_access(tb[RPC_G_SESSION], tb[RPC_G_CONFIG]))
++	if (!rpc_uci_read_access(ctx, tb[RPC_G_SESSION], tb[RPC_G_CONFIG]))
+ 		return UBUS_STATUS_PERMISSION_DENIED;
+ 
+ 	ptr.package = blobmsg_data(tb[RPC_G_CONFIG]);
+@@ -698,7 +721,7 @@ rpc_uci_add(struct ubus_context *ctx, st
+ 	if (!tb[RPC_A_CONFIG] || !tb[RPC_A_TYPE])
+ 		return UBUS_STATUS_INVALID_ARGUMENT;
+ 
+-	if (!rpc_uci_write_access(tb[RPC_A_SESSION], tb[RPC_A_CONFIG]))
++	if (!rpc_uci_write_access(ctx, tb[RPC_A_SESSION], tb[RPC_A_CONFIG]))
+ 		return UBUS_STATUS_PERMISSION_DENIED;
+ 
+ 	if (!rpc_uci_verify_type(blobmsg_data(tb[RPC_A_TYPE])))
+@@ -893,7 +916,7 @@ rpc_uci_set(struct ubus_context *ctx, st
+ 		(!tb[RPC_S_SECTION] && !tb[RPC_S_TYPE] && !tb[RPC_S_MATCH]))
+ 		return UBUS_STATUS_INVALID_ARGUMENT;
+ 
+-	if (!rpc_uci_write_access(tb[RPC_S_SESSION], tb[RPC_S_CONFIG]))
++	if (!rpc_uci_write_access(ctx, tb[RPC_S_SESSION], tb[RPC_S_CONFIG]))
+ 		return UBUS_STATUS_PERMISSION_DENIED;
+ 
+ 	if (tb[RPC_S_SECTION] &&
+@@ -1026,7 +1049,7 @@ rpc_uci_delete(struct ubus_context *ctx,
+ 		(!tb[RPC_D_SECTION] && !tb[RPC_D_TYPE] && !tb[RPC_D_MATCH]))
+ 		return UBUS_STATUS_INVALID_ARGUMENT;
+ 
+-	if (!rpc_uci_write_access(tb[RPC_D_SESSION], tb[RPC_D_CONFIG]))
++	if (!rpc_uci_write_access(ctx, tb[RPC_D_SESSION], tb[RPC_D_CONFIG]))
+ 		return UBUS_STATUS_PERMISSION_DENIED;
+ 
+ 	if (tb[RPC_D_TYPE] &&
+@@ -1095,7 +1118,7 @@ rpc_uci_rename(struct ubus_context *ctx,
+ 	if (!tb[RPC_R_CONFIG] || !tb[RPC_R_SECTION] || !tb[RPC_R_NAME])
+ 		return UBUS_STATUS_INVALID_ARGUMENT;
+ 
+-	if (!rpc_uci_write_access(tb[RPC_R_SESSION], tb[RPC_R_CONFIG]))
++	if (!rpc_uci_write_access(ctx, tb[RPC_R_SESSION], tb[RPC_R_CONFIG]))
+ 		return UBUS_STATUS_PERMISSION_DENIED;
+ 
+ 	ptr.package = blobmsg_data(tb[RPC_R_CONFIG]);
+@@ -1148,7 +1171,7 @@ rpc_uci_order(struct ubus_context *ctx,
+ 	if (!tb[RPC_O_CONFIG] || !tb[RPC_O_SECTIONS])
+ 		return UBUS_STATUS_INVALID_ARGUMENT;
+ 
+-	if (!rpc_uci_write_access(tb[RPC_O_SESSION], tb[RPC_O_CONFIG]))
++	if (!rpc_uci_write_access(ctx, tb[RPC_O_SESSION], tb[RPC_O_CONFIG]))
+ 		return UBUS_STATUS_PERMISSION_DENIED;
+ 
+ 	ptr.package = blobmsg_data(tb[RPC_O_CONFIG]);
+@@ -1241,7 +1264,7 @@ rpc_uci_changes(struct ubus_context *ctx
+ 
+ 	if (tb[RPC_C_CONFIG])
+ 	{
+-		if (!rpc_uci_read_access(tb[RPC_C_SESSION], tb[RPC_C_CONFIG]))
++		if (!rpc_uci_read_access(ctx, tb[RPC_C_SESSION], tb[RPC_C_CONFIG]))
+ 			return UBUS_STATUS_PERMISSION_DENIED;
+ 
+ 		if (uci_load(cursor, blobmsg_data(tb[RPC_C_CONFIG]), &p))
+@@ -1356,7 +1379,7 @@ rpc_uci_revert_commit(struct ubus_contex
+ 	if (!tb[RPC_C_CONFIG])
+ 		return UBUS_STATUS_INVALID_ARGUMENT;
+ 
+-	if (!rpc_uci_write_access(tb[RPC_C_SESSION], tb[RPC_C_CONFIG]))
++	if (!rpc_uci_write_access(ctx, tb[RPC_C_SESSION], tb[RPC_C_CONFIG]))
+ 		return UBUS_STATUS_PERMISSION_DENIED;
+ 
+ 	ptr.package = blobmsg_data(tb[RPC_C_CONFIG]);
+@@ -1757,13 +1780,7 @@ rpc_uci_reload(struct ubus_context *ctx,
+ {
+ 	char * const cmd[2] = { "/sbin/reload_config", NULL };
+ 
+-	if (!fork()) {
+-		/* wait for the RPC call to complete */
+-		sleep(2);
+-		return execv(cmd[0], cmd);
+-	}
+-
+-	return 0;
++	return execv(cmd[0], cmd);
+ }
+ 
+ /*
+@@ -1778,25 +1795,8 @@ rpc_uci_purge_savedir_cb(struct rpc_sess
+ 	rpc_uci_purge_dir(path);
+ }
+ 
+-/*
+- * Removes all delta directories which match the RPC_UCI_SAVEDIR_PREFIX.
+- * This is used to clean up garbage when starting rpcd.
+- */
+-void rpc_uci_purge_savedirs(void)
+-{
+-	int i;
+-	glob_t gl;
+-
+-	if (!glob(RPC_UCI_SAVEDIR_PREFIX "*", 0, NULL, &gl))
+-	{
+-		for (i = 0; i < gl.gl_pathc; i++)
+-			rpc_uci_purge_dir(gl.gl_pathv[i]);
+-
+-		globfree(&gl);
+-	}
+-}
+-
+-int rpc_uci_api_init(struct ubus_context *ctx)
++static struct ubus_object
++*rpc_uci_api_init(const struct rpc_daemon_ops *o, struct ubus_context *ctx)
+ {
+ 	static const struct ubus_method uci_methods[] = {
+ 		{ .name = "configs", .handler = rpc_uci_configs },
+@@ -1820,13 +1820,6 @@ int rpc_uci_api_init(struct ubus_context
+ 	static struct ubus_object_type uci_type =
+ 		UBUS_OBJECT_TYPE("luci-rpc-uci", uci_methods);
+ 
+-	static struct ubus_object obj = {
+-		.name = "uci",
+-		.type = &uci_type,
+-		.methods = uci_methods,
+-		.n_methods = ARRAY_SIZE(uci_methods),
+-	};
+-
+ 	static struct rpc_session_cb cb = {
+ 		.cb = rpc_uci_purge_savedir_cb
+ 	};
+@@ -1834,9 +1827,22 @@ int rpc_uci_api_init(struct ubus_context
+ 	cursor = uci_alloc_context();
+ 
+ 	if (!cursor)
+-		return UBUS_STATUS_UNKNOWN_ERROR;
++		return NULL;
+ 
+ 	rpc_session_destroy_cb(&cb);
++	struct ubus_object *obj = calloc(1, sizeof(*obj));
++	if (!obj)
++		return NULL;
++
++	obj->name = "uci";
++	obj->type = &uci_type;
++	obj->methods = uci_methods;
++	obj->n_methods = ARRAY_SIZE(uci_methods);
+ 
+-	return ubus_add_object(ctx, &obj);
++	return obj;
+ }
++
++struct rpc_plugin rpc_plugin = {
++	.init = rpc_uci_api_init,
++	.user = "uci"
++};
+Index: rpcd-2021-03-11-ccb75178/CMakeLists.txt
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/CMakeLists.txt
++++ rpcd-2021-03-11-ccb75178/CMakeLists.txt
+@@ -8,6 +8,7 @@ INCLUDE_DIRECTORIES(include)
+ 
+ OPTION(FILE_SUPPORT "File plugin support" ON)
+ OPTION(IWINFO_SUPPORT "libiwinfo plugin support" ON)
++OPTION(UCI_SUPPORT "uci plugin support" ON)
+ OPTION(RPCSYS_SUPPORT "rpc-sys plugin support" ON)
+ OPTION(PAM_SUPPORT	"Include PAM support" OFF)
+ 
+@@ -47,7 +48,7 @@ INCLUDE_DIRECTORIES(${ubox_include_dir})
+ FIND_PATH(pcap_include_dir sys/capability.h)
+ INCLUDE_DIRECTORIES(${pcap_include_dir})
+ 
+-ADD_EXECUTABLE(rpcd main.c exec.c session.c uci.c rc.c plugin.c)
++ADD_EXECUTABLE(rpcd main.c exec.c session.c rc.c plugin.c)
+ TARGET_LINK_LIBRARIES(rpcd ${ubox} ${ubus} ${uci} ${blobmsg_json} ${json} ${crypt} ${cap} dl)
+ 
+ SET(PLUGINS "")
+@@ -74,6 +75,14 @@ IF (IWINFO_SUPPORT)
+   SET_TARGET_PROPERTIES(iwinfo_plugin PROPERTIES OUTPUT_NAME iwinfo PREFIX "")
+ ENDIF()
+ 
++IF (UCI_SUPPORT)
++  FIND_LIBRARY(uci NAMES uci)
++  SET(PLUGINS ${PLUGINS} uci_plugin)
++  ADD_LIBRARY(uci_plugin MODULE uci.c session.c)
++  TARGET_LINK_LIBRARIES(uci_plugin ${ubox} ${ubus} ${uci} ${blobmsg_json})
++  SET_TARGET_PROPERTIES(uci_plugin PROPERTIES OUTPUT_NAME uci PREFIX "")
++ENDIF()
++
+ INSTALL(TARGETS rpcd ${PLUGINS}
+ 	RUNTIME DESTINATION sbin
+ 	LIBRARY DESTINATION lib

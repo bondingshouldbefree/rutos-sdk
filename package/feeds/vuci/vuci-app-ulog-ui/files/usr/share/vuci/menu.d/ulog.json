@@ -1,0 +1,20 @@
+{
+  "services/logging": {
+    "title": "Traffic Logging",
+    "index": 110,
+    "view": "services/Ulog",
+    "acls": ["services/logging"],
+    "main_page": true
+  },
+  "system/maintenance/traffic": {
+    "title": "Traffic Log",
+    "index": 50,
+    "view": "status/TrafficLog",
+    "acls": ["system/maintenance/traffic"],
+    "depends": {
+      "packages": {
+        "allOf": ["tlt-ulogd"]
+      }
+    }
+  }
+}

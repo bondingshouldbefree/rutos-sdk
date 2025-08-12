@@ -1,0 +1,36 @@
+--- a/interface.c
++++ b/interface.c
+@@ -1095,11 +1095,17 @@ interface_add_link(struct interface *ifa
+ {
+ 	struct device *mdev = iface->main_dev.dev;
+ 
+-	if (mdev == dev)
++	if (mdev == dev) {
++		if (iface->state != IFS_UP) {
++			interface_set_available(iface, false);
++			if (dev->present)
++				interface_set_available(iface, true);
++		}
+ 		return 0;
++	}
+ 
+ 	if (iface->main_dev.hotplug)
+-		device_remove_user(&iface->main_dev);
++		interface_set_main_dev(iface, NULL);
+ 
+ 	if (mdev) {
+ 		if (mdev->hotplug_ops)
+--- a/wireless.c
++++ b/wireless.c
+@@ -1711,10 +1711,8 @@ void wireless_device_hotplug_event(const
+ 			return;
+ 
+ 		len = s - name;
+-	} else if (!device_find(name)) {
+-		len = strlen(name);
+ 	} else {
+-		return;
++		len = strlen(name);
+ 	}
+ 
+ 	vlist_for_each_element(&wireless_devices, wdev, node) {

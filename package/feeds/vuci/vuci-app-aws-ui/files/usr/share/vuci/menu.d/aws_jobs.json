@@ -1,0 +1,23 @@
+{
+	"services/cloud_solutions": {
+		"title": "Cloud Solutions",
+		"index": 10
+	},
+	"services/cloud_solutions/aws": {
+		"title": "AWS",
+		"index": 25
+	},
+	"services/cloud_solutions/aws/jobs": {
+		"title": "Jobs",
+		"index": 10,
+		"view": "services/AWSJobs",
+		"acls": [ "services/cloud_solutions/aws/jobs" ],
+		"main_page": true
+	},
+	"services/cloud_solutions/aws/provisioning": {
+		"title": "Provisioning",
+		"index": 20,
+		"view": "services/AWSProvisioning",
+		"acls": [ "services/cloud_solutions/aws/provisioning" ]
+	}
+}

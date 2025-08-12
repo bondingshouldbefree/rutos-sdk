@@ -1,0 +1,11 @@
+--- a/query.h
++++ b/query.h
+@@ -10,7 +10,7 @@
+ #ifndef __QUERY_H
+ #define __QUERY_H
+ 
+-#define VICI_SOCKET "/var/run/charon.vici"
++#define VICI_SOCKET "/var/run/ipsec/charon.vici"
+ 
+ int query_command(const char *command, const char *event);
+ 

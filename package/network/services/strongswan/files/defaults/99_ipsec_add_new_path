@@ -1,0 +1,16 @@
+#!/bin/sh
+
+fix_include() {
+	local file="$1"
+	local replace="$2"
+	local include="$3"
+	sed -i "s|$replace|$include|g" "$file" 
+	if ! grep -Fxq "$include" "$file"; then
+		echo "$include" >> "$file"
+	fi
+}
+
+fix_include "/etc/swanctl/swanctl.conf" "include /var/swanctl/swanctl.conf" "include /var/run/ipsec/swanctl/swanctl.conf"
+fix_include "/etc/strongswan.conf" "include /var/ipsec/strongswan.conf" "include /var/run/ipsec/ipsec/strongswan.conf"
+
+exit 0

@@ -1,0 +1,60 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+USE_PROCD=1
+STOP=10
+
+TMP_DIR="/var/run/eoip"
+PROG="/usr/bin/eoip"
+[ -x "$PROG" ] || PROG="/usr/local${PROG}"
+
+start_service() {
+	[ -n "$(uci -q get eoip.@eoip[0])" ] || return
+	config_load "eoip"
+	config_foreach start_eoip 'eoip'
+}
+
+start_eoip() {
+	local s="$1"
+	config_get_bool enabled "$section" enabled
+	[ "$enabled" = "1" ] || return
+
+	EOIP_CONFIG="${TMP_DIR}/eoip-$s.conf"
+	[ -f "$EOIP_CONFIG" ] && rm "$EOIP_CONFIG"
+
+	config_get tun_id "$s" tun_id
+	config_get remote_ip "$s" remote_ip
+	config_get_bool dynamic "$s" dynamic 0
+	config_get local_ip "$s" local_ip
+	{
+		echo "[eoip_${s#inst}]"
+		echo "id=$tun_id"
+		[ -n "$remote_ip" ] && echo "dst=$remote_ip"
+		[ "$dynamic" -gt 0 ] && echo "dynamic=$dynamic"
+	}  >> "$EOIP_CONFIG"
+	chown eoip:eoip "$EOIP_CONFIG"
+
+	procd_open_instance "$s"
+	procd_set_param env NO_DAEMON=1
+	procd_set_param command "$PROG" "$EOIP_CONFIG" ${local_ip:+$local_ip}
+	procd_set_param file /etc/config/eoip
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param respawn
+	procd_set_param user eoip
+	procd_close_instance
+}
+
+add_interface_trigger() {
+	local name="$1"
+	local device
+	config_get device "$name" device ""
+	[ "$device" = "br-${name}" ] && procd_add_interface_trigger "interface.*.up" "$name" /etc/init.d/eoip restart
+}
+
+service_triggers() {
+	procd_add_reload_trigger eoip
+
+	config_load 'network'
+	config_foreach add_interface_trigger 'interface'
+}

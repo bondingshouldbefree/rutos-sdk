@@ -1,0 +1,13 @@
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3411,8 +3411,8 @@ hostapd_interface_init_bss(struct hapd_i
+ 		}
+ 	}
+ 
+-	wpa_printf(MSG_INFO, "Configuration file: %s (phy %s)%s",
+-		   config_fname, phy, iface ? "" : " --> new PHY");
++	wpa_printf(MSG_INFO, "Initializing BSS (phy %s)%s",
++		   phy, iface ? "" : " --> new PHY");
+ 
+ 	conf = interfaces->config_read_cb(config_fname);
+ 	if (!conf)

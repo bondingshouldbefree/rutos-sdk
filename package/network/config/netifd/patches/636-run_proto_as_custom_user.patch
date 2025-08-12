@@ -1,0 +1,152 @@
+Index: netifd-2024-01-04-c18cc79d/netifd.h
+===================================================================
+--- netifd-2024-01-04-c18cc79d.orig/netifd.h
++++ netifd-2024-01-04-c18cc79d/netifd.h
+@@ -93,6 +93,7 @@ struct netifd_process {
+ 	struct ustream_fd log;
+ 	const char *log_prefix;
+ 	bool log_overflow;
++	char username[32];
+ };
+ 
+ void netifd_log_message(int priority, const char *format, ...);
+Index: netifd-2024-01-04-c18cc79d/scripts/netifd-proto.sh
+===================================================================
+--- netifd-2024-01-04-c18cc79d.orig/scripts/netifd-proto.sh
++++ netifd-2024-01-04-c18cc79d/scripts/netifd-proto.sh
+@@ -346,6 +346,12 @@ proto_export() {
+ 	append _EXPORT_VARS "$var"
+ }
+ 
++proto_set_user() {
++	local user="$1"
++
++	id "$user" >/dev/null 2>&1 && export NETIFD_PROCESS_USER="$user"
++}
++
+ proto_run_command() {
+ 	local interface="$1"; shift
+ 
+@@ -364,6 +370,9 @@ proto_run_command() {
+ 		done
+ 		json_close_array
+ 	}
++
++	[ -n "$NETIFD_PROCESS_USER" ] && json_add_string user "$NETIFD_PROCESS_USER"
++
+ 	_proto_notify "$interface"
+ }
+ 
+Index: netifd-2024-01-04-c18cc79d/proto-shell.c
+===================================================================
+--- netifd-2024-01-04-c18cc79d.orig/proto-shell.c
++++ netifd-2024-01-04-c18cc79d/proto-shell.c
+@@ -461,6 +461,7 @@ enum {
+ 	NOTIFY_ERROR,
+ 	NOTIFY_COMMAND,
+ 	NOTIFY_ENV,
++	NOTIFY_USER,
+ 	NOTIFY_SIGNAL,
+ 	NOTIFY_AVAILABLE,
+ 	NOTIFY_LINK_UP,
+@@ -484,6 +485,7 @@ static const struct blobmsg_policy notif
+ 	[NOTIFY_ERROR] = { .name = "error", .type = BLOBMSG_TYPE_ARRAY },
+ 	[NOTIFY_COMMAND] = { .name = "command", .type = BLOBMSG_TYPE_ARRAY },
+ 	[NOTIFY_ENV] = { .name = "env", .type = BLOBMSG_TYPE_ARRAY },
++	[NOTIFY_USER] = { .name = "user", .type = BLOBMSG_TYPE_STRING },
+ 	[NOTIFY_SIGNAL] = { .name = "signal", .type = BLOBMSG_TYPE_INT32 },
+ 	[NOTIFY_AVAILABLE] = { .name = "available", .type = BLOBMSG_TYPE_BOOL },
+ 	[NOTIFY_LINK_UP] = { .name = "link-up", .type = BLOBMSG_TYPE_BOOL },
+@@ -620,6 +622,26 @@ out:
+ 	return true;
+ }
+ 
++static bool
++fill_user(struct blob_attr *attr, struct proto_shell_state *state)
++{
++	if (!attr || blobmsg_type(attr) != BLOBMSG_TYPE_STRING)
++		return false;
++
++	const char *val = blobmsg_get_string(attr);
++	if (!val)
++		return false;
++
++	size_t len = strlen(val);
++	if (len >= sizeof(state->proto_task.username)) {
++		netifd_log_message(L_WARNING, "Username '%s' exceeds maximum length (%zu)", val, sizeof(state->proto_task.username) - 1);
++		return false;
++	}
++
++	strlcpy(state->proto_task.username, val, sizeof(state->proto_task.username));
++	return true;
++}
++
+ static int
+ proto_shell_run_command(struct proto_shell_state *state, struct blob_attr **tb)
+ {
+@@ -638,6 +660,9 @@ proto_shell_run_command(struct proto_she
+ 	if (!fill_string_list(tb[NOTIFY_ENV], env, ARRAY_SIZE(env)))
+ 		goto error;
+ 
++	if (tb[NOTIFY_USER] && !fill_user(tb[NOTIFY_USER], state))
++		goto error;
++
+ 	netifd_start_process((const char **) argv, (char **) env, &state->proto_task);
+ 
+ 	return 0;
+Index: netifd-2024-01-04-c18cc79d/main.c
+===================================================================
+--- netifd-2024-01-04-c18cc79d.orig/main.c
++++ netifd-2024-01-04-c18cc79d/main.c
+@@ -18,6 +18,8 @@
+ #include <signal.h>
+ #include <stdarg.h>
+ #include <syslog.h>
++#include <pwd.h>
++#include <grp.h>
+ 
+ #include "netifd.h"
+ #include "ubus.h"
+@@ -171,6 +173,42 @@ netifd_start_process(const char **argv,
+ 		if (pfds[1] > 2)
+ 			close(pfds[1]);
+ 
++		if (proc->username[0]) {
++			int ngroups = 0;	
++			struct passwd *pwd = getpwnam(proc->username);
++			if (!pwd) {
++				netifd_log_message(L_WARNING, "Failed to get user '%s'", proc->username);
++				exit(127);
++			}
++
++			getgrouplist(proc->username, pwd->pw_gid, NULL, &ngroups);
++			if (ngroups > 0) {
++				gid_t *groups = malloc(ngroups * sizeof(gid_t));
++				if (!groups) {
++					netifd_log_message(L_WARNING, "Failed to allocate memory for groups");
++					exit(127);
++				}
++				if (getgrouplist(proc->username, pwd->pw_gid, groups, &ngroups) < 0) {
++					netifd_log_message(L_WARNING, "Failed to get groups for user '%s'", proc->username);
++					free(groups);
++					exit(127);
++				}
++				setgroups(ngroups, groups);
++				free(groups);
++			}
++
++			if (setgid(pwd->pw_gid) == -1) {
++				netifd_log_message(L_WARNING, "Failed to set group '%s' %d", proc->username, pwd->pw_gid);
++				exit(127);
++			}
++
++			if (setuid(pwd->pw_uid) == -1) {
++				netifd_log_message(L_WARNING, "Failed to set user '%s' %d", proc->username, pwd->pw_gid);
++				exit(127);
++			}
++
++		}
++
+ 		execvp(argv[0], (char **) argv);
+ 		exit(127);
+ 	}

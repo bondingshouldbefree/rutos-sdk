@@ -1,0 +1,37 @@
+--- a/3rdparty/jitterentropy-rngd/jitterentropy-base.c
++++ b/3rdparty/jitterentropy-rngd/jitterentropy-base.c
+@@ -55,6 +55,7 @@
+ #pragma GCC optimize ("O0")
+ #endif
+ 
++#include <stdio.h>
+ #include "jitterentropy.h"
+ 
+ #ifdef __OPTIMIZE__
+@@ -737,8 +738,11 @@ int jent_entropy_init(void)
+ 		 * delta even when called shortly after each other -- this
+ 		 * implies that we also have a high resolution timer
+ 		 */
+-		if (!delta)
+-			return ECOARSETIME;
++		if (!delta) {
++			printf("jitterentropy-rngd - Warning: Skiped failing timer resolution check on iter:%d\n", i);
++			continue;
++			/*return ECOARSETIME;*/
++		}
+ 
+ 		stuck = jent_stuck(&ec, delta);
+ 
+@@ -822,8 +826,10 @@ int jent_entropy_init(void)
+ 	 * 10% of all checks -- on some platforms, the counter increments in
+ 	 * multiples of 100, but not always
+ 	 */
+-	if ((TESTLOOPCOUNT/10 * 9) < count_mod)
+-		return ECOARSETIME;
++	if ((TESTLOOPCOUNT/10 * 9) < count_mod) {
++		printf("jitterentropy-rngd - Warning: Skiped failing timer variation check on iter:%d\n", i);
++		/*return ECOARSETIME;*/
++	}
+ 
+ 	/*
+ 	 * If we have more than 90% stuck results, then this Jitter RNG is

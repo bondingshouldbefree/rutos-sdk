@@ -1,0 +1,23 @@
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -7602,6 +7602,7 @@ static int wpa_supplicant_init_iface(str
+ 	struct wpa_driver_capa capa;
+ 	int capa_res;
+ 	u8 dfs_domain;
++	unsigned int band;
+ 
+ 	wpa_printf(MSG_DEBUG, "Initializing interface '%s' conf '%s' driver "
+ 		   "'%s' ctrl_interface '%s' bridge '%s'", iface->ifname,
+@@ -7983,6 +7984,12 @@ static int wpa_supplicant_init_iface(str
+ 
+ 	wpa_supplicant_set_default_scan_ies(wpa_s);
+ 
++	band = wpas_get_bands(wpa_s, NULL);
++
++       if (band != BAND_5_GHZ) {
++               wpa_s->scan_interval = 10;
++       }
++
+ 	return 0;
+ }
+ 

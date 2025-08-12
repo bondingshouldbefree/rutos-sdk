@@ -1,0 +1,37 @@
+Index: openvpn-2.6.9/src/openvpn/run_command.c
+===================================================================
+--- openvpn-2.6.9.orig/src/openvpn/run_command.c
++++ openvpn-2.6.9/src/openvpn/run_command.c
+@@ -36,6 +36,10 @@
+ 
+ #include "run_command.h"
+ 
++#ifdef HAVE_LIBCAP
++#include <sys/capability.h>
++#endif
++
+ /* contains an SSEC_x value defined in platform.h */
+ static int script_security_level = SSEC_BUILT_IN; /* GLOBAL */
+ 
+@@ -148,6 +152,21 @@ openvpn_execve(const struct argv *a, con
+             pid = fork();
+             if (pid == (pid_t)0) /* child side */
+             {
++#ifdef HAVE_LIBCAP
++		cap_t caps = cap_get_proc();
++		cap_value_t newcaps[] = {CAP_NET_ADMIN};
++		if (cap_set_flag(caps, CAP_INHERITABLE, 1, newcaps, CAP_SET) == -1)
++		{
++		    msg(M_ERR, "Failed to set inheritable capabilities for %s: %s",
++		        cmd, strerror(errno));
++		}
++		if (cap_set_proc(caps) == -1)
++		{
++		    msg(M_ERR, "Failed to set capabilities for %s: %s",
++		        cmd, strerror(errno));
++	    	}
++		cap_free(caps);
++#endif
+                 execve(cmd, argv, envp);
+                 exit(OPENVPN_EXECVE_FAILURE);
+             }

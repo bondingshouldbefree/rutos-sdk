@@ -1,0 +1,4 @@
+/etc/config/sms_gateway				mobutils:mobutils	660
+/etc/config/call_utils				mobutils:mobutils	660
+/etc/config/sms_utils				mobutils:mobutils	660
+/usr/share/sms_utils/uci_acl.json	mobutils:mobutils	660

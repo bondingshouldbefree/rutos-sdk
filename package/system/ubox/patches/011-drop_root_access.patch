@@ -1,0 +1,67 @@
+Index: ubox-2020-10-25-9ef88681/log/logdb.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/logdb.c
++++ ubox-2020-10-25-9ef88681/log/logdb.c
+@@ -509,6 +509,7 @@ sqlite3_stmt *db_prepare(char *query)
+ 
+ int init_db(void)
+ {
++	fprintf(stdout, "Initializing database...\n");
+ 	if (sqlite3_open(DB, &conn)) {
+ 		syslog(LOG_ERR, "Can't open database\n");
+ 		return SQLITE_ERROR;
+Index: ubox-2020-10-25-9ef88681/log/syslog.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/syslog.c
++++ ubox-2020-10-25-9ef88681/log/syslog.c
+@@ -41,7 +41,7 @@
+ #include "syslog.h"
+ 
+ #define LOG_DEFAULT_SIZE	(16 * 1024)
+-#define LOG_DEFAULT_SOCKET	"/dev/log"
++#define LOG_DEFAULT_SOCKET	"/var/run/logd/log"
+ #define SYSLOG_PADDING		16
+ 
+ #define KLOG_DEFAULT_PROC	"/proc/kmsg"
+Index: ubox-2020-10-25-9ef88681/log/logd.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/logd.c
++++ ubox-2020-10-25-9ef88681/log/logd.c
+@@ -501,7 +501,6 @@ static void
+ ubus_connect_handler(struct ubus_context *ctx)
+ {
+ 	int ret;
+-
+ 	ret = ubus_add_object(ctx, &log_object);
+ 	if (ret) {
+ 		fprintf(stderr, "Failed to add object: %s\n", ubus_strerror(ret));
+@@ -514,7 +513,6 @@ int
+ main(int argc, char **argv)
+ {
+ 	int ch, log_size = 16;
+-	struct passwd *p = NULL;
+ 
+ 	signal(SIGPIPE, SIG_IGN);
+ 	while ((ch = getopt(argc, argv, "S:")) != -1) {
+@@ -532,21 +530,7 @@ main(int argc, char **argv)
+ 	log_init(log_size);
+ 	conn.cb = ubus_connect_handler;
+ 	ubus_auto_connect(&conn);
+-
+-	/*
+-	 * Looks like autoconnect feature here is broken on this version of ubox.
+-	 * After lost connection it should try to reconnect. It succeeds
+-	 * but as `logd` user not `root`. In this case `log` ubus object becomes
+-	 * invisible to other processes. This kills logd and forces procd to restart
+-	 * it again. Ubus id of object changes but it is still better than having no
+-	 * `log` object
+-	 */
+ 	conn.ctx.connection_lost = logd_die;
+-	p = getpwnam("logd");
+-	if (p) {
+-		setuid(p->pw_uid);
+-		setgid(p->pw_gid);
+-	}
+ 	uloop_run();
+ 	log_shutdown();
+ 	uloop_done();

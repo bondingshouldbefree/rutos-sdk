@@ -1,0 +1,2 @@
+/etc/config/snmpd	snmpd:snmpd 660
+/etc/snmp			snmpd:snmpd -	r

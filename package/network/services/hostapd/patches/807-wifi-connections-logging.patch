@@ -1,0 +1,91 @@
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -1574,6 +1574,7 @@ void ap_sta_set_authorized_event(struct
+ {
+ 	const u8 *dev_addr = NULL;
+ 	char buf[100];
++	char mac[18] = { 0 };
+ #ifdef CONFIG_P2P
+ 	u8 addr[ETH_ALEN];
+ 	u8 ip_addr_buf[4];
+@@ -1597,6 +1598,8 @@ void ap_sta_set_authorized_event(struct
+ #endif /* CONFIG_P2P */
+ 		os_snprintf(buf, sizeof(buf), MACSTR, MAC2STR(sta->addr));
+ 
++	sprintf(mac, MACSTR, MAC2STR(sta->addr));
++
+ 	if (authorized) {
+ 		static const char * const auth_algs[] = {
+ 			[WLAN_AUTH_OPEN] = "open",
+@@ -1665,6 +1668,8 @@ void ap_sta_set_authorized_event(struct
+ 					  AP_STA_CONNECTED "%s%s%s%s%s",
+ 					  buf, ip_addr, keyid_buf,
+ 					  dpp_pkhash_buf, alg_buf);
++
++		hostapd_ubus_insert_wifi_log(mac, 1);
+ 	} else {
+ 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_DISCONNECTED "%s", buf);
+ 		hostapd_ubus_notify(hapd, "disassoc", sta->addr);
+@@ -1673,6 +1678,8 @@ void ap_sta_set_authorized_event(struct
+ 		    hapd->msg_ctx_parent != hapd->msg_ctx)
+ 			wpa_msg_no_global(hapd->msg_ctx_parent, MSG_INFO,
+ 					  AP_STA_DISCONNECTED "%s", buf);
++
++		hostapd_ubus_insert_wifi_log(mac, 0);
+ 	}
+ 
+ 	if (hapd->sta_authorized_cb)
+--- a/src/ap/ubus.c
++++ b/src/ap/ubus.c
+@@ -2065,6 +2065,32 @@ void hostapd_ubus_notify_beacon_report(
+ 	ubus_notify(ctx, &hapd->ubus.obj, "beacon-report", b.head, -1);
+ }
+ 
++void hostapd_ubus_insert_wifi_log(char *mac, int ident)
++{
++	struct events_log new_task = { 0 };
++	char cmd[45]		   = { 0 };
++	int i			   = 0;
++
++	while (mac[i]) {
++		mac[i] = toupper(mac[i]);
++		i++;
++	}
++
++	if (ident) {
++		sprintf(cmd, "WiFi client connected: %s", mac);
++	} else {
++		sprintf(cmd, "WiFi client disconnected: %s", mac);
++	}
++
++	new_task.table	  = LLOG_CONNECTIONS;
++	new_task.sender	  = "WiFi";
++	new_task.priority = EVENTLOG_NOTICE;
++	new_task.db_flag  = 1;
++	new_task.text	  = cmd;
++
++	llog_add_task(ctx, &new_task);
++}
++
+ void hostapd_ubus_notify_radar_detected(struct hostapd_iface *iface, int frequency,
+ 					int chan_width, int cf1, int cf2)
+ {
+--- a/src/ap/ubus.h
++++ b/src/ap/ubus.h
+@@ -33,6 +33,8 @@ struct sta_info;
+ 
+ #include <libubox/avl.h>
+ #include <libubus.h>
++#include <liblog.h>
++#include <ctype.h>
+ 
+ struct hostapd_ubus_bss {
+ 	struct ubus_object obj;
+@@ -61,6 +63,7 @@ void hostapd_ubus_notify_bss_transition_
+ 	struct hostapd_data *hapd, const u8 *addr, u8 dialog_token, u8 status_code,
+ 	u8 bss_termination_delay, const u8 *target_bssid,
+ 	const u8 *candidate_list, u16 candidate_list_len);
++void hostapd_ubus_insert_wifi_log(char *mac, int ident);
+ void hostapd_ubus_add(struct hapd_interfaces *interfaces);
+ void hostapd_ubus_free(struct hapd_interfaces *interfaces);
+ int hostapd_ubus_notify_bss_transition_query(

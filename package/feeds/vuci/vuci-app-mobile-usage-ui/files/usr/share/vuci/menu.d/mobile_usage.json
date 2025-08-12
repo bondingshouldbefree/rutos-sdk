@@ -1,0 +1,13 @@
+{
+  "status/realtime/mobile_usage": {
+    "title": "Mobile Usage",
+    "index": 60,
+    "view": "status/MobileUsage",
+    "acls": ["status/realtime/mobile_usage"],
+    "depends": {
+      "board": {
+        "allOf": ["has_mobile"]
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "services/sd_usb_tools/p910nd": {
+    "title": "Printer Server",
+    "index": 20,
+    "view": "services/P910nd",
+    "acls": ["services/sd_usb_tools/p910nd"],
+    "depends": {
+      "board": {
+        "allOf": ["has_usb"]
+      }
+    }
+  }
+}

@@ -1,0 +1,81 @@
+#
+# Copyright (C) 2006-2015 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
+include $(TOPDIR)/rules.mk
+
+PKG_NAME:=pptpd
+PKG_VERSION:=1.4.0
+PKG_RELEASE:=12
+
+PKG_SOURCE_VERSION:=1.4.0
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_SOURCE_VERSION).tar.gz
+PKG_SOURCE_URL:=@SF/poptop
+
+PKG_HASH:=8fcd8b8a42de2af59e9fe8cbaa9f894045c977f4d038bbd6346a8522bb7f06c0
+
+PKG_INSTALL:=1
+PKG_BUILD_PARALLEL:=1
+
+PKG_CPE_ID:=cpe:/a:poptop:pptp_server
+
+PKG_LICENSE:=GPL-2.0
+
+include $(INCLUDE_DIR)/package.mk
+
+define Package/pptpd
+  SECTION:=net
+  CATEGORY:=Network
+  DEPENDS:=+ppp-mod-pptp +ppp-mod-pppoe +kmod-gre +kmod-mppe
+  TITLE:=PopTop pptp server
+  URL:=http://poptop.sourceforge.net/
+  SUBMENU:=VPN
+  USERID:=pptpd:pptpd
+  FATTRS:=/usr/sbin/pptpctrl::::cap_net_raw+ep
+endef
+
+CONFIGURE_ARGS += \
+	--enable-bcrelay \
+
+CONFIGURE_VARS += \
+	ac_cv_header_libintl_h=no \
+
+MAKE_FLAGS += \
+	COPTS="$(TARGET_CFLAGS)" \
+	INSTALL="install" \
+
+define Package/pptpd/conffiles
+/etc/pptpd.conf
+/etc/config/pptpd
+endef
+
+define Package/pptpd/install
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(CP) \
+		$(PKG_INSTALL_DIR)/usr/sbin/bcrelay \
+		$(PKG_INSTALL_DIR)/usr/sbin/pptpctrl \
+		$(PKG_INSTALL_DIR)/usr/sbin/pptpd \
+		$(1)/usr/sbin/
+	$(INSTALL_DIR) $(1)/usr/lib/pptpd
+	$(CP) $(PKG_INSTALL_DIR)/usr/lib/pptpd/* $(1)/usr/lib/pptpd/
+	$(INSTALL_DIR) $(1)/etc
+	$(INSTALL_DATA) ./files/pptpd.conf $(1)/etc/
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/pptpd.init $(1)/etc/init.d/pptpd
+	$(INSTALL_DIR) $(1)/etc/ppp
+	$(INSTALL_BIN) ./files/pptpd-up $(1)/etc/ppp/
+	$(INSTALL_BIN) ./files/pptpd-down $(1)/etc/ppp/
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF_USR) /dev/null $(1)/etc/config/pptpd
+	$(INSTALL_DIR) $(1)/etc/ppp/ip-up.d/
+	$(INSTALL_BIN) ./files/pptp-up $(1)/etc/ppp/ip-up.d/
+	$(INSTALL_DIR) $(1)/etc/uci-defaults/7.15
+	$(CP) ./files/defaults/99_pptp_device_name $(1)/etc/uci-defaults/7.15/99_pptp_device_name
+	$(INSTALL_DIR) $(1)/etc/permtab.d
+	$(INSTALL_DATA) ./files/pptpd.permtab $(1)/etc/permtab.d/pptpd
+endef
+
+$(eval $(call BuildPackage,pptpd))

@@ -1,0 +1,199 @@
+--- a/drivers/leds/led-class.c
++++ b/drivers/leds/led-class.c
+@@ -67,7 +67,7 @@ unlock:
+ 	mutex_unlock(&led_cdev->led_access);
+ 	return ret;
+ }
+-static DEVICE_ATTR_RW(brightness);
++static DEVICE_ATTR(brightness, 0664, brightness_show, brightness_store);
+ 
+ static ssize_t max_brightness_show(struct device *dev,
+ 		struct device_attribute *attr, char *buf)
+@@ -84,7 +84,7 @@ static ssize_t max_brightness_show(struc
+ static DEVICE_ATTR_RO(max_brightness);
+ 
+ #ifdef CONFIG_LEDS_TRIGGERS
+-static BIN_ATTR(trigger, 0644, led_trigger_read, led_trigger_write, 0);
++static BIN_ATTR(trigger, 0664, led_trigger_read, led_trigger_write, 0);
+ static struct bin_attribute *led_trigger_bin_attrs[] = {
+ 	&bin_attr_trigger,
+ 	NULL,
+@@ -241,10 +241,19 @@ static struct led_classdev *led_module_g
+ 	return led_cdev;
+ }
+ 
++static void leds_get_ownership(const struct device *d, kuid_t *uid, kgid_t *gid)
++{
++	(void)d;
++
++	*uid = GLOBAL_ROOT_UID;
++	*gid = GLOBAL_LEDS_GID;
++}
++
+ static const struct class leds_class = {
+ 	.name = "leds",
+ 	.dev_groups = led_groups,
+ 	.pm = &leds_class_dev_pm_ops,
++	.get_ownership = leds_get_ownership,
+ };
+ 
+ /**
+--- a/include/linux/uidgid.h
++++ b/include/linux/uidgid.h
+@@ -55,6 +55,11 @@ static inline gid_t __kgid_val(kgid_t gi
+ #define GLOBAL_ROOT_UID KUIDT_INIT(0)
+ #define GLOBAL_ROOT_GID KGIDT_INIT(0)
+ 
++#define GLOBAL_LEDS_GID KGIDT_INIT(900)
++#define GLOBAL_GPIO_GID KGIDT_INIT(901)
++#define GLOBAL_MNF_SEC_GID KGIDT_INIT(902)
++#define GLOBAL_I2C_GID KGIDT_INIT(903)
++
+ #define INVALID_UID KUIDT_INIT(-1)
+ #define INVALID_GID KGIDT_INIT(-1)
+ 
+--- a/drivers/leds/trigger/ledtrig-timer.c
++++ b/drivers/leds/trigger/ledtrig-timer.c
+@@ -65,8 +65,8 @@ static ssize_t led_delay_off_store(struc
+ 	return size;
+ }
+ 
+-static DEVICE_ATTR(delay_on, 0644, led_delay_on_show, led_delay_on_store);
+-static DEVICE_ATTR(delay_off, 0644, led_delay_off_show, led_delay_off_store);
++static DEVICE_ATTR(delay_on, 0664, led_delay_on_show, led_delay_on_store);
++static DEVICE_ATTR(delay_off, 0664, led_delay_off_show, led_delay_off_store);
+ 
+ static struct attribute *timer_trig_attrs[] = {
+ 	&dev_attr_delay_on.attr,
+--- a/drivers/leds/trigger/ledtrig-netdev.c
++++ b/drivers/leds/trigger/ledtrig-netdev.c
+@@ -293,7 +293,7 @@ static ssize_t device_name_store(struct
+ 	return size;
+ }
+ 
+-static DEVICE_ATTR_RW(device_name);
++static DEVICE_ATTR(device_name, 0664, device_name_show, device_name_store);
+ 
+ static ssize_t netdev_led_attr_show(struct device *dev, char *buf,
+ 				    enum led_trigger_netdev_modes attr)
+@@ -387,7 +387,7 @@ static ssize_t netdev_led_attr_store(str
+ 	{ \
+ 		return netdev_led_attr_store(dev, buf, size, trigger); \
+ 	} \
+-	static DEVICE_ATTR_RW(trigger_name)
++	static DEVICE_ATTR(trigger_name, 0664, trigger_name##_show, trigger_name##_store)
+ 
+ DEFINE_NETDEV_TRIGGER(link, TRIGGER_NETDEV_LINK);
+ DEFINE_NETDEV_TRIGGER(link_10, TRIGGER_NETDEV_LINK_10);
+@@ -441,7 +441,7 @@ static ssize_t interval_store(struct dev
+ 	return size;
+ }
+ 
+-static DEVICE_ATTR_RW(interval);
++static DEVICE_ATTR(interval, 0664, interval_show, interval_store);
+ 
+ static ssize_t offloaded_show(struct device *dev,
+ 			      struct device_attribute *attr, char *buf)
+--- a/drivers/net/phy/swconfig_leds.c
++++ b/drivers/net/phy/swconfig_leds.c
+@@ -163,7 +163,7 @@ swconfig_trig_port_mask_show(struct devi
+ 	return strlen(buf) + 1;
+ }
+ 
+-static DEVICE_ATTR(port_mask, 0644, swconfig_trig_port_mask_show,
++static DEVICE_ATTR(port_mask, 0664, swconfig_trig_port_mask_show,
+ 		   swconfig_trig_port_mask_store);
+ 
+ /* speed_mask file handler - display value */
+@@ -206,7 +206,7 @@ static ssize_t swconfig_trig_speed_mask_
+ }
+ 
+ /* speed_mask special file */
+-static DEVICE_ATTR(speed_mask, 0644, swconfig_trig_speed_mask_show,
++static DEVICE_ATTR(speed_mask, 0664, swconfig_trig_speed_mask_show,
+ 		   swconfig_trig_speed_mask_store);
+ 
+ static ssize_t swconfig_trig_mode_show(struct device *dev,
+@@ -279,7 +279,7 @@ static ssize_t swconfig_trig_mode_store(
+ }
+ 
+ /* mode special file */
+-static DEVICE_ATTR(mode, 0644, swconfig_trig_mode_show,
++static DEVICE_ATTR(mode, 0664, swconfig_trig_mode_show,
+ 		   swconfig_trig_mode_store);
+ 
+ static int
+--- a/drivers/gpio/gpiolib-sysfs.c
++++ b/drivers/gpio/gpiolib-sysfs.c
+@@ -108,7 +108,7 @@ static ssize_t direction_store(struct de
+ 
+ 	return status ? : size;
+ }
+-static DEVICE_ATTR_RW(direction);
++static DEVICE_ATTR(direction, 0664, direction_show, direction_store);
+ 
+ static ssize_t value_show(struct device *dev,
+ 		struct device_attribute *attr, char *buf)
+@@ -152,7 +152,7 @@ static ssize_t value_store(struct device
+ 
+ 	return status;
+ }
+-static DEVICE_ATTR_PREALLOC(value, S_IWUSR | S_IRUGO, value_show, value_store);
++static DEVICE_ATTR_PREALLOC(value, 0664, value_show, value_store);
+ 
+ static irqreturn_t gpio_sysfs_irq(int irq, void *priv)
+ {
+@@ -288,7 +288,7 @@ out_unlock:
+ 
+ 	return status;
+ }
+-static DEVICE_ATTR_RW(edge);
++static DEVICE_ATTR(edge, 0664, edge_show, edge_store);
+ 
+ /* Caller holds gpiod-data mutex. */
+ static int gpio_sysfs_set_active_low(struct device *dev, int value)
+@@ -348,7 +348,7 @@ static ssize_t active_low_store(struct d
+ 
+ 	return status ? : size;
+ }
+-static DEVICE_ATTR_RW(active_low);
++static DEVICE_ATTR(active_low, 0664, active_low_show, active_low_store);
+ 
+ static umode_t gpio_is_visible(struct kobject *kobj, struct attribute *attr,
+ 			       int n)
+@@ -491,7 +491,7 @@ done:
+ 		pr_debug("%s: status %d\n", __func__, status);
+ 	return status ? : len;
+ }
+-static CLASS_ATTR_WO(export);
++struct class_attribute class_attr_export = __ATTR(export, 0220, NULL, export_store);
+ 
+ static ssize_t unexport_store(const struct class *class,
+ 				const struct class_attribute *attr,
+@@ -528,7 +528,7 @@ done:
+ 		pr_debug("%s: status %d\n", __func__, status);
+ 	return status ? : len;
+ }
+-static CLASS_ATTR_WO(unexport);
++struct class_attribute class_attr_unexport = __ATTR(unexport, 0220, NULL, unexport_store);
+ 
+ static struct attribute *gpio_class_attrs[] = {
+ 	&class_attr_export.attr,
+@@ -537,8 +537,17 @@ static struct attribute *gpio_class_attr
+ };
+ ATTRIBUTE_GROUPS(gpio_class);
+ 
++static void gpio_get_ownership(const struct device *d, kuid_t *uid, kgid_t *gid)
++{
++	(void)d;
++
++	*uid = GLOBAL_ROOT_UID;
++	*gid = GLOBAL_GPIO_GID;
++}
++
+ static struct class gpio_class = {
+ 	.name =		"gpio",
++	.get_ownership = gpio_get_ownership,
+ 	.class_groups = gpio_class_groups,
+ };
+ 

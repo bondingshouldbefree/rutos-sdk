@@ -1,0 +1,80 @@
+Add nf_conn_flow conntrack extension. Used by nf_flow_table to tack flow_offload
+struct to related nf_conn.
+
+--- a/include/net/netfilter/nf_conntrack_extend.h
++++ b/include/net/netfilter/nf_conntrack_extend.h
+@@ -31,6 +31,7 @@ enum nf_ct_ext_id {
+ #if IS_ENABLED(CONFIG_NET_ACT_CT)
+ 	NF_CT_EXT_ACT_CT,
+ #endif
++	NF_CT_EXT_FLOW_OFFLOAD,
+ 	NF_CT_EXT_NUM,
+ };
+ 
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -12,6 +12,7 @@
+ #include <net/dst.h>
+ #include <linux/if_pppox.h>
+ #include <linux/ppp_defs.h>
++#include <net/netfilter/nf_conntrack_extend.h>
+ 
+ struct nf_flowtable;
+ struct nf_flow_rule;
+@@ -217,6 +218,30 @@ struct nf_flow_route {
+ 	} tuple[FLOW_OFFLOAD_DIR_MAX];
+ };
+ 
++struct nf_conn_flow {
++	struct flow_offload __rcu *flow;
++};
++
++static inline struct nf_conn_flow *nf_ct_flow_ext_find(struct nf_conn *ct)
++{
++	return nf_ct_ext_find(ct, NF_CT_EXT_FLOW_OFFLOAD);
++}
++
++static inline struct nf_conn_flow *nf_ct_flow_ext_add(struct nf_conn *ct)
++{
++	struct nf_conn_flow *flow_ext;
++
++	if (nf_ct_is_confirmed(ct))
++		return NULL;
++
++	flow_ext = nf_ct_ext_add(ct, NF_CT_EXT_FLOW_OFFLOAD, GFP_ATOMIC);
++	if (!flow_ext)
++		return NULL;
++
++	RCU_INIT_POINTER(flow_ext->flow, NULL);
++	return flow_ext;
++}
++
+ struct flow_offload *flow_offload_alloc(struct nf_conn *ct);
+ void flow_offload_free(struct flow_offload *flow);
+ 
+--- a/net/netfilter/nf_conntrack_extend.c
++++ b/net/netfilter/nf_conntrack_extend.c
+@@ -24,6 +24,7 @@
+ #include <net/netfilter/nf_conntrack_synproxy.h>
+ #include <net/netfilter/nf_conntrack_act_ct.h>
+ #include <net/netfilter/nf_nat.h>
++#include <net/netfilter/nf_flow_table.h>
+ 
+ #define NF_CT_EXT_PREALLOC	128u /* conntrack events are on by default */
+ 
+@@ -54,6 +55,7 @@ static const u8 nf_ct_ext_type_len[NF_CT
+ #if IS_ENABLED(CONFIG_NET_ACT_CT)
+ 	[NF_CT_EXT_ACT_CT] = sizeof(struct nf_conn_act_ct_ext),
+ #endif
++	[NF_CT_EXT_FLOW_OFFLOAD] = sizeof(struct nf_conn_flow),
+ };
+ 
+ static __always_inline unsigned int total_extension_size(void)
+@@ -86,6 +88,7 @@ static __always_inline unsigned int tota
+ #if IS_ENABLED(CONFIG_NET_ACT_CT)
+ 		+ sizeof(struct nf_conn_act_ct_ext)
+ #endif
++		+ sizeof(struct nf_conn_flow)
+ 	;
+ }
+ 

@@ -1,0 +1,34 @@
+Index: firewall-2022-02-17-4cd7d4f3/defaults.c
+===================================================================
+--- firewall-2022-02-17-4cd7d4f3.orig/defaults.c
++++ firewall-2022-02-17-4cd7d4f3/defaults.c
+@@ -61,6 +61,7 @@ const struct fw3_option fw3_flag_opts[]
+ 	FW3_OPT("disable_ipv6",        bool,     defaults, disable_ipv6),
+ 	FW3_OPT("flow_offloading",     bool,     defaults, flow_offloading),
+ 	FW3_OPT("flow_offloading_hw",  bool,     defaults, flow_offloading_hw),
++	FW3_OPT("flow_offloading_xfrm", bool,    defaults, flow_offloading_xfrm),
+ 
+ 	FW3_OPT("__flags_v4",          int,      defaults, flags[0]),
+ 	FW3_OPT("__flags_v6",          int,      defaults, flags[1]),
+@@ -256,6 +257,9 @@ fw3_print_default_head_rules(struct fw3_
+ 			fw3_ipt_rule_target(r, "FLOWOFFLOAD");
+ 			if (defs->flow_offloading_hw)
+ 				fw3_ipt_rule_addarg(r, false, "--hw", NULL);
++			if (defs->flow_offloading_xfrm)
++				fw3_ipt_rule_addarg(r, false, "--xfrm", NULL);
++
+ 			fw3_ipt_rule_append(r, "FORWARD");
+ 		}
+ 
+Index: firewall-2022-02-17-4cd7d4f3/options.h
+===================================================================
+--- firewall-2022-02-17-4cd7d4f3.orig/options.h
++++ firewall-2022-02-17-4cd7d4f3/options.h
+@@ -320,6 +320,7 @@ struct fw3_defaults
+ 	bool auto_helper;
+ 	bool flow_offloading;
+ 	bool flow_offloading_hw;
++	bool flow_offloading_xfrm;
+ 
+ 	bool disable_ipv6;
+ 

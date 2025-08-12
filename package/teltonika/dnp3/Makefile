@@ -1,0 +1,98 @@
+include $(TOPDIR)/rules.mk
+include $(INCLUDE_DIR)/download.mk
+
+PKG_NAME:=dnp3
+PKG_VERSION:=2025-08-04
+PKG_RELEASE:=1
+
+PKG_SOURCE_VERSION:=7.17
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+PKG_LICENSE:=Teltonika-closed
+
+include $(INCLUDE_DIR)/package.mk
+
+define Package/dnp3
+	SECTION:=net
+	CATEGORY:=Network
+	TITLE:=dnp3 stack
+	DEPENDS:=+libstdcpp +libuci +libubus +libopenssl +libsqlite3 +MOBILE_SUPPORT:libgsm \
+		+GPS_SUPPORT:libgps +libtlt_uci +libtlt_termios +MOBILE_SUPPORT:libmdcollect +libjson-c +opendnp3 \
+		+libubox +libblobmsg-json +libmnfinfo +IO_SUPPORT:iomand +MOBILE_SUPPORT:libboardjson +libtag
+endef
+
+ifeq ($(CONFIG_IO_SUPPORT),y)
+CMAKE_OPTIONS += -DIO_SUPPORT=TRUE
+endif
+
+ifeq ($(CONFIG_GPS_SUPPORT),y)
+CMAKE_OPTIONS += -DGPS_SUPPORT=TRUE
+endif
+
+ifeq ($(CONFIG_MOBILE_SUPPORT),y)
+CMAKE_OPTIONS += -DMOBILE_SUPPORT=TRUE
+endif
+
+define Package/dnp3/conffiles
+/etc/config/dnp3_client
+/etc/config/dnp3_outstation
+endef
+
+define Package/dnp3/description
+	DNP3 application stack which includes client and outstation.
+	DNP3 client is designed for reading data from DNP3 outstations and storing in local database.
+	DNP3 outstation is designed for DNP3 clients to read device data.
+endef
+
+
+define Package/dnp3/install
+	$(INSTALL_DIR) $(1)/usr/lib
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(INSTALL_DIR) $(1)/etc/permtab.d
+	$(INSTALL_DIR) $(1)/usr/lib/rpcd
+	$(INSTALL_DIR) $(1)/usr/share/acl.d
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/dnp3_client $(1)/usr/sbin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/dnp3_outstation $(1)/usr/sbin/
+
+	$(INSTALL_DIR) $(1)/etc/config/
+	$(INSTALL_CONF_USR) $(PKG_BUILD_DIR)/files/dnp3_client.conf $(1)/etc/config/dnp3_client
+	$(INSTALL_CONF_USR) $(PKG_BUILD_DIR)/files/dnp3_outstation.conf $(1)/etc/config/dnp3_outstation
+
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/dnp3_client.init $(1)/etc/init.d/dnp3_client
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/dnp3_outstation.init $(1)/etc/init.d/dnp3_outstation
+
+	$(INSTALL_DIR) $(1)/etc/uci-defaults/7.8/
+	$(CP) $(PKG_BUILD_DIR)/files/migrations/7.8/99_dnp3_add_global_section $(1)/etc/uci-defaults/7.8/
+
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/files/dnp3_client.permtab $(1)/etc/permtab.d/dnp3_client
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/files/dnp3_client.json $(1)/usr/share/acl.d/dnp3_client.json
+
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/files/dnp3_outstation.permtab $(1)/etc/permtab.d/dnp3_outstation
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/files/dnp3_outstation.json $(1)/usr/share/acl.d/dnp3_outstation.json
+
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/dnp3_client_rpc.so $(1)/usr/lib/rpcd/dnp3_client_rpc.so
+endef
+
+define Package/dnp3/prerm
+	#!/bin/sh
+
+	rm -f /var/run/dnp3_client/dnp3.db
+	rm -f /usr/share/dnp3.db
+endef
+
+define Package/dnp3/postinst
+	#!/bin/sh
+
+	/etc/init.d/rpcd reload
+
+	[ -z "$${IPKG_INSTROOT}" ] || exit 0
+	[ -e /lib/data_sender/libdata_sender.sh ] || exit 0
+
+	. /lib/data_sender/libdata_sender.sh
+
+	ds_find_plugin dnp3 && /etc/init.d/data_sender restart
+
+	exit 0
+endef
+
+$(eval $(call BuildPackage,dnp3))

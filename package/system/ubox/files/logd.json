@@ -1,0 +1,10 @@
+{
+	"user": "logd",
+	"access": {
+	  "log": {
+		"methods": ["read", "write", "write_ext", "read_db"]
+	  }
+	},
+	"publish": ["log"],
+	"send": ["logd.*"]
+}

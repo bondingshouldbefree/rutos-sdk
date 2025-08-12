@@ -1,0 +1,11 @@
+{
+	"user": "uci",
+	"access": {
+		"session": {
+			"methods": [ "access", "get" ]
+		},
+		"service": {
+			"methods": [ "event" ]
+		}
+	}
+}

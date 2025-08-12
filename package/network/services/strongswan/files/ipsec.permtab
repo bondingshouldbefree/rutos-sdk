@@ -1,0 +1,3 @@
+/etc/strongswan.d/        ipsec:ipsec     -       r
+/etc/swanctl/             ipsec:ipsec     -       r
+/etc/config/ipsec         ipsec:ipsec     660     -

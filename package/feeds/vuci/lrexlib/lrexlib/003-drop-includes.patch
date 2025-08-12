@@ -1,0 +1,24 @@
+--- a/Makefile	2024-12-16 08:38:17.444919947 +0200
++++ b/Makefile	2024-12-16 08:38:33.678015767 +0200
+@@ -1,11 +1,10 @@
+ WFLAGS=-Wall -Wextra -Wno-unused-parameter
+ DEFINES=-DREX_NOEMBEDDEDTEST -DPCRE2_CODE_UNIT_WIDTH=8  -D VERSION=\"2.9.1\" 
+-INCLUDES=-I$(STAGING_DIR)/usr/include/lua5.1 -I/usr/include/lua5.1 -I$(STAGING_DIR)/usr/include
+ LLUA=-llua5.1
+ 
+ LIBNAME=rex_pcre2.so
+ 
+-O_COMPILE=$(CC) $(WFLAGS) -fPIC $(DEFINES) -c -o $@ $(INCLUDES) $(CFLAGS) $<
++O_COMPILE=$(CC) $(WFLAGS) -fPIC $(DEFINES) -c -o $@ $(CFLAGS) $<
+ 
+ all: $(LIBNAME)
+ 
+@@ -19,7 +18,7 @@
+ 	$(O_COMPILE)
+ 
+ $(LIBNAME): common.o lpcre2.o lpcre2_f.o
+-	$(CC) -Wall $(LLUA) -lpcre2-8  -shared -fPIC $(DEFINES) $(LDFLAGS) -o $@ $^ $(INCLUDES)
++	$(CC) -Wall $(LLUA) -lpcre2-8  -shared -fPIC $(DEFINES) $(LDFLAGS) -o $@ $^
+ 
+ clean:
+ 	$(RM) ./*.o

@@ -1,0 +1,1231 @@
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/README.md src/README.md
+--- upstream/README.md	1970-01-01 00:00:00.000000000 +0000
++++ src/README.md	2025-04-02 11:27:54.000000000 +0000
+@@ -0,0 +1,2 @@
++# ddns-scripts
++
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/ddns.config src/files/ddns.config
+--- upstream/files/ddns.config	2022-10-27 12:48:35.000000000 +0000
++++ src/files/ddns.config	2025-04-02 11:27:54.000000000 +0000
+@@ -1,15 +1,15 @@
+ #
+-# Please read https://openwrt.org/docs/guide-user/base-system/ddns
++# Please read http://wiki.openwrt.org/doc/uci/ddns
+ #
+ config ddns "global"
+ 	option ddns_dateformat "%F %R"
+ #	option ddns_rundir "/var/run/ddns"
+ #	option ddns_logdir "/var/log/ddns"
+ 	option ddns_loglines "250"
+-	option upd_privateip "0"
++	option upd_privateip "1"
++	option use_curl "1"
+ 
+-
+-config service "myddns_ipv4"
++config service "myddns"
+ 	option service_name	"dyndns.org"
+ 	option lookup_host	"yourhost.example.com"
+ 	option domain		"yourhost.example.com"
+@@ -18,15 +18,3 @@
+ 	option interface	"wan"
+ 	option ip_source	"network"
+ 	option ip_network	"wan"
+-
+-config service "myddns_ipv6"
+-	option update_url	"http://[USERNAME]:[PASSWORD]@your.provider.net/nic/update?hostname=[DOMAIN]&myip=[IP]"
+-	option lookup_host	"yourhost.example.com"
+-	option domain		"yourhost.example.com"
+-	option username		"your_username"
+-	option password		"your_password"
+-	option use_ipv6		"1"
+-	option interface	"wan6"
+-	option ip_source	"network"
+-	option ip_network	"wan6"
+-
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/ddns.defaults src/files/ddns.defaults
+--- upstream/files/ddns.defaults	2022-10-27 12:48:35.000000000 +0000
++++ src/files/ddns.defaults	2025-04-02 11:27:54.000000000 +0000
+@@ -1,39 +1,39 @@
+ #!/bin/sh
+ 
++. /lib/functions.sh
++
+ g_pslfile=/usr/share/public_suffix_list.dat.gz
+-[ -f "$g_pslfile" ] || g_pslfile="$(dirname $0)/public_suffix_list.dat.gz"
++[ -f "$g_pslfile" ] || g_pslfile="$(dirname "$0")/public_suffix_list.dat.gz"
+ 
+-g_pslerr=0
++g_pslerr="0"
+ g_cfgfile="ddns"
+ 
+ # modify timer settings from interval and unit to dhms format
+ timer2dhms() {
+ # $1	Number and
+ # $2	Unit of time interval
+-	local t=0
+-	case $2 in
++	local t="0"
++	case "$2" in
+ 		days)		t=$(( $1 * 86400 ));;
+ 		hours)		t=$(( $1 * 3600 ));;
+ 		minutes)	t=$(( $1 * 60 ));;
+ 		*)		t=$1;;
+ 	esac
+ 
+-	local d=$(( $t / 86400 ))
+-	local h=$(( $t % 86400 / 3600 ))
+-	local m=$(( $t % 3600 / 60 ))
+-	local s=$(( $t % 60 ))
+-	if [ $d -gt 0 ]; then printf "%dd %02dh %02dm %02ds" "$d" "$h" "$m" "$s"
+-	elif [ $h -gt 0 ]; then printf "%dh %02dm %02ds" "$h" "$m" "$s"
+-	elif [ $m -gt 0 ]; then printf "%dm %02ds" "$m" "$s"
++	local d=$(( t / 86400 ))
++	local h=$(( t % 86400 / 3600 ))
++	local m=$(( t % 3600 / 60 ))
++	local s=$(( t % 60 ))
++	if [ "$d" -gt 0 ]; then printf "%dd %02dh %02dm %02ds" "$d" "$h" "$m" "$s"
++	elif [ "$h" -gt 0 ]; then printf "%dh %02dm %02ds" "$h" "$m" "$s"
++	elif [ "$m" -gt 0 ]; then printf "%dm %02ds" "$m" "$s"
+ 	else printf "%ds" "$s"; fi
+ 
+ 	unset d h m s t
+ 	return 0
+ }
+ 
+-# using function to not confuse function calls with existing ones inside /lib/functions.sh
+ update_config() {
+-	uc_uci="$(which uci) -q"	# ignore errors
+ 	uc_cfg=""
+ 	uc_name=""
+ 	uc_var=""
+@@ -44,16 +44,16 @@
+ 		uc_name="$2"
+ 
+ 		# Type = ddns	Name = global
+-		if [ "$uc_cfg" = "$g_cfgfile" -a "$uc_name" = "global" ]; then
++		if [ "$uc_cfg" = "$g_cfgfile" ] && [ "$uc_name" = "global" ]; then
+ 			option() {
+ 				uc_var="$1"; shift
+ 				uc_val="$*"
+ 				case "$uc_var" in
+-					allow_local_ip)	$uc_uci rename $g_cfgfile.$uc_name.$uc_var="upd_privateip";;
+-					date_format)	$uc_uci rename $g_cfgfile.$uc_name.$uc_var="ddns_dateformat";;
+-					log_lines)	$uc_uci rename $g_cfgfile.$uc_name.$uc_var="ddns_loglines";;
+-					log_dir)	$uc_uci rename $g_cfgfile.$uc_name.$uc_var="ddns_logdir";;
+-					run_dir)	$uc_uci rename $g_cfgfile.$uc_name.$uc_var="ddns_rundir";;
++					allow_local_ip)	uci_rename "$g_cfgfile" "$uc_name" "$uc_var" "upd_privateip";;
++					date_format)	uci_rename "$g_cfgfile" "$uc_name" "$uc_var" "ddns_dateformat";;
++					log_lines)	uci_rename "$g_cfgfile" "$uc_name" "$uc_var" "ddns_loglines";;
++					log_dir)	uci_rename "$g_cfgfile" "$uc_name" "$uc_var" "ddns_logdir";;
++					run_dir)	uci_rename "$g_cfgfile" "$uc_name" "$uc_var" "ddns_rundir";;
+ 					# leave all other options currently unchanged
+ 					*)	;;
+ 				esac
+@@ -70,25 +70,25 @@
+ 					service_name|upd_provider)
+ 						case "$uc_val" in
+ 							freedns\.afraid\.org|afraid\.org)
+-								$uc_uci set $g_cfgfile.$uc_name.$uc_var="afraid.org-keyauth";;
++								uci_set "$g_cfgfile" "$uc_name" "$uc_var" "afraid.org-keyauth";;
+ 							Bind-nsupdate)
+-								$uc_uci set $g_cfgfile.$uc_name.$uc_var="bind-nsupdate";;
++								uci_set "$g_cfgfile" "$uc_name" "$uc_var" "bind-nsupdate";;
+ 							dyndns\.org|dyndns\.com)
+-								$uc_uci set $g_cfgfile.$uc_name.$uc_var="dyn.com";;
++								uci_set "$g_cfgfile" "$uc_name" "$uc_var" "dyn.com";;
+ 							free\.editdns\.net)
+-								$uc_uci set $g_cfgfile.$uc_name.$uc_var="editdns.net";;
++								uci_set "$g_cfgfile" "$uc_name" "$uc_var" "editdns.net";;
+ 							FreeDNS\.42\.pl)
+-								$uc_uci set $g_cfgfile.$uc_name.$uc_var="freedns.42.pl";;
++								uci_set "$g_cfgfile" "$uc_name" "$uc_var" "freedns.42.pl";;
+ 							domains\.google\.com)
+-								$uc_uci set $g_cfgfile.$uc_name.$uc_var="google.com";;
++								uci_set "$g_cfgfile" "$uc_name" "$uc_var" "google.com";;
+ 							loopia\.com)
+-								$uc_uci set $g_cfgfile.$uc_name.$uc_var="loopia.se";;
++								uci_set "$g_cfgfile" "$uc_name" "$uc_var" "loopia.se";;
+ 							NoIP\.com|No-IP\.com)
+-								$uc_uci set $g_cfgfile.$uc_name.$uc_var="no-ip.com";;
++								uci_set "$g_cfgfile" "$uc_name" "$uc_var" "no-ip.com";;
+ 							spdns\.de)
+-								$uc_uci set $g_cfgfile.$uc_name.$uc_var="spdyn.de";;
++								uci_set "$g_cfgfile" "$uc_name" "$uc_va" "spdyn.de";;
+ 							strato\.de)
+-								$uc_uci set $g_cfgfile.$uc_name.$uc_var="strato.com";;
++								uci_set "$g_cfgfile" "$uc_name" "$uc_var" "strato.com";;
+ 							*)
+ 								# all others leave unchanged
+ 								;;
+@@ -98,13 +98,13 @@
+ 						;;
+ 					domain|upd_object)
+ 						# verify if lookup_host is set
+-						$uc_uci get $g_cfgfile.$uc_name.lookup_host >/dev/null 2>&1 || \
+-							$uc_uci set $g_cfgfile.$uc_name.lookup_host="$uc_val"
++						uci_get "$g_cfgfile" "$uc_name" "lookup_host" >/dev/null 2>&1 || \
++							uci_set "$g_cfgfile" "$uc_name" "lookup_host" "$uc_val"
+ 						if [ -f "$g_pslfile" ]; then
+ 							# if service_name/upd_provider cloudflare_v1 then change domain/upd_object to new syntax
+ 							# there is no sort order inside uci data so we need multiple checks
+-							uco_provider=$($uc_uci get $g_cfgfile.$uc_name.upd_provider 2>/dev/null) || \
+-								uco_provider=$($uc_uci get $g_cfgfile.$uc_name.service_name 2>/dev/null)
++							uco_provider=$(uci_get "$g_cfgfile" "$uc_name" "upd_provider" 2>/dev/null) || \
++								uco_provider=$(uci_get "$g_cfgfile" "$uc_name" "service_name" 2>/dev/null)
+ 							unset uco_provider
+ 						fi
+ 						# rename option domain to option upd_object
+@@ -162,35 +162,35 @@
+ 	}
+ 
+ 	# read config file
+-	uc_data=$($uc_uci -S -n export "$g_cfgfile")
++	uc_data=$(uci -q -S -n export "$g_cfgfile")
+ 	uc_ret="$?"
+ 	# Error then create config file
+-	[ $uc_ret -ne 0 ] && {
+-		touch /etc/config/$uc_cfgfile
+-		chmod 644 /etc/config/$uc_cfgfile
++	[ "$uc_ret" -ne 0 ] && {
++		touch "/etc/config/${uc_cfgfile}"
++		chmod 644 "/etc/config/${uc_cfgfile}"
+ 	}
+ 	# No error and uc_data then execute (eval)
+ 	# this will call functions defined above
+-	[ $uc_ret -eq 0 -a -n "$uc_data" ] && eval "$uc_data"
++	[ "$uc_ret" -eq 0 ] && [ -n "$uc_data" ] && eval "$uc_data"
+ 
+ 	# add config ddns "global" (ignore error if exists)
+-	$uc_uci set ddns.global="$g_cfgfile"
++	uci -q set "ddns.global=${g_cfgfile}"
+ 
+ 	# write changes to config file
+-	$uc_uci commit "$g_cfgfile"
++	uci_commit "$g_cfgfile"
+ 
+ 	unset uc_uci uc_cfg uc_name uc_var uc_val uc_ret uc_data
+ 	return 0
+ }
+ 
+ # clear LuCI indexcache
+-rm -f /tmp/luci-indexcache >/dev/null 2>&1
++rm -fr /tmp/luci-indexcache/
+ 
+ # do config update
+ update_config
+ 
+ #cleanup
+-[ $g_pslerr -ne 0 ] && {
++[ "$g_pslerr" -ne 0 ] && {
+ 	unset g_pslfile g_pslerr g_cfgfile
+ 	return 1
+ }
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/ddns.hotplug src/files/ddns.hotplug
+--- upstream/files/ddns.hotplug	2022-10-27 12:48:35.000000000 +0000
++++ src/files/ddns.hotplug	2025-04-02 11:27:54.000000000 +0000
+@@ -1,11 +1,21 @@
+-#!/bin/sh
++#!/bin/sh /etc/rc.common
+ 
+-# there are other ACTIONs like ifupdate we don't need
+-case "$ACTION" in
+-	ifup)					# OpenWrt is giving a network not phys. Interface
+-		/etc/init.d/ddns enabled && /usr/lib/ddns/dynamic_dns_updater.sh -n "$INTERFACE" -- start
+-		;;
+-	ifdown)
+-		/usr/lib/ddns/dynamic_dns_updater.sh -n "$INTERFACE" -- stop
+-		;;
+-esac
++[ "$ACTION" != "ifup" -a "$ACTION" != "ifdown" ] && exit 0
++
++enabled="0"
++PROG="/usr/lib/ddns/dynamic_dns_updater.sh"
++[ -x "$PROG" ] || PROG="/usr/local$PROG"
++
++check_enabled() {
++	local service="$1"
++	config_get enabled "$service" enabled "0"
++}
++
++config_load ddns
++config_foreach check_enabled service
++config_get ddns_logdir "global" "ddns_logdir" "/var/log/ddns"
++
++if [ "$enabled" = "1" ] && [ -d "$ddns_logdir" ] ; then
++	su ddns -s /bin/sh -pc "$PROG -- stop"
++	su ddns -s /bin/sh -pc "$PROG -- start"
++fi
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/ddns.init src/files/ddns.init
+--- upstream/files/ddns.init	2022-10-27 12:48:35.000000000 +0000
++++ src/files/ddns.init	2025-04-02 11:27:54.000000000 +0000
+@@ -1,27 +1,52 @@
+ #!/bin/sh /etc/rc.common
++
+ START=95
+ STOP=10
+ 
+-boot() {
+-	return 0
++USE_PROCD=1
++STATUS=""
++PROG="/usr/lib/ddns/dynamic_dns_updater.sh"
++[ -x "$PROG" ] || PROG="/usr/local$PROG"
++
++
++check_enabled() {
++		[ "$STATUS" = "1" ] && return
++		config_get STATUS "$1" "enabled"
+ }
+ 
+-reload() {
+-	/usr/lib/ddns/dynamic_dns_updater.sh -- reload
+-	return 0
++start_service() {
++		ddns_rundir=$(uci -q get ddns.global.ddns_rundir) || ddns_rundir="/var/run/ddns"
++		[ -d "$ddns_rundir" ] || mkdir -p -m755 "$ddns_rundir"
++		chown ddns:ddns "$ddns_rundir"
++		chmod g+s "$ddns_rundir"
++		# ddns log dir only gets created after ddns rundir is fully preapred.
++		# this way hotplug.d can check if logdir is created and be sure that 
++		# rundir will be usable for pidfiles by the ddns user
++		ddns_logdir=$(uci -q get ddns.global.ddns_logdir) || ddns_logdir="/var/log/ddns"
++		[ -d "$ddns_logdir" ] || mkdir -p -m755 "$ddns_logdir"
++		chown ddns:ddns "$ddns_logdir"
++		chmod g+s "$ddns_logdir"
++
++		config_load "ddns"
++		config_foreach check_enabled service
++		[ "$STATUS" != "1" ] && return
++		procd_open_instance
++		procd_set_param user ddns
++		procd_set_param env PATH='/usr/local/usr/sbin:/usr/local/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
++		procd_set_param command $PROG -- start
++		procd_close_instance
+ }
+ 
+-restart() {
+-	/usr/lib/ddns/dynamic_dns_updater.sh -- stop
+-	sleep 1	# give time to shutdown
+-	/usr/lib/ddns/dynamic_dns_updater.sh -- start
++stop_service() {
++		su ddns -s /bin/sh -pc "$PROG -- stop"
++		sleep 1
+ }
+ 
+-start() {
+-	/usr/lib/ddns/dynamic_dns_updater.sh -- start
++reload_service() {
++		pgrep -f $PROG | xargs kill
++		start
+ }
+ 
+-stop() {
+-	/usr/lib/ddns/dynamic_dns_updater.sh -- stop
+-	return 0
++service_triggers() {
++		procd_add_reload_trigger "ddns"
+ }
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/ddns.permtab src/files/ddns.permtab
+--- upstream/files/ddns.permtab	1970-01-01 00:00:00.000000000 +0000
++++ src/files/ddns.permtab	2025-04-02 11:27:54.000000000 +0000
+@@ -0,0 +1 @@
++/etc/config/ddns	ddns:ddns	660	-
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/ddns_acl.json src/files/ddns_acl.json
+--- upstream/files/ddns_acl.json	1970-01-01 00:00:00.000000000 +0000
++++ src/files/ddns_acl.json	2025-04-02 11:27:54.000000000 +0000
+@@ -0,0 +1,15 @@
++{
++	"user": "ddns",
++	"publish": [],
++	"subscribe": [],
++	"send": [],
++	"listen": [],
++	"access": {
++		"network.interface.*": {
++			"methods": ["status"]
++		},
++		"network.interface": {
++			"methods": ["dump"]
++		}
++	}
++}
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/dynamic_dns_functions.sh src/files/dynamic_dns_functions.sh
+--- upstream/files/dynamic_dns_functions.sh	2022-10-27 12:48:35.000000000 +0000
++++ src/files/dynamic_dns_functions.sh	2025-04-02 11:27:54.000000000 +0000
+@@ -21,10 +21,12 @@
+ . /lib/functions/network.sh
+ 
+ # GLOBAL VARIABLES #
+-VERSION="2.7.8-2"
++VERSION="2.7.8-5"
+ SECTION_ID=""		# hold config's section name
+ VERBOSE=0		# default mode is log to console, but easily changed with parameter
+ MYPROG=$(basename $0)	# my program call name
++SCRIPTSDIR="/usr/lib/ddns"	# directory for ddns scripts
++[ -d "$SCRIPTSDIR" ] || SCRIPTSDIR="/usr/local/usr/lib/ddns"
+ 
+ LOGFILE=""		# logfile - all files are set in dynamic_dns_updater.sh
+ PIDFILE=""		# pid file
+@@ -63,6 +65,15 @@
+ # IPv6       ( ( 0-9a-f  1-4char ":") min 1x) ( ( 0-9a-f  1-4char   )optional) ( (":" 0-9a-f 1-4char  ) min 1x)
+ IPV6_REGEX="\(\([0-9A-Fa-f]\{1,4\}:\)\{1,\}\)\(\([0-9A-Fa-f]\{1,4\}\)\{0,1\}\)\(\(:[0-9A-Fa-f]\{1,4\}\)\{1,\}\)"
+ 
++# characters that are dangerous to pass to a shell command line
++SHELL_ESCAPE="[\"\'\`\$\!();><{}?|\[\]\*\\\\]"
++
++# dns character set
++DNS_CHARSET="[@a-zA-Z0-9._-]"
++
++# dns_server value
++DNS_SERVER_CHARSET="[@a-zA-Z0-9._-:]"
++
+ # detect if called by ddns-lucihelper.sh script, disable retrys (empty variable == false)
+ LUCI_HELPER=$(printf %s "$MYPROG" | grep -i "luci")
+ 
+@@ -78,7 +89,8 @@
+ WGET_SSL=$(which wget-ssl)
+ 
+ CURL=$(which curl)
+-
++# CURL_SSL not empty then SSL support available
++CURL_SSL=$($CURL -V 2>/dev/null | grep -F "https")
+ # CURL_PROXY not empty then Proxy support available
+ CURL_PROXY=$(find /lib /usr/lib -name libcurl.so* -exec strings {} 2>/dev/null \; | grep -im1 "all_proxy")
+ 
+@@ -86,15 +98,13 @@
+ 
+ # Global configuration settings
+ # allow NON-public IP's
+-upd_privateip=$(uci -q get ddns.global.upd_privateip) || upd_privateip=0
++upd_privateip=$(uci -q get ddns.global.upd_privateip) || upd_privateip=1
+ 
+ # directory to store run information to.
+ ddns_rundir=$(uci -q get ddns.global.ddns_rundir) || ddns_rundir="/var/run/ddns"
+-[ -d $ddns_rundir ] || mkdir -p -m755 $ddns_rundir
+ 
+ # directory to store log files
+ ddns_logdir=$(uci -q get ddns.global.ddns_logdir) || ddns_logdir="/var/log/ddns"
+-[ -d $ddns_logdir ] || mkdir -p -m755 $ddns_logdir
+ 
+ # number of lines to before rotate logfile
+ ddns_loglines=$(uci -q get ddns.global.ddns_loglines) || ddns_loglines=250
+@@ -179,9 +189,9 @@
+ 		config_get __IFACE "$__SECTIONID" interface "wan"
+ 		[ -z "$__EVENTIF" -o "$__IFACE" = "$__EVENTIF" ] || continue
+ 		if [ $VERBOSE -eq 0 ]; then	# start in background
+-			/usr/lib/ddns/dynamic_dns_updater.sh -v 0 -S "$__SECTIONID" -- start &
++			$SCRIPTSDIR/dynamic_dns_updater.sh -v 0 -S "$__SECTIONID" -- start &
+ 		else
+-			/usr/lib/ddns/dynamic_dns_updater.sh -v "$VERBOSE" -S "$__SECTIONID" -- start
++			$SCRIPTSDIR/dynamic_dns_updater.sh -v "$VERBOSE" -S "$__SECTIONID" -- start
+ 		fi
+ 	done
+ }
+@@ -234,18 +244,18 @@
+ 		__EXIT=0
+ 	}
+ 	shift	# remove loglevel
+-	[ $__EXIT -eq 0 ] && __MSG="$*" || __MSG="$* - TERMINATE"
++	[ $__EXIT -eq 0 ] && __MSG="$*" || __MSG="$* - terminate"
+ 	case $__LEVEL in		# create log message and command depending on loglevel
+ 		0)	__CMD="logger -p user.emerg -t ddns-scripts[$$] $SECTION_ID: $__MSG"
+-			__MSG=" $__TIME EMERG : $__MSG" ;;
++			__MSG=" $__TIME emerg : $__MSG" ;;
+ 		1)	__CMD="logger -p user.alert -t ddns-scripts[$$] $SECTION_ID: $__MSG"
+-			__MSG=" $__TIME ALERT : $__MSG" ;;
++			__MSG=" $__TIME alert : $__MSG" ;;
+ 		2)	__CMD="logger -p user.crit -t ddns-scripts[$$] $SECTION_ID: $__MSG"
+-			__MSG=" $__TIME  CRIT : $__MSG" ;;
++			__MSG=" $__TIME  crit : $__MSG" ;;
+ 		3)	__CMD="logger -p user.err -t ddns-scripts[$$] $SECTION_ID: $__MSG"
+-			__MSG=" $__TIME ERROR : $__MSG" ;;
++			__MSG=" $__TIME error : $__MSG" ;;
+ 		4)	__CMD="logger -p user.warn -t ddns-scripts[$$] $SECTION_ID: $__MSG"
+-			__MSG=" $__TIME  WARN : $__MSG" ;;
++			__MSG=" $__TIME  warn : $__MSG" ;;
+ 		5)	__CMD="logger -p user.notice -t ddns-scripts[$$] $SECTION_ID: $__MSG"
+ 			__MSG=" $__TIME  note : $__MSG" ;;
+ 		6)	__CMD="logger -p user.info -t ddns-scripts[$$] $SECTION_ID: $__MSG"
+@@ -275,11 +285,11 @@
+ 	[ $__LEVEL -eq 7 ] && return	# no syslog for debug messages
+ 	__CMD=$(echo -e "$__CMD" | tr -d '\n' | tr '\t' '     ')        # remove \n \t chars
+ 	[ $__EXIT  -eq 1 ] && {
+-		$__CMD		# force syslog before exit
++		eval "$__CMD"	# force syslog before exit
+ 		exit 1
+ 	}
+ 	[ $use_syslog -eq 0 ] && return
+-	[ $((use_syslog + __LEVEL)) -le 7 ] && $__CMD
++	[ $((use_syslog + __LEVEL)) -le 7 ] && eval "$__CMD"
+ 
+ 	return
+ }
+@@ -294,32 +304,12 @@
+ urlencode() {
+ 	# $1	Name of Variable to store encoded string to
+ 	# $2	string to encode
+-	local __STR __LEN __CHAR __OUT
+-	local __ENC=""
+-	local __POS=1
++	local __ENC
+ 
+ 	[ $# -ne 2 ] && write_log 12 "Error calling 'urlencode()' - wrong number of parameters"
+ 
+-	__STR="$2"		# read string to encode
+-	__LEN=${#__STR}		# get string length
+-
+-	while [ $__POS -le $__LEN ]; do
+-		# read one chat of the string
+-		__CHAR=$(expr substr "$__STR" $__POS 1)
+-
+-		case "$__CHAR" in
+-		        [-_.~a-zA-Z0-9] )
+-				# standard char
+-				__OUT="${__CHAR}"
+-				;;
+-		        * )
+-				# special char get %hex code
+-		               __OUT=$(printf '%%%02x' "'$__CHAR" )
+-				;;
+-		esac
+-		__ENC="${__ENC}${__OUT}"	# append to encoded string
+-		__POS=$(( $__POS + 1 ))		# increment position
+-	done
++	__ENC="$(awk -v str="$2" 'BEGIN{ORS="";for(i=32;i<=127;i++)lookup[sprintf("%c",i)]=i
++		for(k=1;k<=length(str);++k){enc=substr(str,k,1);if(enc!~"[-_.~a-zA-Z0-9]")enc=sprintf("%%%02x", lookup[enc]);print enc}}')"
+ 
+ 	eval "$1=\"$__ENC\""	# transfer back to variable
+ 	return 0
+@@ -338,25 +328,25 @@
+ 	[ $use_ipv6 -ne 0 ] && __FILE="/etc/ddns/services_ipv6"	# IPv6
+ 
+ 	# workaround with variables; pipe create subshell with no give back of variable content
+-	mkfifo pipe_$$
++	mkfifo /tmp/pipe_$$
+ 	# only grep without # or whitespace at linestart | remove "
+-#	grep -v -E "(^#|^[[:space:]]*$)" $__FILE | sed -e s/\"//g > pipe_$$ &
+-	sed '/^#/d; /^[ \t]*$/d; s/\"//g' $__FILE  > pipe_$$ &
++#	grep -v -E "(^#|^[[:space:]]*$)" $__FILE | sed -e s/\"//g > /tmp/pipe_$$ &
++	sed '/^#/d; /^[ \t]*$/d; s/\"//g' $__FILE  > /tmp/pipe_$$ &
+ 
+ 	while read __SERVICE __DATA __ANSWER; do
+ 		if [ "$__SERVICE" = "$service_name" ]; then
+ 			# check if URL or SCRIPT is given
+ 			__URL=$(echo "$__DATA" | grep "^http")
+-			[ -z "$__URL" ] && __SCRIPT="/usr/lib/ddns/$__DATA"
++			[ -z "$__URL" ] && __SCRIPT="$SCRIPTSDIR/$__DATA"
+ 
+ 			eval "$1=\"$__URL\""
+ 			eval "$2=\"$__SCRIPT\""
+ 			eval "$3=\"$__ANSWER\""
+-			rm pipe_$$
++			rm /tmp/pipe_$$
+ 			return 0
+ 		fi
+-	done < pipe_$$
+-	rm pipe_$$
++	done < /tmp/pipe_$$
++	rm /tmp/pipe_$$
+ 
+ 	eval "$1=\"\""	# no service match clear variables
+ 	eval "$2=\"\""
+@@ -474,6 +464,27 @@
+ 	return $status
+ }
+ 
++# sanitize a variable
++# $1	variable name
++# $2	allowed shell pattern
++# $3	disallowed shell pattern
++sanitize_variable() {
++	local __VAR=$1
++	eval __VALUE=\$$__VAR
++	local __ALLOWED=$2
++	local __REJECT=$3
++
++	# removing all allowed should give empty string
++	if [ -n "$__ALLOWED" ]; then
++		[ -z "${__VALUE//$__ALLOWED}" ] || write_log 12 "sanitize on $__VAR found characters outside allowed subset"
++	fi
++
++	# removing rejected pattern should give the same string as the input
++	if [ -n "$__REJECT" ]; then
++		[ "$__VALUE" = "${__VALUE//$__REJECT}" ] || write_log 12 "sanitize on $__VAR found rejected characters"
++	fi
++}
++
+ # verify given host and port is connectable
+ # $1	Host/IP to verify
+ # $2	Port to verify
+@@ -726,8 +737,6 @@
+ 	# 2nd choice is cURL IPv4/IPv6/HTTPS
+ 	# libcurl might be compiled without Proxy or HTTPS Support
+ 	elif [ -n "$CURL" ]; then
+-		# CURL_SSL not empty then SSL support available
+-		CURL_SSL=$($(which curl) -V 2>/dev/null | grep "Protocols:" | grep -F "https")
+ 		__PROG="$CURL -RsS -o $DATFILE --stderr $ERRFILE"
+ 		# check HTTPS support
+ 		[ -z "$CURL_SSL" -a $use_https -eq 1 ] && \
+@@ -902,16 +911,41 @@
+ 	write_log 7 "Detect local IP on '$ip_source'"
+ 
+ 	while : ; do
+-		if [ -n "$ip_network" ]; then
++		if [ -n "$ip_network" -a "$ip_source" = "network" ]; then
+ 			# set correct program
+ 			network_flush_cache	# force re-read data from ubus
+ 			[ $use_ipv6 -eq 0 ] && __RUNPROG="network_get_ipaddr" \
+-					    || __RUNPROG="network_get_ipaddr6"
+-			eval "$__RUNPROG __DATA $ip_network" || \
+-				write_log 13 "Can not detect local IP using $__RUNPROG '$ip_network' - Error: '$?'"
++						|| __RUNPROG="network_get_ipaddr6"
++			write_log 7 "#> $__RUNPROG __DATA '$ip_network'"
++
++			ifconfig_name="$(ubus call network.interface.$ip_network status | grep -m 1 "device" | cut -f 4 -d '"' | tr -d $'\n')"
++			[ -z "$ifconfig_name" ] && ip link show dev "$ip_network" 2>/dev/null && ifconfig_name="$ip_network"
++			if [ $use_ipv6 -eq 0 ]; then
++				ifconfig_ip="$(ip -4 -brief a show dev $ifconfig_name | awk '{ sub(/\/24$/, "", $3); print $3}' ORS='')"
++			else
++				ifconfig_ip="$(ip -6 -brief a show dev $ifconfig_name | awk '{ sub(/\/[0-9]*$/, "", $3); print $3 }' ORS='')"
++			fi
++
++			write_log 7 "ifconfig_name=$ifconfig_name; ifconfig_ip=$ifconfig_ip"
++
++			if ! eval "$__RUNPROG __DATA $ip_network"; then
++				if [ -n "$ifconfig_ip" ]; then
++					__DATA="$ifconfig_ip"
++					write_log 7 "Used ifconfig IP $ifconfig_ip instead"
++				else
++					write_log 3 "$__RUNPROG Error: '$?'"
++				fi
++			fi
+ 			[ -n "$__DATA" ] && write_log 7 "Local IP '$__DATA' detected on network '$ip_network'"
+-		elif [ -n "$ip_interface" ]; then
++		elif [ -n "$ip_interface" -a "$ip_source" = "interface" ]; then
+ 			local __DATA4=""; local __DATA6=""
++			ip_interface=""
++			for i in $(route -n | awk '$4 == "UG" {print $8,"\n"}' | tr -d $'\n'); do
++                res=$(ping -c 1 -I $i 8.8.8.8 > /dev/null 2> /dev/null; echo $?)
++                if [ "$res" = "0" -a -z "$ip_interface" ]; then
++                    ip_interface=$i
++                fi
++            done
+ 			if [ -n "$(which ip)" ]; then		# ip program installed
+ 				write_log 7 "#> ip -o addr show dev $ip_interface scope global >$DATFILE 2>$ERRFILE"
+ 				ip -o addr show dev $ip_interface scope global >$DATFILE 2>$ERRFILE
+@@ -989,7 +1023,7 @@
+ 			fi
+ 			[ $use_ipv6 -eq 0 ] && __DATA="$__DATA4" || __DATA="$__DATA6"
+ 			[ -n "$__DATA" ] && write_log 7 "Local IP '$__DATA' detected on interface '$ip_interface'"
+-		elif [ -n "$ip_script" ]; then
++		elif [ -n "$ip_script" -a "$ip_source" = "script" ]; then
+ 			write_log 7 "#> $ip_script >$DATFILE 2>$ERRFILE"
+ 			eval $ip_script >$DATFILE 2>$ERRFILE
+ 			__ERR=$?
+@@ -1000,7 +1034,7 @@
+ 				write_log 3 "$ip_script Error: '$__ERR'"
+ 				write_log 7 "$(cat $ERRFILE)"		# report error
+ 			fi
+-		elif [ -n "$ip_url" ]; then
++		elif [ -n "$ip_url" -a "$ip_source" = "web" ]; then
+ 			do_transfer "$ip_url"
+ 			# use correct regular expression
+ 			[ $use_ipv6 -eq 0 ] \
+@@ -1050,7 +1084,7 @@
+ 	# return codes
+ 	# 1	no IP detected
+ 
+-	[ $# -lt 1 -o $# -gt 2 ] && write_log 12 "Error calling 'get_registered_ip()' - wrong number of parameters"
++	[ $# -lt 1 -o $# -gt 3 ] && write_log 12 "Error calling 'get_registered_ip()' - wrong number of parameters"
+ 	[ $is_glue -eq 1 -a -z "$BIND_HOST" ] && write_log 14 "Lookup of glue records is only supported using BIND host"
+ 	write_log 7 "Detect registered/public IP"
+ 
+@@ -1152,14 +1186,20 @@
+ 			fi
+ 			[ -n "$__DATA" ] && {
+ 				write_log 7 "Registered IP '$__DATA' detected"
+-				[ -z "$IPFILE" ] || echo "$__DATA" > $IPFILE
++				[ -z "$IPFILE" ] || {
++					rm -f $IPFILE
++					echo "$__DATA" > $IPFILE
++				}
+ 				eval "$1=\"$__DATA\""	# valid data found
+ 				return 0		# leave here
+ 			}
+-			write_log 4 "NO valid IP found"
++			[ -z "$3" ] && write_log 4 "NO valid IP found"
+ 			__ERR=127
+ 		fi
+-		[ -z "$IPFILE" ] || echo "" > $IPFILE
++		[ -z "$IPFILE" ] || {
++			rm -f $IPFILE
++			echo "" > $IPFILE
++		}
+ 
+ 		[ -n "$LUCI_HELPER" ] && return $__ERR	# no retry if called by LuCI helper script
+ 		[ -n "$2" ] && return $__ERR		# $2 is given -> no retry
+@@ -1204,17 +1244,17 @@
+ 
+ 	case $1 in
+ 		 0)	if [ $__ERR -eq 0 ]; then
+-				write_log 5 "PID '$$' exit normal at $(eval $DATE_PROG)${N}"
++				write_log 5 "pid '$$' exit normal at $(eval $DATE_PROG)${N}"
+ 			else
+-				write_log 4 "PID '$$' exit WITH ERROR '$__ERR' at $(eval $DATE_PROG)${N}"
++				write_log 4 "pid '$$' exit with error '$__ERR' at $(eval $DATE_PROG)${N}"
+ 			fi ;;
+-		 1)	write_log 6 "PID '$$' received 'SIGHUP' at $(eval $DATE_PROG)"
++		 1)	write_log 6 "pid '$$' received 'sighup' at $(eval $DATE_PROG)"
+ 			# reload config via starting the script again
+-			/usr/lib/ddns/dynamic_dns_updater.sh -v "0" -S "$__SECTIONID" -- start || true
++			$SCRIPTSDIR/dynamic_dns_updater.sh -v "0" -S "$__SECTIONID" -- start || true
+ 			exit 0 ;;	# and leave this one
+-		 2)	write_log 5 "PID '$$' terminated by 'SIGINT' at $(eval $DATE_PROG)${N}";;
+-		 3)	write_log 5 "PID '$$' terminated by 'SIGQUIT' at $(eval $DATE_PROG)${N}";;
+-		15)	write_log 5 "PID '$$' terminated by 'SIGTERM' at $(eval $DATE_PROG)${N}";;
++		 2)	write_log 5 "pid '$$' terminated by 'sigint' at $(eval $DATE_PROG)${N}";;
++		 3)	write_log 5 "pid '$$' terminated by 'sigquit' at $(eval $DATE_PROG)${N}";;
++		15)	write_log 5 "pid '$$' terminated by 'sigterm' at $(eval $DATE_PROG)${N}";;
+ 		 *)	write_log 13 "Unhandled signal '$1' in 'trap_handler()'";;
+ 	esac
+ 
+@@ -1320,6 +1360,11 @@
+ 	# $2	name of variable to store expanded IPv6
+ 	[ $# -ne 2 ] && write_log 12 "Error calling 'expand_ipv6()' - wrong number of parameters"
+ 
++	[ -z "$1" ] && {
++		eval "$2=''"
++		return 1
++	}
++
+ 	INPUT="$(echo "$1" | tr 'A-F' 'a-f')"
+ 	[ "$INPUT" = "::" ] && INPUT="::0"	# special case ::
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/dynamic_dns_lucihelper.sh src/files/dynamic_dns_lucihelper.sh
+--- upstream/files/dynamic_dns_lucihelper.sh	2022-10-27 12:48:35.000000000 +0000
++++ src/files/dynamic_dns_lucihelper.sh	2025-04-02 11:27:54.000000000 +0000
+@@ -10,7 +10,8 @@
+ # variables in big chars beginning with "__" are local defined inside functions only
+ # set -vx  	#script debugger
+ 
+-. /usr/lib/ddns/dynamic_dns_functions.sh	# global vars are also defined here
++[ -e "/usr/lib/ddns" ] && . /usr/lib/ddns/dynamic_dns_functions.sh # global vars are also defined here
++[ -e "/usr/local/usr/lib/ddns" ] && . /usr/local/usr/lib/ddns/dynamic_dns_functions.sh
+ 
+ usage() {
+ 	cat << EOF
+@@ -60,7 +61,7 @@
+ LOGFILE="$ddns_logdir/$SECTION_ID.log"
+ DATFILE="$ddns_rundir/$SECTION_ID.$$.dat"	# save stdout data of WGet and other extern programs called
+ ERRFILE="$ddns_rundir/$SECTION_ID.$$.err"	# save stderr output of WGet and other extern programs called
+-DDNSPRG="/usr/lib/ddns/dynamic_dns_updater.sh"
++DDNSPRG="$SCRIPTSDIR/dynamic_dns_updater.sh"
+ VERBOSE=0		# no console logging
+ # global variables normally set by reading DDNS UCI configuration
+ use_syslog=0		# no syslog
+@@ -124,7 +125,7 @@
+ 		__RET=$?
+ 		;;
+ 	get_local_ip)
+-		[ -z "$ip_source" ] && usage_err "command 'get_local_ip': 'ip_source' not set" 
++		[ -z "$ip_source" ] && usage_err "command 'get_local_ip': 'ip_source' not set"
+ 		[ -n "$proxy" -a "$ip_source" = "web" ] && {
+ 			# proxy defined, used for ip_source=web
+ 			export HTTP_PROXY="http://$proxy"
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/dynamic_dns_updater.sh src/files/dynamic_dns_updater.sh
+--- upstream/files/dynamic_dns_updater.sh	2022-10-27 12:48:35.000000000 +0000
++++ src/files/dynamic_dns_updater.sh	2025-04-02 11:27:54.000000000 +0000
+@@ -193,7 +193,7 @@
+ [ "$ip_source" = "network" -a -z "$ip_network" -a $use_ipv6 -eq 1 ] && ip_network="wan6" # IPv6: default wan6
+ [ "$ip_source" = "web" -a -z "$ip_url" -a $use_ipv6 -eq 0 ] && ip_url="http://checkip.dyndns.com"
+ [ "$ip_source" = "web" -a -z "$ip_url" -a $use_ipv6 -eq 1 ] && ip_url="http://checkipv6.dyndns.com"
+-[ "$ip_source" = "interface" -a -z "$ip_interface" ] && ip_interface="eth1"
++[ "$ip_source" = "interface" ] && ip_interface="auto"
+ 
+ # url encode username (might be email or something like this)
+ # and password (might have special chars for security reason)
+@@ -207,27 +207,27 @@
+ 	[ $VERBOSE -le 1 ] && VERBOSE=2		# force console out and logfile output
+ 	[ -f $LOGFILE ] && rm -f $LOGFILE	# clear logfile before first entry
+ 	write_log  7 "************ ************** ************** **************"
+-	write_log  5 "PID '$$' started at $(eval $DATE_PROG)"
++	write_log  5 "pid '$$' started at $(eval $DATE_PROG)"
+ 	write_log  7 "ddns version  : $VERSION"
+ 	write_log  7 "uci configuration:${N}$(uci -q show ddns | grep '=service' | sort)"
+ 	write_log 14 "Service section '$SECTION_ID' not defined"
+ }
+ 
+ write_log 7 "************ ************** ************** **************"
+-write_log 5 "PID '$$' started at $(eval $DATE_PROG)"
++write_log 5 "pid '$$' started at $(eval $DATE_PROG)"
+ write_log 7 "ddns version  : $VERSION"
+ write_log 7 "uci configuration:${N}$(uci -q show ddns.$SECTION_ID | sort)"
+ # write_log 7 "ddns version  : $(opkg list-installed ddns-scripts | cut -d ' ' -f 3)"
+ case $VERBOSE in
+-	0) write_log  7 "verbose mode  : 0 - run normal, NO console output";;
++	0) write_log  7 "verbose mode  : 0 - run normal, no console output";;
+ 	1) write_log  7 "verbose mode  : 1 - run normal, console mode";;
+-	2) write_log  7 "verbose mode  : 2 - run once, NO retry on error";;
+-	3) write_log  7 "verbose mode  : 3 - run once, NO retry on error, NOT sending update";;
++	2) write_log  7 "verbose mode  : 2 - run once, no retry on error";;
++	3) write_log  7 "verbose mode  : 3 - run once, no retry on error, not sending update";;
+ 	*) write_log 14 "error detecting VERBOSE '$VERBOSE'";;
+ esac
+ 
+ # check enabled state otherwise we don't need to continue
+-[ $enabled -eq 0 ] && write_log 14 "Service section disabled!"
++[ $enabled -eq 0 ] && write_log 14 "service section disabled"
+ 
+ # determine what update url we're using if a service_name is supplied
+ # otherwise update_url is set inside configuration (custom update url)
+@@ -247,6 +247,15 @@
+ # without lookup host and possibly other required options we can do nothing for you
+ [ -z "$lookup_host" ] && write_log 14 "Service section not configured correctly! Missing 'lookup_host'"
+ 
++# verify validity of variables
++[ -n "$lookup_host" ] && sanitize_variable lookup_host "$DNS_CHARSET" ""
++[ -n "$dns_server" ] && sanitize_variable dns_server "$DNS_SERVER_CHARSET" ""
++[ -n "$domain" ] && sanitize_variable domain "$DNS_CHARSET" ""
++
++# Filter shell escape characters, if these are required in the URL, they
++# can still be passed url encoded
++[ -n "$param_opt" ] && sanitize_variable param_opt "" "$SHELL_ESCAPE"
++
+ [ -n "$update_url" ] && {
+ 	# only check if update_url is given, update_scripts have to check themselves
+ 	[ -z "$domain" ] && $(echo "$update_url" | grep "\[DOMAIN\]" >/dev/null 2>&1) && \
+@@ -319,6 +328,54 @@
+ 	}
+ }
+ 
++trap_sleep() {
++	sleep "$1" &
++	PID_SLEEP=$!
++	wait $PID_SLEEP	# enable trap-handler
++	PID_SLEEP=0
++}
++
++recheck_sleep() {
++	# if we're updating the remote IP due to local IP change
++	# query the DNS at increasing intervals to detect new IP
++	# so webui could show up to date DNS info without spamming the DNS server
++	local sleep_time=$1
++	local registered_ip=$2
++
++	[ "$registered_ip" = "$LOCAL_IP" ] && {
++		trap_sleep "$sleep_time"
++		return 0
++	}
++
++	local max_sleep_left=$sleep_time
++	local slept_time=0
++	local last_sleep_interval=10
++	local sleep_interval=20
++
++	while [ "$slept_time" -lt "$sleep_time" ]; do
++		local sleep_duration=$((sleep_interval < max_sleep_left ? sleep_interval : max_sleep_left))
++		trap_sleep $sleep_duration
++		slept_time=$((slept_time + sleep_duration))
++
++		local next_sleep=$((last_sleep_interval + sleep_interval))
++		last_sleep_interval=$sleep_interval
++		sleep_interval=$next_sleep
++		max_sleep_left=$((sleep_time - slept_time))
++
++		# skip checking ip on the final sleep, since it will be looked up again anyway
++		[ $max_sleep_left -gt 20 ] && {
++			get_registered_ip IP "NO_RETRY" "silent"
++			[ $? -ne 0 ] && continue
++			[ "$use_ipv6" -eq 1 ] && expand_ipv6 "$IP" IP
++			[ "$IP" != "$registered_ip" ] && {
++				trap_sleep $max_sleep_left
++				break
++			}
++		}
++	done
++	return 0
++}
++
+ # let's check if there is already an IP registered on the web
+ get_registered_ip REGISTERED_IP "NO_RETRY"
+ ERR_LAST=$?
+@@ -329,6 +386,8 @@
+ 
+ # loop endlessly, checking ip every check_interval and forcing an updating once every force_interval
+ write_log 6 "Starting main loop at $(eval $DATE_PROG)"
++SLEEP_TIME=0
++SLEEP_AFTER_FORCE=0
+ while : ; do
+ 
+ 	get_local_ip LOCAL_IP		# read local IP
+@@ -381,11 +440,22 @@
+ 	# now we wait for check interval before testing if update was recognized
+ 	# only sleep if VERBOSE <= 2 because otherwise nothing was send
+ 	[ $VERBOSE -le 2 ] && {
+-		write_log 7 "Waiting $CHECK_SECONDS seconds (Check Interval)"
+-		sleep $CHECK_SECONDS &
+-		PID_SLEEP=$!
+-		wait $PID_SLEEP	# enable trap-handler
+-		PID_SLEEP=0
++		SLEEP_TIME=`expr $SLEEP_TIME + $CHECK_SECONDS`
++        if [ $SLEEP_TIME -ge $FORCE_SECONDS ]; then
++            sleep2=`expr $SLEEP_TIME - $CHECK_SECONDS`
++            SLEEP_AFTER_FORCE=`expr $FORCE_SECONDS - $sleep2`
++            write_log 7 "Waiting $SLEEP_AFTER_FORCE seconds (force interval)"
++		    recheck_sleep $SLEEP_AFTER_FORCE "$REGISTERED_IP"
++		    SLEEP_TIME=0
++		elif [ $SLEEP_AFTER_FORCE -ne 0 ]; then
++		    write_log 7 "Waiting `expr $CHECK_SECONDS - $SLEEP_AFTER_FORCE` seconds (after force interval)"
++		    SLEEP_TIME=`expr $CHECK_SECONDS - $SLEEP_AFTER_FORCE`
++		    recheck_sleep $SLEEP_TIME "$REGISTERED_IP"
++		    SLEEP_AFTER_FORCE=0
++		else
++		    write_log 7 "Waiting $CHECK_SECONDS seconds (check interval)"
++		    recheck_sleep $CHECK_SECONDS "$REGISTERED_IP"
++		fi
+ 	} || write_log 7 "Verbose Mode: $VERBOSE - NO Check Interval waiting"
+ 
+ 	REGISTERED_IP=""		# clear variable
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/services src/files/services
+--- upstream/files/services	2022-10-27 12:48:35.000000000 +0000
++++ src/files/services	2025-04-02 11:27:54.000000000 +0000
+@@ -43,13 +43,15 @@
+ 
+ "able.or.kr"		"http://able.or.kr/ddns/src/update.php?hostname=[DOMAIN]&myip=[IP]&ddnsuser=[USERNAME]&pwd=[PASSWORD]"
+ 
+-"afraid.org-basicauth"	"https://[USERNAME]:[PASSWORD]@freedns.afraid.org/nic/update?hostname=[DOMAIN]&myip=[IP]"
+-"afraid.org-keyauth"	"https://freedns.afraid.org/dynamic/update.php?[PASSWORD]&address=[IP]"
+-"afraid.org-v2-basic"	"https://[USERNAME]:[PASSWORD]@sync.afraid.org/u/?h=[DOMAIN]&ip=[IP]"
+-"afraid.org-v2-token"	"https://sync.afraid.org/u/[PASSWORD]/?address=[IP]"
++"afraid.org-basicauth"	"http://[USERNAME]:[PASSWORD]@freedns.afraid.org/nic/update?hostname=[DOMAIN]&myip=[IP]"
++"afraid.org-keyauth"	"http://freedns.afraid.org/dynamic/update.php?[PASSWORD]&address=[IP]"
++"afraid.org-v2-basic"	"http://[USERNAME]:[PASSWORD]@sync.afraid.org/u/?h=[DOMAIN]&ip=[IP]"
++"afraid.org-v2-token"	"http://sync.afraid.org/u/[PASSWORD]/?address=[IP]"
+ 
+ "all-inkl.com"		"http://[USERNAME]:[PASSWORD]@dyndns.kasserver.com/?myip=[IP]"
+ 
++"binero.se" 		"http://[USERNAME]:[PASSWORD]@dyndns.binero.se/nic/update?hostname=[DOMAIN]&myip=[IP]"
++
+ "changeip.com"		"http://[USERNAME]:[PASSWORD]@nic.changeip.com/nic/update?u=[USERNAME]&p=[PASSWORD]&cmd=update&hostname=[DOMAIN]&ip=[IP]"	"Successful"
+ 
+ "core-networks.de"	"http://[USERNAME]:[PASSWORD]@dyndns.core-networks.de/?hostname=[DOMAIN]&myip=[IP]&keepipv6=1"	"good"
+@@ -152,11 +154,14 @@
+ 
+ "schokokeks.org"	"http://[USERNAME]:[PASSWORD]@dyndns.schokokeks.org/nic/update?myip=[IP]"	"good|nochg"
+ 
++"secure.camera"	"http://[USERNAME]:[PASSWORD]@secure.camera/nic/update?hostname=[DOMAIN]&myip=[IP]"	"good|nochg"
++
+ "selfhost.de"		"http://carol.selfhost.de/update?username=[USERNAME]&password=[PASSWORD]&myip=[IP]&hostname=1"	"good|nochg|200|204"
+ 
+ "sitelutions.com"	"http://www.sitelutions.com/dnsup?user=[USERNAME]&pass=[PASSWORD]&id=[DOMAIN]&ip=[IP]"	"success"
+ 
+ "spdyn.de"		"http://[USERNAME]:[PASSWORD]@update.spdyn.de/nic/update?hostname=[DOMAIN]&myip=[IP]"	"good|nochg"
++"spdns.de"	"http://[USERNAME]:[PASSWORD]@update.spdns.de/nic/update?hostname=[DOMAIN]&myip=[IP]"
+ 
+ "strato.com"		"http://[USERNAME]:[PASSWORD]@dyndns.strato.com/nic/update?hostname=[DOMAIN]&myip=[IP]"	"good|nochg"
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/services_ipv6 src/files/services_ipv6
+--- upstream/files/services_ipv6	2022-10-27 12:48:35.000000000 +0000
++++ src/files/services_ipv6	2025-04-02 11:27:54.000000000 +0000
+@@ -38,10 +38,10 @@
+ #.no-ip.com / noip.com	!!! Please install additional package "ddns-scripts_no-ip_com"
+ #.route53-v1		!!! Please install additional package "ddns-scripts_route53-v1"
+ 
+-"afraid.org-basicauth"	"https://[USERNAME]:[PASSWORD]@freedns.afraid.org/nic/update?hostname=[DOMAIN]&myip=[IP]"
+-"afraid.org-keyauth"	"https://freedns.afraid.org/dynamic/update.php?[PASSWORD]&address=[IP]"
+-"afraid.org-v2-basic"	"https://[USERNAME]:[PASSWORD]@v6.sync.afraid.org/u/?h=[DOMAIN]&ip=[IP]"
+-"afraid.org-v2-token"	"https://v6.sync.afraid.org/u/[PASSWORD]/?address=[IP]"
++"afraid.org-basicauth"	"http://[USERNAME]:[PASSWORD]@freedns.afraid.org/nic/update?hostname=[DOMAIN]&myip=[IP]"
++"afraid.org-keyauth"	"http://freedns.afraid.org/dynamic/update.php?[PASSWORD]&address=[IP]"
++"afraid.org-v2-basic"	"http://[USERNAME]:[PASSWORD]@v6.sync.afraid.org/u/?h=[DOMAIN]&ip=[IP]"
++"afraid.org-v2-token"	"http://v6.sync.afraid.org/u/[PASSWORD]/?address=[IP]"
+ 
+ "all-inkl.com"		"http://[USERNAME]:[PASSWORD]@dyndns.kasserver.com/?myip=[IP]"
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/update_cloudflare_com_v4.sh src/files/update_cloudflare_com_v4.sh
+--- upstream/files/update_cloudflare_com_v4.sh	2022-10-27 12:48:35.000000000 +0000
++++ src/files/update_cloudflare_com_v4.sh	2025-04-02 11:27:54.000000000 +0000
+@@ -15,7 +15,7 @@
+ # option password  - cloudflare api key, you can get it from cloudflare.com/my-account/
+ # option domain    - "hostname@yourdomain.TLD"	# syntax changed to remove split_FQDN() function and tld_names.dat.gz
+ #
+-# The proxy status would not be changed by this script. Please change it in Cloudflare dashboard manually. 
++# The proxy status would not be changed by this script. Please change it in Cloudflare dashboard manually.
+ #
+ # variable __IP already defined with the ip-address to use for update
+ #
+@@ -29,6 +29,7 @@
+ # used variables
+ local __HOST __DOMAIN __TYPE __URLBASE __PRGBASE __RUNPROG __DATA __IPV6 __ZONEID __RECID __PROXIED
+ local __URLBASE="https://api.cloudflare.com/client/v4"
++local __TTL=120
+ 
+ # split __HOST __DOMAIN from $domain
+ # given data:
+@@ -84,7 +85,7 @@
+ 	done
+ 
+ 	# check for error
+-	grep -q '"success":true' $DATFILE || {
++	grep -q '"success":\s*true' $DATFILE || {
+ 		write_log 4 "CloudFlare reported an error:"
+ 		write_log 7 "$(cat $DATFILE)"		# report error
+ 		return 1	# HTTP-Fehler
+@@ -124,16 +125,20 @@
+ 	write_log 13 "cURL: libcurl compiled without Proxy support"
+ fi
+ # set headers
+-__PRGBASE="$__PRGBASE --header 'X-Auth-Email: $username' "
+-__PRGBASE="$__PRGBASE --header 'X-Auth-Key: $password' "
++if [ "$username" = "Bearer" ]; then
++  write_log 7 "Found Username 'Bearer' using Password as Bearer Authorization Token"
++  __PRGBASE="$__PRGBASE --header 'Authorization: Bearer $password' "
++else
++  __PRGBASE="$__PRGBASE --header 'X-Auth-Email: $username' "
++  __PRGBASE="$__PRGBASE --header 'X-Auth-Key: $password' "
++fi
+ __PRGBASE="$__PRGBASE --header 'Content-Type: application/json' "
+-# __PRGBASE="$__PRGBASE --header 'Accept: application/json' "
+ 
+ # read zone id for registered domain.TLD
+ __RUNPROG="$__PRGBASE --request GET '$__URLBASE/zones?name=$__DOMAIN'"
+ cloudflare_transfer || return 1
+ # extract zone id
+-__ZONEID=$(grep -o '"id":"[^"]*' $DATFILE | grep -o '[^"]*$' | head -1)
++__ZONEID=$(grep -o '"id":\s*"[^"]*' $DATFILE | grep -o '[^"]*$' | head -1)
+ [ -z "$__ZONEID" ] && {
+ 	write_log 4 "Could not detect 'zone id' for domain.tld: '$__DOMAIN'"
+ 	return 127
+@@ -143,14 +148,14 @@
+ __RUNPROG="$__PRGBASE --request GET '$__URLBASE/zones/$__ZONEID/dns_records?name=$__HOST&type=$__TYPE'"
+ cloudflare_transfer || return 1
+ # extract record id
+-__RECID=$(grep -o '"id":"[^"]*' $DATFILE | grep -o '[^"]*$' | head -1)
++__RECID=$(grep -o '"id":\s*"[^"]*' $DATFILE | grep -o '[^"]*$' | head -1)
+ [ -z "$__RECID" ] && {
+ 	write_log 4 "Could not detect 'record id' for host.domain.tld: '$__HOST'"
+ 	return 127
+ }
+ 
+ # extract current stored IP
+-__DATA=$(grep -o '"content":"[^"]*' $DATFILE | grep -o '[^"]*$' | head -1)
++__DATA=$(grep -o '"content":\s*"[^"]*' $DATFILE | grep -o '[^"]*$' | head -1)
+ 
+ # check data
+ [ $use_ipv6 -eq 0 ] \
+@@ -178,11 +183,11 @@
+ # update is needed
+ # let's build data to send
+ # set proxied parameter
+-__PROXIED=$(grep -o '"proxied":[^",]*' $DATFILE | grep -o '[^:]*$')
++__PROXIED=$(grep -o '"proxied":\s*[^",]*' $DATFILE | grep -o '[^:]*$')
+ 
+ # use file to work around " needed for json
+ cat > $DATFILE << EOF
+-{"id":"$__ZONEID","type":"$__TYPE","name":"$__HOST","content":"$__IP","proxied":$__PROXIED}
++{"id":"$__ZONEID","type":"$__TYPE","name":"$__HOST","content":"$__IP","ttl":$__TTL,"proxied":$__PROXIED}
+ EOF
+ 
+ # let's complete transfer command
+@@ -190,4 +195,3 @@
+ cloudflare_transfer || return 1
+ 
+ return 0
+-
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/update_no-ip_com.sh src/files/update_no-ip_com.sh
+--- upstream/files/update_no-ip_com.sh	2022-10-27 12:48:35.000000000 +0000
++++ src/files/update_no-ip_com.sh	2025-04-02 11:27:54.000000000 +0000
+@@ -9,31 +9,33 @@
+ # provider did not reactivate records, if no IP change was recognized
+ # so we send a dummy (localhost) and a seconds later we send the correct IP addr
+ #
+-local __DUMMY
+-local __UPDURL="http://[USERNAME]:[PASSWORD]@dynupdate.no-ip.com/nic/update?hostname=[DOMAIN]&myip=[IP]"
++# local __DUMMY
++local __UPDURL6="http://[USERNAME]:[PASSWORD]@dynupdate6.noip.com/nic/update?hostname=[DOMAIN]&myip=[IP]"
++local __UPDURL="http://[USERNAME]:[PASSWORD]@dynupdate.noip.com/nic/update?hostname=[DOMAIN]&myip=[IP]"
+ # inside url we need username and password
+ [ -z "$username" ] && write_log 14 "Service section not configured correctly! Missing 'username'"
+ [ -z "$password" ] && write_log 14 "Service section not configured correctly! Missing 'password'"
+ 
+ # set IP version dependend dummy (localhost)
+-[ $use_ipv6 -eq 0 ] && __DUMMY="127.0.0.1" || __DUMMY="::1"
++# [ $use_ipv6 -eq 0 ] && __DUMMY="127.0.0.1" || __DUMMY="::1"
++[ $use_ipv6 -eq 0 ] && __UPDURL=$__UPDURL || __UPDURL=$__UPDURL6
+ 
+ # lets do DUMMY transfer
+-write_log 7 "sending dummy IP to 'no-ip.com'"
+-__URL=$(echo $__UPDURL | sed -e "s#\[USERNAME\]#$URL_USER#g" -e "s#\[PASSWORD\]#$URL_PASS#g" \
+-			       -e "s#\[DOMAIN\]#$domain#g" -e "s#\[IP\]#$__DUMMY#g")
+-[ $use_https -ne 0 ] && __URL=$(echo $__URL | sed -e 's#^http:#https:#')
++# write_log 7 "sending dummy IP to 'no-ip.com'"
++# __URL=$(echo $__UPDURL | sed -e "s#\[USERNAME\]#$URL_USER#g" -e "s#\[PASSWORD\]#$URL_PASS#g" \
++# 			       -e "s#\[DOMAIN\]#$domain#g" -e "s#\[IP\]#$__DUMMY#g")
++# [ $use_https -ne 0 ] && __URL=$(echo $__URL | sed -e 's#^http:#https:#')
+ 
+-do_transfer "$__URL" || return 1
++# do_transfer "$__URL" || return 1
+ 
+-write_log 7 "'no-ip.com' answered:${N}$(cat $DATFILE)"
++# write_log 7 "'no-ip.com' answered:${N}$(cat $DATFILE)"
+ # analyse provider answers
+ # "good [IP_ADR]"	= successful
+ # "nochg [IP_ADR]"	= no change but OK
+-grep -E "good|nochg" $DATFILE >/dev/null 2>&1 || return 1
++# grep -E "good|nochg" $DATFILE >/dev/null 2>&1 || return 1
+ 
+ # lets wait a seconds
+-sleep 1
++# sleep 1
+ 
+ # now send the correct data
+ write_log 7 "sending real IP to 'no-ip.com'"
+@@ -49,4 +51,3 @@
+ # "nochg [IP_ADR]"	= no change but OK
+ grep -E "good|nochg" $DATFILE >/dev/null 2>&1
+ return $?	# "0" if "good" or "nochg" found
+-
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/update_nsupdate.sh src/files/update_nsupdate.sh
+--- upstream/files/update_nsupdate.sh	2022-10-27 12:48:35.000000000 +0000
++++ src/files/update_nsupdate.sh	2025-04-02 11:27:54.000000000 +0000
+@@ -19,8 +19,9 @@
+ local __RRTYPE __PW __TCP
+ local __PROG=$(which nsupdate)			# BIND nsupdate ?
+ [ -z "$__PROG" ] && __PROG=$(which knsupdate)	# Knot nsupdate ?
++[ -z "$__PROG" ] && __PROG=$(which snsupdate)	# Small nsupdate ?
+ 
+-[ -z "$__PROG" ]     && write_log 14 "'nsupdate' or 'knsupdate' not installed !"
++[ -z "$__PROG" ]     && write_log 14 "'nsupdate' or 'knsupdate' or 'snsupdate' not installed !"
+ [ -z "$username" ]   && write_log 14 "Service section not configured correctly! Missing 'username'"
+ [ -z "$password" ]   && write_log 14 "Service section not configured correctly! Missing 'password'"
+ [ -z "$dns_server" ] && write_log 14 "Service section not configured correctly! Missing 'dns_server'"
+@@ -43,6 +44,6 @@
+ $__PROG -d $__TCP $DATFILE >$ERRFILE 2>&1
+ 
+ # nsupdate always return success
+-write_log 7 "(k)nsupdate reports:${N}$(cat $ERRFILE)"
++write_log 7 "(s/k)nsupdate reports:${N}$(cat $ERRFILE)"
+ 
+ return 0
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/files/update_route53_v1.sh src/files/update_route53_v1.sh
+--- upstream/files/update_route53_v1.sh	2022-10-27 12:48:35.000000000 +0000
++++ src/files/update_route53_v1.sh	2025-04-02 11:27:54.000000000 +0000
+@@ -1,46 +1,44 @@
+ #!/bin/sh
+-#.Distributed under the terms of the GNU General Public License (GPL) version 2.0
+-#.based on Yuval Adam's route53.sh found at https://github.com/yuvadm/route53-ddns/blob/master/route53.sh
+-#.2017 Max Berger <max at berger dot name>
+-[ -z "$CURL_SSL" ] && write_log 14 "Amazon AWS Route53 communication require cURL with SSL support. Please install"
+-[ -z "$username" ] && write_log 14 "Service section not configured correctly! Missing key as 'username'"
+-[ -z "$password" ] && write_log 14 "Service section not configured correctly! Missing secret as 'password'"
+-[ -z "$domain" ] && write_log 14 "Service section not configured correctly! Missing zone id as 'domain'"
+-
+-set -euo pipefail
+-IFS=$'\n\t'
++# Distributed under the terms of the GNU General Public License (GPL) version 2.0
++# based on Yuval Adam's route53.sh found at https://github.com/yuvadm/route53-ddns/blob/master/route53.sh
++# 2017 Max Berger <max at berger dot name>
++
++[ -z "${CURL_SSL}" ] && write_log 14 "Amazon AWS Route53 communication require cURL with SSL support. Please install"
++[ -z "{$username}" ] && write_log 14 "Service section not configured correctly! Missing key as 'username'"
++[ -z "${password}" ] && write_log 14 "Service section not configured correctly! Missing secret as 'password'"
++[ -z "${domain}" ] && write_log 14 "Service section not configured correctly! Missing zone id as 'domain'"
+ 
+ ENDPOINT="route53.amazonaws.com"
+ RECORD_TTL=300
+-RECORD_NAME="$lookup_host".
+-[ $use_ipv6 -eq 0 ] && RECORD_TYPE="A"
+-[ $use_ipv6 -eq 1 ] && RECORD_TYPE="AAAA"
+-RECORD_VALUE="$LOCAL_IP"
+-HOSTED_ZONE_ID="$domain"
++RECORD_NAME="${lookup_host}."
++[ ${use_ipv6} -eq 0 ] && RECORD_TYPE="A"
++[ ${use_ipv6} -eq 1 ] && RECORD_TYPE="AAAA"
++RECORD_VALUE="${LOCAL_IP}"
++HOSTED_ZONE_ID="${domain}"
+ API_PATH="/2013-04-01/hostedzone/${HOSTED_ZONE_ID}/rrset/"
+ 
+-AWS_ACCESS_KEY_ID="$username"
+-AWS_SECRET_ACCESS_KEY="$password"
++AWS_ACCESS_KEY_ID="${username}"
++AWS_SECRET_ACCESS_KEY="${password}"
+ AWS_REGION='us-east-1'
+ AWS_SERVICE='route53'
+ 
+ hash() {
+-    msg=$1
+-    echo -en "$msg" | openssl dgst -sha256 | sed 's/^.* //'
++    msg="$1"
++    echo -en "${msg}" | openssl dgst -sha256 | sed 's/^.* //'
+ }
+ 
+ sign_plain() {
+     # Sign message using a plaintext key
+-    key=$1
+-    msg=$2
+-    echo -en "$msg" | openssl dgst -hex -sha256 -hmac "$key" | sed 's/^.* //'
++    key="$1"
++    msg="$2"
++    echo -en "${msg}" | openssl dgst -hex -sha256 -hmac "${key}" | sed 's/^.* //'
+ }
+ 
+ sign() {
+     # Sign message using a hex formatted key
+-    key=$1
+-    msg=$2
+-    echo -en "$msg" | openssl dgst -hex -sha256 -mac HMAC -macopt "hexkey:${key}" | sed 's/^.* //'
++    key="$1"
++    msg="$2"
++    echo -en "${msg}" | openssl dgst -hex -sha256 -mac HMAC -macopt "hexkey:${key}" | sed 's/^.* //'
+ }
+ 
+ request_body="<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
+@@ -64,34 +62,34 @@
+ </ChangeBatch> \
+ </ChangeResourceRecordSetsRequest>"
+ 
+-fulldate=$(date --utc +%Y%m%dT%H%M%SZ)
+-shortdate=$(date --utc +%Y%m%d)
++fulldate="$(date --utc +%Y%m%dT%H%M%SZ)"
++shortdate="$(date --utc +%Y%m%d)"
+ signed_headers="host;x-amz-date"
+-request_hash=$(hash "$request_body")
++request_hash="$(hash "${request_body}")"
+ canonical_request="POST\n${API_PATH}\n\nhost:route53.amazonaws.com\nx-amz-date:${fulldate}\n\n${signed_headers}\n${request_hash}"
+ 
+-date_key=$(sign_plain "AWS4${AWS_SECRET_ACCESS_KEY}" "${shortdate}")
+-region_key=$(sign "$date_key" $AWS_REGION)
+-service_key=$(sign "$region_key" $AWS_SERVICE)
+-signing_key=$(sign "$service_key" aws4_request)
++date_key="$(sign_plain "AWS4${AWS_SECRET_ACCESS_KEY}" "${shortdate}")"
++region_key="$(sign "${date_key}" ${AWS_REGION})"
++service_key="$(sign "${region_key}" ${AWS_SERVICE})"
++signing_key="$(sign "${service_key}" aws4_request)"
+ 
+ credential="${shortdate}/${AWS_REGION}/${AWS_SERVICE}/aws4_request"
+-sigmsg="AWS4-HMAC-SHA256\n${fulldate}\n${credential}\n$(hash "$canonical_request")"
++sigmsg="AWS4-HMAC-SHA256\n${fulldate}\n${credential}\n$(hash "${canonical_request}")"
+ 
+-signature=$(sign "$signing_key" "$sigmsg")
++signature="$(sign "${signing_key}" "${sigmsg}")"
+ 
+ authorization="AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${credential}, SignedHeaders=${signed_headers}, Signature=${signature}"
+ 
+-ANSWER=$(curl \
++ANSWER="$(curl \
+     -X "POST" \
+     -H "Host: route53.amazonaws.com" \
+     -H "X-Amz-Date: ${fulldate}" \
+     -H "Authorization: ${authorization}" \
+     -H "Content-Type: text/xml" \
+     -d "$request_body" \
+-    "https://${ENDPOINT}${API_PATH}")
++    "https://${ENDPOINT}${API_PATH}")"
+ write_log 7 "${ANSWER}"
+ 
+-echo ${ANSWER} | grep Error >/dev/null && return 1
+-echo ${ANSWER} | grep ChangeInfo >/dev/null && return 0
++echo "${ANSWER}" | grep -F "Error" >/dev/null && return 1
++echo "${ANSWER}" | grep -F "ChangeInfo" >/dev/null && return 0
+ return 2

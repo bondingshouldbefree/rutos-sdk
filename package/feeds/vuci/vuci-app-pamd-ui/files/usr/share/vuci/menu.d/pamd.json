@@ -1,0 +1,8 @@
+{
+    "system/admin/access_control/pam": {
+        "title": "PAM",
+        "acls": [ "system/admin/access_control/pam" ],
+        "view": "services/Pamd",
+        "index": 20
+    }
+}

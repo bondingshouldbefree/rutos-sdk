@@ -1,0 +1,17 @@
+#!/bin/sh
+[ -n "$DEVICENAME" ] || exit 0
+case "$DEVICENAME" in
+	eoip_*)
+		if [ "$ACTION" = "add" ]; then
+			to_bridge="$(uci -q get eoip.${DEVICENAME/eoip_/inst}.to_bridge)"
+			[ -n "$to_bridge" ] && [ "$to_bridge" != "none" ] && mac="$(ip link show "${to_bridge/_/-}" | awk '/ether/ {print $2}')"
+			[ -n "$mac" ] && {
+				tc qdisc add dev "$DEVICENAME" clsact
+				tc filter add dev "$DEVICENAME" ingress flower src_mac "$mac" action drop
+			}
+		elif [ "$ACTION" = "remove" ]; then
+			tc qdisc del dev "$DEVICENAME" clsact
+			tc filter del dev "$DEVICENAME" ingress
+		fi
+		;;
+esac

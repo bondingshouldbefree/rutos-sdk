@@ -1,0 +1,24 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /lib/functions/system.sh
+
+sms_utils_cb() {
+	config_get name "$1" "action"
+	[ "$name" = "io_set" ] || [ "$name" = "iostatus" ] && {
+		uci_remove "sms_utils" "$1"
+		do_commit="1"
+	}
+}
+
+is_ios_enabled || {
+	/etc/init.d/ioman disable
+	[ -f "/etc/init.d/ioman_scheduler" ] && /etc/init.d/ioman_scheduler disable
+	rm -f /etc/config/ioman
+
+	config_load "sms_utils"
+	config_foreach sms_utils_cb "rule"
+	[ "$do_commit" = "1" ] && uci_commit "sms_utils"
+}
+
+exit 0

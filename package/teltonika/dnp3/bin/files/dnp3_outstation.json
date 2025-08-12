@@ -1,0 +1,65 @@
+{
+	"user": "dnp3_outstation",
+	"publish": [ "dnp3_outstation" ],
+	"listen": [
+		"ubus.object.add"
+	],
+	"subscribe": [
+		"ioman.*",
+		"gpsd",
+		"gsm.modem*"
+	],
+	"access": {
+		"gpsd": {
+			"methods": [
+				"position"
+			]
+		},
+		"ioman.*": {
+			"methods": [
+				"status",
+				"location"
+			]
+		},
+		"mdcollect": {
+			"methods": [
+				"get",
+				"get_raw_total"
+			]
+		},
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_signal_query",
+				"get_temperature",
+				"get_service_provider",
+				"get_net_mode_tech",
+				"get_net_reg_stat",
+				"get_network_info",
+				"get_sim_slot"
+			]
+		},
+		"mbus_client.rpc": {
+			"methods": [
+				"get_tag_value"
+			]
+		},
+		"dnp3_client.rpc": {
+			"methods": [
+				"get_tag_value",
+				"set_tag_value"
+			]
+		},
+		"modbus_client.rpc": {
+			"methods": [
+				"get_tag_value",
+				"set_tag_value"
+			]
+		}
+	}
+}

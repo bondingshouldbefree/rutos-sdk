@@ -1,0 +1,10 @@
+# setup /tmp/.uci/simcard
+/tmp/.uci/simcard			simcard:simcard	660	cf
+# setup /etc/config/operctl
+/etc/config/operctl			gsm:gsm		660	-
+# setup /etc/config/simcard
+/etc/config/simcard     		simcard:simcard	660	-
+# setup /etc/lpac_config.json
+/etc/lpac_config.json			gsm:gsm		660	-
+# setup /tmp/mobile
+/tmp/mobile				gsm:gsm		770	cd

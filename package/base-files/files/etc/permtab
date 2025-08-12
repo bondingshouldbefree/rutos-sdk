@@ -1,0 +1,37 @@
+# /etc/permtab - System directory permissions
+# Format: <path> <owner:group> <permissions> <options>
+#
+# path: The file or directory path (must be absolute)
+# owner:group: User and group ownership (user:group format)
+#              Use - to skip changing ownership
+# permissions: Octal permissions (like 755, 644)
+#              Use - to skip changing permissions
+# options: Options separated by commas:
+#          - r (recursive, for directories)
+#          - cd (create directory, if does not exist)
+#          - cf (create file, if does not exist)
+
+# setup /var/lock
+/var/lock			root:lock	3777	-
+# setup /tmp/.uci
+/tmp/.uci			100:100		777	-
+# setup /etc/shadow
+/etc/shadow			shadow:shadow	640	-
+# setup /etc/config
+/etc/config			100:100		777	-
+/etc/config/system		:system		664
+/etc/config/buttons		buttons:buttons		660
+# setup /log
+/log				root:log	775	-
+# IP routing configuration
+/etc/iproute2			:network	660	r
+/etc/iproute2			-		770	-
+# setup xtables
+/var/run/xtables.lock		-		666	cf
+
+/etc/config/event_juggler	juggler:juggler		660
+/etc/config/ntpclient		ntpclient:ntpclient	660
+/etc/config/periodic_reboot	preboot:preboot		660
+/etc/config/ping_reboot		preboot:preboot		660
+/etc/rms_mqtt			rms:rms			-	r
+/etc/config/uhttpd		uhttpd:uhttpd		664

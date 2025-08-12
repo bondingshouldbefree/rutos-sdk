@@ -1,0 +1,56 @@
+If CONFIG_DEBUG_ATOMIC_SLEEP is enabled, "sleeping while atomic" warning
+gets triggered from qmi_wwan_disconnect when modem restarts/disconnects.
+netdev_upper_dev_unlink is called from RCU read-side critical section,
+which may sleep. Move netdev_upper_dev_unlink out of critical section,
+use unreg_list to iterate over upper devices later
+---
+
+--- a/drivers/net/usb/qmi_wwan.c
++++ b/drivers/net/usb/qmi_wwan.c
+@@ -606,17 +606,12 @@ out_free_newdev:
+ 	return err;
+ }
+ 
+-static void qmimux_unregister_device(struct net_device *dev,
+-				     struct list_head *head)
++static void qmimux_unlink_device(struct net_device *dev)
+ {
+ 	struct qmimux_priv *priv = netdev_priv(dev);
+ 	struct net_device *real_dev = priv->real_dev;
+ 
+ 	netdev_upper_dev_unlink(real_dev, dev);
+-	unregister_netdevice_queue(dev, head);
+-
+-	/* Get rid of the reference to real_dev */
+-	dev_put(real_dev);
+ }
+ 
+ static void qmi_wwan_netdev_setup(struct net_device *net)
+@@ -780,7 +775,9 @@ static ssize_t del_mux_store(struct devi
+ 		ret = -EINVAL;
+ 		goto err;
+ 	}
+-	qmimux_unregister_device(del_dev, NULL);
++	qmimux_unlink_device(del_dev);
++	unregister_netdevice_queue(del_dev, NULL);
++	dev_put(dev->net);
+ 
+ 	if (!qmimux_has_slaves(dev))
+ 		info->flags &= ~QMI_WWAN_FLAG_MUX;
+@@ -2016,8 +2013,15 @@ static void qmi_wwan_disconnect(struct u
+ 		}
+ 		rcu_read_lock();
+ 		netdev_for_each_upper_dev_rcu(dev->net, ldev, iter)
+-			qmimux_unregister_device(ldev, &list);
++			unregister_netdevice_queue(ldev, &list);
+ 		rcu_read_unlock();
++
++		list_for_each_entry(ldev, &list, unreg_list) {
++			qmimux_unlink_device(ldev);
++			/* Get rid of the reference to lower netdev */
++			dev_put(dev->net);
++		}
++
+ 		unregister_netdevice_many(&list);
+ 		rtnl_unlock();
+ 		info->flags &= ~QMI_WWAN_FLAG_MUX;

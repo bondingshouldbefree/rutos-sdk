@@ -1,0 +1,145 @@
+-- Universal Gateway --
+
+tagTable OBJECT-TYPE
+	SYNTAX		SEQUENCE OF TagEntry
+	MAX-ACCESS	not-accessible
+	STATUS		current
+	DESCRIPTION	""
+	::= { universal_gateway 1 }
+
+tagEntry OBJECT-TYPE
+	SYNTAX		TagEntry
+	MAX-ACCESS	not-accessible
+	STATUS		current
+	DESCRIPTION	"An entry containing information of a particular tag."
+	INDEX		{ tagIndex }
+	::= { tagTable 1 }
+
+TagEntry ::=
+	SEQUENCE {
+	tagIndex	INTEGER,
+	tagId DisplayString,
+	tagPrettyName DisplayString,
+        tagSource INTEGER,
+        tagValue OCTET STRING,
+        tagType INTEGER,
+	tagValueSize INTEGER (0..65535),
+        tagTimestamp Unsigned32
+	}
+
+tagIndex OBJECT-TYPE
+        SYNTAX		INTEGER
+        MAX-ACCESS	read-only
+        STATUS		current
+        DESCRIPTION	"Unique index for the tag entry."
+        ::= { tagEntry 1 }
+
+tagId OBJECT-TYPE
+        SYNTAX		DisplayString
+        MAX-ACCESS	read-only
+        STATUS		current
+        DESCRIPTION	"Identifier for the tag."
+        ::= { tagEntry 2 }
+
+tagPrettyName OBJECT-TYPE
+        SYNTAX		DisplayString
+        MAX-ACCESS	read-only
+        STATUS		current
+        DESCRIPTION	"Tag pretty name."
+        ::= { tagEntry 3 }
+
+tagSource OBJECT-TYPE
+        SYNTAX		INTEGER {
+                                mbus(1),
+                                modbus(2),
+                                other(3)
+                        }
+        MAX-ACCESS	read-only
+        STATUS		current
+        DESCRIPTION	"Source protocol of the tag."
+        ::= { tagEntry 4 }
+
+
+
+tagPermissions OBJECT-TYPE
+	SYNTAX		INTEGER {
+				none(0),
+				read(1),
+				write(2),
+				read-write(3)
+			}
+	MAX-ACCESS	read-only
+	STATUS		current
+	DESCRIPTION	"Permissions for the tag."
+	::= { tagEntry 5 }
+
+tagType OBJECT-TYPE
+	SYNTAX		INTEGER {
+				unknown(0),
+				bool(1),
+				int8(2),
+				uint8(3),
+				int16(4),
+				uint16(5),
+				int32(6),
+				uint32(7),
+				int64(8),
+				uint64(9),
+				float32(10),
+				float64(11),
+				string(12),
+				binary(13)
+			}
+        MAX-ACCESS	read-only
+        STATUS		current
+        DESCRIPTION	"Data type of the 'tagValue' object."
+        ::= { tagEntry 6 }
+
+tagValueSize OBJECT-TYPE
+	SYNTAX		INTEGER (0..65535)
+        MAX-ACCESS	read-only
+        STATUS		current
+        DESCRIPTION	"Number of values in this tag. This is mainly used to see how many values are stored in the 'tagValueTable' for this tag, though it is not guaranteed that the number of values in the table matches this count, as with some data types such as string there will be only one 'tagValueTable' entry."
+        ::= { tagEntry 7 }
+
+tagTimestamp OBJECT-TYPE
+        SYNTAX		Unsigned32
+        MAX-ACCESS	read-only
+        STATUS		current
+        DESCRIPTION	"The Unix timestamp of the last time the tag information was updated. This is mainly intended to see when the tagValueTable of this tag was last updated."
+        ::= { tagEntry 8 }
+
+tagValueTable OBJECT-TYPE
+	SYNTAX		SEQUENCE OF TagValueEntry
+	MAX-ACCESS	not-accessible
+	STATUS		current
+	DESCRIPTION	""
+	::= { universal_gateway 2 }
+
+tagValueEntry OBJECT-TYPE
+	SYNTAX		TagValueEntry
+	MAX-ACCESS	not-accessible
+	STATUS		current
+	DESCRIPTION	"An entry containing information of a particular tag value. Each tag can have multiple values, which are stored in this table. Each value is usually indexed by unique ID 'tagValueIndex' which is unique for each tag, starting from 0. The 'tagValue' object contains the raw value of the tag, which can be of different data types as specified by the 'tagType' object in the tag entry."
+	INDEX		{ tagValueIndex, tagIndex }
+	::= { tagValueTable 1 }
+
+TagValueEntry ::=
+	SEQUENCE {
+	tagValueIndex	INTEGER,
+        tagValue OCTET STRING,
+	}
+
+tagValueIndex OBJECT-TYPE
+        SYNTAX		INTEGER
+        MAX-ACCESS	read-only
+        STATUS		current
+        DESCRIPTION	"Unique index for the tag value entry."
+        ::= { tagValueEntry 1 }
+
+tagValue OBJECT-TYPE
+        SYNTAX		OCTET STRING
+        MAX-ACCESS	read-write
+        STATUS		current
+        DESCRIPTION	"Raw value of the tag value, refer to 'tagType' object for the data type."
+        ::= { tagValueEntry 2 }
