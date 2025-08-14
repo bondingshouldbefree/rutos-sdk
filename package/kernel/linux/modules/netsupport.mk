@@ -830,6 +830,20 @@ endef
 
 $(eval $(call KernelPackage,sched-flower))
 
+define KernelPackage/sched-act-csum
+  SUBMENU:=$(NETWORK_SUPPORT_MENU)
+  TITLE:=csum action
+  DEPENDS:=+kmod-sched-core +kmod-lib-crc32c
+  KCONFIG:=CONFIG_NET_ACT_CSUM
+  FILES:=$(LINUX_DIR)/net/sched/act_csum.ko
+  AUTOLOAD:=$(call AutoProbe, act_csum)
+endef
+
+define KernelPackage/sched-act-csum/description
+ csum action.
+endef
+
+$(eval $(call KernelPackage,sched-act-csum))
 
 define KernelPackage/sched-act-vlan
   SUBMENU:=$(NETWORK_SUPPORT_MENU)
