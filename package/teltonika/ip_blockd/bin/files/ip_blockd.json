@@ -1,0 +1,15 @@
+{
+  "user": "ip_blockd",
+  "publish": ["ip_block"],
+  "access": {
+    "log": {
+        "methods": ["write_ext"]
+    },
+    "network.wireless": {
+      "methods": ["status"]
+    },
+    "hostapd.*": {
+      "methods": ["del_client", "list_bans"]
+    }
+  }
+}

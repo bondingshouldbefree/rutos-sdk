@@ -1,0 +1,61 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed Oct 30 10:50:39 2024 +0200
+Subject: crypto: mtk-eip93: fix AEAD sg list allignment checks
+
+Previous version incorrectly accounted for associated data when checking
+if scatterlist was split along a cipher block boundary, resulting in 
+unnecessary memcopies and reduced performance when AD length is not
+multiple of cipher block size.
+
+Fixes performance disparity between, one example, IPsec using cbc(aes) vs. rfc3686(ctr(aes))
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/crypto/mtk-eip93/eip93-common.c |   29 ++++++++++++++++++-----------
+ 1 file changed, 18 insertions(+), 11 deletions(-)
+
+--- a/drivers/crypto/mtk-eip93/eip93-common.c
++++ b/drivers/crypto/mtk-eip93/eip93-common.c
+@@ -194,6 +194,18 @@ static inline bool mtk_is_sg_aligned(str
+ 	return false;
+ }
+ 
++static inline bool mtk_is_sg_aligned_aead(struct scatterlist *sg, u32 len,
++					  int nents)
++{
++	if (nents != 1)
++		return false;
++
++	if (!IS_ALIGNED(sg->offset, 4))
++		return false;
++
++	return true;
++}
++
+ int check_valid_request(struct mtk_cipher_reqctx *rctx)
+ {
+ 	struct scatterlist *src = rctx->sg_src;
+@@ -238,17 +250,12 @@ int check_valid_request(struct mtk_ciphe
+ 	}
+ 
+ 	if (authsize) {
+-		if (dst_nents == 1 && src_nents == 1) {
+-			src_align = mtk_is_sg_aligned(src, totlen_src, blksize);
+-			if (src ==  dst)
+-				dst_align = src_align;
+-			else
+-				dst_align = mtk_is_sg_aligned(dst,
+-						totlen_dst, blksize);
+-		} else {
+-			src_align = false;
+-			dst_align = false;
+-		}
++		src_align = mtk_is_sg_aligned_aead(src, totlen_src, src_nents);
++		if (src == dst)
++			dst_align = src_align;
++		else
++			dst_align = mtk_is_sg_aligned_aead(dst, totlen_dst,
++							   dst_nents);
+ 	} else {
+ 		src_align = mtk_is_sg_aligned(src, totlen_src, blksize);
+ 		if (src == dst)

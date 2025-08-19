@@ -1,0 +1,303 @@
+#include "mt7621-teltonika-rutm-common.dtsi"
+
+/ {
+	compatible = "teltonika,rutm", "mediatek,mt7621-soc";
+	model = "Teltonika RUTM55";
+
+	ext_io {
+		compatible = "spi-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		gpio-sck = <&gpio 9 GPIO_ACTIVE_HIGH>;	// 74HC595 SRCLK (Serial Clock)
+		gpio-mosi = <&gpio 13 GPIO_ACTIVE_HIGH>;	// 74HC595 SER (Serial)
+		cs-gpios = <&gpio 45 GPIO_ACTIVE_HIGH>;	// 74HC595 RCLK (Register Clock)
+		num-chipselects = <1>;
+
+		shift_io: shift_io@0 {
+			compatible = "fairchild,74hc595";
+			reg = <0>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			registers-number = <2>;
+			spi-max-frequency = <10000000>;
+			enable-gpios = <&gpio 44 GPIO_ACTIVE_LOW>;
+
+		};
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		reset {
+			label = "reset";
+			gpios = <&gpio 10 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_modem_reset {
+			gpio-export,name = "modem_reset";
+			gpio-export,output = <0>;
+			gpios = <&gpio 14 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_power {
+			gpio-export,name = "modem_power";
+			gpio-export,output = <1>; // tmp
+			gpios = <&gpio 17 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_sim_select {
+			gpio-export,name = "sim_sel";
+			gpio-export,output = <1>;
+			gpios = <&gpio 46 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_power {
+			label = "power";
+			gpios = <&gpio 0 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+			retain-state-shutdown;
+		};
+
+		led_gen_3 {
+			label = "mob_gen_3";
+			gpios = <&shift_io 9 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_4 {
+			label = "mob_gen_4";
+			gpios = <&shift_io 10 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_5 {
+			label = "mob_gen_5";
+			gpios = <&shift_io 11 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_ssid_1 {
+			label = "mob_ssid_1";
+			gpios = <&shift_io 12 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; // only
+		};
+
+		led_ssid_3 {
+			label = "mob_ssid_3";
+			gpios = <&shift_io 13 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; // only
+		};
+
+		led_ssid_5 {
+			label = "mob_ssid_5";
+			gpios = <&shift_io 14 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; //only
+		};
+
+		led_eth_y3 {
+			label = "eth_y3";
+			gpios = <&shift_io 1 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y2 {
+			label = "eth_y2";
+			gpios = <&shift_io 3 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y1 {
+			label = "eth_y1";
+			gpios = <&shift_io 5 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y0 {
+			label = "eth_y0";
+			gpios = <&shift_io 7 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g3 {
+			label = "eth_g3";
+			gpios = <&shift_io 0 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g2 {
+			label = "eth_g2";
+			gpios = <&shift_io 2 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g1 {
+			label = "eth_g1";
+			gpios = <&shift_io 4 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g0 {
+			label = "eth_g0";
+			gpios = <&shift_io 6 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	tlt_gpios { // Modify according to wiki page "DTS syntax with Libgpiod changes"
+		gpiochip_info {
+			hw_0 {
+				hwver = <0>;
+				gpiochip_count = <4>;
+
+				gpiochip_0 = <32>; // Built-in
+				gpiochip_1 = <32>; // Built-in
+				gpiochip_2 = <32>; // Built-in
+				gpiochip_3 = <16>; // Shift Register
+			};
+		};
+
+		ioman {
+			GPIO_16 {
+				line_name = "GPIO_IN_1";
+				active_low;
+			};
+			GPIO_111 {
+				line_name = "GPIO_OUT_1";
+			};
+			GPIO_18 {
+				line_name = "GPIO_ISOLATED_INPUT";
+				active_low;
+			};
+			GPIO_12 {
+				line_name = "GPIO_RELAY_CLOSE_1";
+			};
+		};
+
+		misc {
+			GPIO_14 {
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_17 {
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_46 {
+				line_name = "GPIO_SIM_SELECT";
+			};
+			GPIO_104 {
+				line_name = "GPIO_RS485_RX_EN";
+			};
+		};
+	};
+
+	ioman {
+		layout@0 {
+			io@0 { // 16pin#1
+				label = "din1";
+				block_type = BLOCK_16PIN;
+				block_pin = "1";
+				web_str = "Digital Input";
+				gpio_in = "GPIO_IN_1";
+				io_param = "g2";
+			};
+			io@1 { // 16pin#2
+				label = "iio";
+				block_type = BLOCK_16PIN;
+				block_pin = "2,10";
+				gpio_in = "GPIO_ISOLATED_INPUT";
+				io_param = "g3";
+			};
+			io@2 { // 16pin#3
+				label = "dout1";
+				block_type = BLOCK_16PIN;
+				block_pin = "3,4,11";
+				web_str = "Isolated Output";
+				gpio_out = "GPIO_OUT_1";
+				io_param = "g4";
+			};
+			relay@0 {
+				label = "relay0";
+				block_type = BLOCK_16PIN;
+				block_pin = "5,13";
+				gpio_close = "GPIO_RELAY_CLOSE_1";
+				io_param = "g5";
+			};
+			adc@0 {
+				label = "adc0";
+				block_type = BLOCK_16PIN;
+				block_pin = "12";
+				tolerance = "0.05";
+				path = "/sys/class/hwmon/hwmon0/in0_input";
+				io_param = "g1";
+
+				adc_cof@0 {
+					divider = "128.160418482999"; //147.0 / 1147.0 * 1000.0
+				};
+			};
+			acl@0 {
+				label = "acl0";
+				block_type = BLOCK_16PIN;
+				block_pin = "12";
+				tolerance = "0.00004";
+				path = "/sys/class/hwmon/hwmon0/in0_input";
+				io_param = "g0";
+
+				adc_cof@0 {
+					divider = "153792.502179599"; //147.0 / 1147.0 * 1000.0 * 1200.0
+				};
+			};
+		};
+	};
+};
+
+&state_default {
+	gpio {
+		groups = "wdt", "jtag", "sdhci", "uart2";
+		function = "gpio";
+	};
+};
+
+&switch0 {
+	ports {
+		port@0 {
+			status = "okay";
+			label = "lan1";
+		};
+
+		port@1 {
+			status = "okay";
+			label = "lan2";
+		};
+
+		port@2 {
+			status = "okay";
+			label = "lan3";
+		};
+	};
+};
+
+&mnfinfo {
+	sim_cfg {
+		default = "1111200_1112000_1121100";
+		/*default = "1111020_1112020";*/
+	};
+};
+
+&uartlite3 {
+	status = "okay";
+};
+
+&i2c {
+	status = "okay";
+
+	hwmon@0x48 {
+		compatible = "ti,tla2021";
+		reg = <0x48>;
+	};
+
+	tpm: tpm@0x2e {
+		compatible = "tpm_tis_i2c";
+		reg = <0x2e>;
+		status = "okay";
+	};
+};
+

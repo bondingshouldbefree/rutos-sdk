@@ -1,0 +1,9 @@
+{
+	"user": "sms_limit",
+	"access": {
+		"sms_limit": {
+			"methods": [ "check", "update", "inc", "reset" ]
+		}
+	},
+	"send": [ "sms.limit" ]
+}

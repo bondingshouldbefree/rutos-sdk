@@ -1,0 +1,32 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+config_load ioman
+config_get enabled scheduler_general enabled
+[ -n "$enabled" ] || exit 0
+
+[ -f /etc/config/io_scheduler ] || {
+	touch /etc/config/io_scheduler
+}
+
+PACKAGE=io_scheduler
+OPTIONS="enabled pin start_day start_time end_day end_time period force_last"
+
+scheduler_cb() {
+	local sec="$1"
+	local tmp
+
+	uci_add "$PACKAGE" scheduler || return 1
+	for option in $OPTIONS; do
+		config_get tmp "$sec" "$option"
+		[ -n "$tmp" ] && uci_set "$PACKAGE" "$CONFIG_SECTION" "$option" "$tmp"
+	done
+
+	uci_remove "ioman" "$sec"
+}
+
+config_foreach scheduler_cb scheduler
+uci_add "$PACKAGE" general general || exit 1
+uci_set "$PACKAGE" general enabled "$enabled"
+uci_commit

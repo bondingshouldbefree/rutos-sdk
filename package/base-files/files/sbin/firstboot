@@ -1,0 +1,76 @@
+#!/bin/sh
+
+PROG_NAME="firstboot"
+BJSON_PATH="/etc/board.json"
+
+usage_print() {
+	echo "Usage: $PROG_NAME [-y][-f]"
+	echo "-y skip the confirmation dialog"
+	echo "-f reset to factory defaults"
+}
+
+fmt_emmc_data() {
+	DATA_PART="mmcblk0p3"
+
+	[ -e "/dev/$DATA_PART" ] || return 0
+	[ "$(cat /sys/block/${DATA_PART:0:7}/device/type 2> /dev/null)" = "MMC" ] || return 0
+	grep -qs "PARTNAME=data" "/sys/class/block/$DATA_PART/uevent" || return 0
+
+	echo "Wiping user data partition"
+
+	mount_point=$(mount | awk -v dev="/dev/$DATA_PART" '$1 == dev {print $3}')
+
+	[ -n "$mount_point" ] && {
+		find "$mount_point" -maxdepth 1 -mindepth 1 -exec rm -rf -- {} +
+	} || {
+		mkfs.ext4 -F -q -L data "/dev/$DATA_PART"
+	}
+}
+
+for arg in "$@"
+do
+	case "$arg" in
+		"-y" | "-Y")
+			CONFIRM="1"
+		;;
+		"-f" | "-F")
+			FACTORY="1"
+		;;
+		*)
+			usage_print
+			return 1
+		;;
+	esac        
+done
+
+if [ "$CONFIRM" != "1" ]; then
+	echo "This will erase all settings and remove any installed packages. Are you sure? [N/y]"
+	read -r answer
+	if [ "$answer" = "${answer#[Yy]}" ]; then
+		return 1
+	fi
+fi
+
+if [ "$FACTORY" = "1" ]; then
+	if [ -e /sbin/esim_delete_profiles ]; then
+		esim_delete_profiles
+	fi
+	# wipe all from log except boostrap profiles
+	find "/log" ! -name "boot_*_iccid" -type f -exec rm -f {} +
+
+	# wipe user data partition on eMMC
+	fmt_emmc_data
+else
+	# reset SMS limit database
+	rm /log/sms.db  &>/dev/null
+fi;
+
+[ -e /dev/tpm0 ] && {
+	tpm2_clear -c p
+}
+
+# copy board.json to tmp for proper modem shutdown
+[ -e "$BJSON_PATH" ] && cp "$BJSON_PATH" /tmp/
+
+# now perform rootfs reset
+/sbin/jffs2reset "-y"

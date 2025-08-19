@@ -1,0 +1,59 @@
+#!/bin/sh
+. /usr/share/libubox/jshn.sh
+. /lib/functions/mobile.sh
+
+log() {
+    ubus call log write_ext "{
+        \"event\": \"$2\",
+        \"sender\": \"$1\",
+        \"table\": 2,
+        \"write_db\": 1
+    }"
+}
+
+get_operator() {
+    json_load "$(ubus call "$mdm_ubus_obj" get_operator_selection)"
+    json_get_var OPERATOR operator
+}
+
+get_contype() {
+    json_load "$(ubus call "$mdm_ubus_obj" get_network_info)"
+    json_get_var CONTYPE net_mode
+}
+
+get_up_mobile_ifaces() {
+    local modem="$1"
+    ubus call network.interface dump | \
+    jsonfilter -qe '@.interface[@.up=true && @.data.modem="'$modem'"].interface' | \
+    grep -E '(.*_4$|.*_6$)'
+}
+
+get_uptime() {
+    local iface="$1"
+    ubus call network.interface."$iface" status 2>/dev/null | jsonfilter -qe '@.uptime'
+}
+
+interface=$(echo "$INTERFACE" | sed -E 's|(.*)_[46]$|\1|')
+MODEM=$(uci -q get network."$interface".modem)
+
+if [ "$MODEM" != "" ]; then
+    MODEM_TYPE="$(get_modem_type "$MODEM")"
+    UP_IFACES="$(get_up_mobile_ifaces "$MODEM")"
+
+    if [ "$ACTION" = "ifup" ]; then
+        if [[ ! "$INTERFACE" =~ _[0-9] ]]; then
+            mdm_ubus_obj="$(find_mdm_ubus_obj "$MODEM")"
+            get_operator
+            get_contype
+            log "Network Type" "Joined $CONTYPE network ($MODEM_TYPE modem)"
+            log "Network Operator" "Connected to $OPERATOR operator ($MODEM_TYPE modem)"
+
+        elif [[ "$INTERFACE" =~ _4$ ]]; then
+            log "Mobile Data" "Mobile data connected (IPv4, $MODEM_TYPE modem)"
+        elif [[ "$INTERFACE" =~ _6$ ]]; then
+            log "Mobile Data" "Mobile data connected (IPv6, $MODEM_TYPE modem)"
+        fi
+    elif [ "$ACTION" = "ifdown" ] && [ "$UP_IFACES" = "" ]; then
+        log "Mobile Data" "Mobile data disconnected ($MODEM_TYPE modem)"
+    fi
+fi

@@ -1,0 +1,12 @@
+{
+	"system/admin/memory_expansion": {
+		"title": "Storage Memory Expansion",
+		"index": 80
+	},
+	"system/admin/memory_expansion/sshfs": {
+		"title": "SSHFS",
+		"index": 20,
+		"view": "services/SSHFS",
+		"acls": [ "system/admin/memory_expansion/sshfs" ]
+	}
+}

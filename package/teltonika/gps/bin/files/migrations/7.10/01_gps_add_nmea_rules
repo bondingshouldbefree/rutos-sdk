@@ -1,0 +1,30 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+GPS_CONF="gps"
+
+add_missing_sentences() {
+	local RULE_SEC="nmea_rule"
+	local sentences="GLGSA GLGNS GNGSV PQGGA PQRMC PQVTG GNGGA GNRMC GNVTG GBGSV GBGSA GQGSV GQGSA GPGLL PQGLL GBGGA GBRMC GBVTG GBGLL GPGNS GAGNS BDGGA BDRMC BDGSV BDGSA BDVTG BDGNS"
+
+	for sentence in $sentences
+	do
+		if uci_get "$GPS_CONF" "$sentence"; then
+			continue
+		fi
+		sec=$(uci add "$GPS_CONF" "$RULE_SEC")
+		uci_set "$GPS_CONF" "$sec" "forwarding_enabled" "0"
+		uci_set "$GPS_CONF" "$sec" "forwarding_interval" "5"
+		uci_set "$GPS_CONF" "$sec" "collecting_enabled" "0"
+		uci_set "$GPS_CONF" "$sec" "collecting_interval" "5"
+		uci_rename "$GPS_CONF" "$sec" "$sentence"
+	done
+}
+
+config_load "$GPS_CONF" || exit 0
+add_missing_sentences
+
+uci_commit $GPS_CONF
+
+exit 0

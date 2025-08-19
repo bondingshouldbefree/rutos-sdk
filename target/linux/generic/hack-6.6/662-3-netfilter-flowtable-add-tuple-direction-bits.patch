@@ -1,0 +1,174 @@
+Add NF_FLOW_TUPLE_ORIG and NF_FLOW_TUPLE_REPLY flags, indicating that flow_offload has valid tuples
+in original and reply directions, respectfully.
+
+This replaces the NF_FLOW_HW_BIDIRECTIONAL flag from "netfilter: flowtable: allow unidirectional rules",
+main difference being the added ability of offload in reply direction only. With subsequent patches,
+this is useful in the case where only one packet travels in the original direction (e.g., iperf3 with "-u -R" flags).
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -170,7 +170,8 @@ enum nf_flow_flags {
+ 	NF_FLOW_HW_DYING,
+ 	NF_FLOW_HW_DEAD,
+ 	NF_FLOW_HW_PENDING,
+-	NF_FLOW_HW_BIDIRECTIONAL,
++	NF_FLOW_TUPLE_ORIG,
++	NF_FLOW_TUPLE_REPLY,
+ 	NF_FLOW_HW_ESTABLISHED,
+ };
+ 
+@@ -248,6 +249,16 @@ static inline struct nf_conn_flow *nf_ct
+ struct flow_offload *flow_offload_alloc(struct nf_conn *ct);
+ void flow_offload_free(struct flow_offload *flow);
+ 
++static inline bool flow_offload_has_orig(struct flow_offload *flow)
++{
++	return test_bit(NF_FLOW_TUPLE_ORIG, &flow->flags);
++}
++
++static inline bool flow_offload_has_reply(struct flow_offload *flow)
++{
++	return test_bit(NF_FLOW_TUPLE_REPLY, &flow->flags);
++}
++
+ static inline int
+ nf_flow_table_offload_add_cb(struct nf_flowtable *flow_table,
+ 			     flow_setup_cb_t *cb, void *cb_priv)
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -307,6 +307,9 @@ int flow_offload_add(struct nf_flowtable
+ 
+ 	nf_ct_offload_timeout(flow->ct);
+ 
++	set_bit(NF_FLOW_TUPLE_ORIG, &flow->flags);
++	set_bit(NF_FLOW_TUPLE_REPLY, &flow->flags);
++
+ 	if (nf_flowtable_hw_offload(flow_table)) {
+ 		__set_bit(NF_FLOW_HW, &flow->flags);
+ 		nf_flow_offload_add(flow_table, flow);
+@@ -344,12 +347,18 @@ static inline bool nf_flow_has_expired(c
+ static void flow_offload_del(struct nf_flowtable *flow_table,
+ 			     struct flow_offload *flow)
+ {
+-	rhashtable_remove_fast(&flow_table->rhashtable,
+-			       &flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].node,
+-			       nf_flow_offload_rhash_params);
+-	rhashtable_remove_fast(&flow_table->rhashtable,
+-			       &flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].node,
+-			       nf_flow_offload_rhash_params);
++	if (flow_offload_has_orig(flow)) {
++		rhashtable_remove_fast(&flow_table->rhashtable,
++				       &flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].node,
++				       nf_flow_offload_rhash_params);
++	}
++
++	if (flow_offload_has_reply(flow)) {
++		rhashtable_remove_fast(&flow_table->rhashtable,
++				&flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].node,
++				nf_flow_offload_rhash_params);
++	}
++
+ 	nf_flow_offload_deregister(flow_table, flow);
+ 	flow_offload_free(flow);
+ }
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -780,6 +780,9 @@ static void __nf_flow_offload_destroy(st
+ 	struct flow_action_entry *entry;
+ 	int i;
+ 
++	if (!flow_rule)
++		return;
++
+ 	for (i = 0; i < flow_rule->rule->action.num_entries; i++) {
+ 		entry = &flow_rule->rule->action.entries[i];
+ 		if (entry->id != FLOW_ACTION_REDIRECT)
+@@ -803,17 +806,22 @@ static int nf_flow_offload_alloc(const s
+ 				 struct nf_flow_rule *flow_rule[])
+ {
+ 	struct net *net = read_pnet(&offload->flowtable->net);
++	struct flow_offload *flow = offload->flow;
++
++	if (flow_offload_has_orig(flow)) {
++		flow_rule[0] = nf_flow_offload_rule_alloc(net, offload,
++							FLOW_OFFLOAD_DIR_ORIGINAL);
++		if (!flow_rule[0])
++			return -ENOMEM;
++	}
+ 
+-	flow_rule[0] = nf_flow_offload_rule_alloc(net, offload,
+-						  FLOW_OFFLOAD_DIR_ORIGINAL);
+-	if (!flow_rule[0])
+-		return -ENOMEM;
+-
+-	flow_rule[1] = nf_flow_offload_rule_alloc(net, offload,
+-						  FLOW_OFFLOAD_DIR_REPLY);
+-	if (!flow_rule[1]) {
+-		__nf_flow_offload_destroy(flow_rule[0]);
+-		return -ENOMEM;
++	if (flow_offload_has_reply(flow)) {
++		flow_rule[1] = nf_flow_offload_rule_alloc(net, offload,
++							FLOW_OFFLOAD_DIR_REPLY);
++		if (!flow_rule[1]) {
++			__nf_flow_offload_destroy(flow_rule[0]);
++			return -ENOMEM;
++		}
+ 	}
+ 
+ 	return 0;
+@@ -893,11 +901,14 @@ static int flow_offload_rule_add(struct
+ {
+ 	int ok_count = 0;
+ 
+-	ok_count += flow_offload_tuple_add(offload, flow_rule[0],
+-					   FLOW_OFFLOAD_DIR_ORIGINAL);
+-	if (test_bit(NF_FLOW_HW_BIDIRECTIONAL, &offload->flow->flags))
++	if (flow_rule[0])
++		ok_count += flow_offload_tuple_add(offload, flow_rule[0],
++						   FLOW_OFFLOAD_DIR_ORIGINAL);
++
++	if (flow_rule[1])
+ 		ok_count += flow_offload_tuple_add(offload, flow_rule[1],
+ 						   FLOW_OFFLOAD_DIR_REPLY);
++
+ 	if (ok_count == 0)
+ 		return -ENOENT;
+ 
+@@ -906,7 +917,7 @@ static int flow_offload_rule_add(struct
+ 
+ static void flow_offload_work_add(struct flow_offload_work *offload)
+ {
+-	struct nf_flow_rule *flow_rule[FLOW_OFFLOAD_DIR_MAX];
++	struct nf_flow_rule *flow_rule[FLOW_OFFLOAD_DIR_MAX] = {};
+ 	int err;
+ 
+ 	err = nf_flow_offload_alloc(offload, flow_rule);
+@@ -927,8 +938,7 @@ static void flow_offload_work_del(struct
+ {
+ 	clear_bit(IPS_HW_OFFLOAD_BIT, &offload->flow->ct->status);
+ 	flow_offload_tuple_del(offload, FLOW_OFFLOAD_DIR_ORIGINAL);
+-	if (test_bit(NF_FLOW_HW_BIDIRECTIONAL, &offload->flow->flags))
+-		flow_offload_tuple_del(offload, FLOW_OFFLOAD_DIR_REPLY);
++	flow_offload_tuple_del(offload, FLOW_OFFLOAD_DIR_REPLY);
+ 	set_bit(NF_FLOW_HW_DEAD, &offload->flow->flags);
+ }
+ 
+@@ -960,11 +970,14 @@ static void flow_offload_work_stats(stru
+ 	struct flow_stats stats[FLOW_OFFLOAD_DIR_MAX] = {};
+ 	int ret;
+ 
+-	ret = flow_offload_tuple_stats(offload, FLOW_OFFLOAD_DIR_ORIGINAL, &stats[0]);
+-	if (ret)
+-		flow_offload_update_timeout(flow, stats[0].lastused);
++	if (flow_offload_has_orig(flow)) {
++		ret = flow_offload_tuple_stats(offload, FLOW_OFFLOAD_DIR_ORIGINAL,
++					 &stats[0]);
++		if (ret)
++			flow_offload_update_timeout(flow, stats[0].lastused);
++	}
+ 
+-	if (test_bit(NF_FLOW_HW_BIDIRECTIONAL, &offload->flow->flags)) {
++	if (flow_offload_has_reply(flow)) {
+ 		ret = flow_offload_tuple_stats(offload, FLOW_OFFLOAD_DIR_REPLY,
+ 					 &stats[1]);
+ 

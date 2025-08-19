@@ -1,0 +1,13 @@
+{
+	"user": "gkeepalive",
+	"publish": [],
+	"subscribe": [],
+	"send": [],
+	"listen": [],
+	"access": {
+		"network.interface.*": {
+			"methods": ["up", "down"]
+		}
+	}
+}
+

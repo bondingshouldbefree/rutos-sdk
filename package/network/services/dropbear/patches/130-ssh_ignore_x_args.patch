@@ -1,0 +1,11 @@
+--- a/src/cli-runopts.c
++++ b/src/cli-runopts.c
+@@ -317,6 +317,8 @@ void cli_getopts(int argc, char ** argv)
+ 					debug_trace++;
+ 					break;
+ #endif
++				case 'x':
++					break;
+ 				case 'F':
+ 				case 'e':
+ #if !DROPBEAR_USER_ALGO_LIST

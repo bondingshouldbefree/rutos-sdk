@@ -1,0 +1,395 @@
+#include "mt7621-teltonika-rutm-common.dtsi"
+
+/ {
+	compatible = "teltonika,rutm", "mediatek,mt7621-soc";
+	model = "Teltonika RUTM52";
+
+	ext_io {
+		compatible = "spi-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		gpio-sck = <&gpio 9 GPIO_ACTIVE_HIGH>;	// 74HC595 SRCLK (Serial Clock)
+		gpio-mosi = <&gpio 5 GPIO_ACTIVE_HIGH>;	// 74HC595 SER (Serial)
+		cs-gpios = <&gpio 11 GPIO_ACTIVE_HIGH>;	// 74HC595 RCLK (Register Clock)
+		num-chipselects = <1>;
+
+		shift_io: shift_io@0 {
+			compatible = "fairchild,74hc595";
+			reg = <0>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			registers-number = <4>;
+			spi-max-frequency = <10000000>;
+			enable-gpios = <&gpio 14 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		reset {
+			label = "reset";
+			gpios = <&gpio 10 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_modem_reset_1 {
+			gpio-export,name = "modem_reset";
+			gpio-export,output = <0>;
+			gpios = <&shift_io 19 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_power_1 {
+			gpio-export,name = "modem_power";
+			gpio-export,output = <1>; // tmp
+			gpios = <&shift_io 20 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_status_1 {
+			gpio-export,name = "modem_status";
+			gpio-export,input = <0>;
+			gpios = <&gpio 7 GPIO_ACTIVE_LOW>;
+		};
+
+		gpio_modem_reset_2 {
+			gpio-export,name = "modem2_reset";
+			gpio-export,output = <0>;
+			gpios = <&shift_io 11 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_power_2 {
+			gpio-export,name = "modem2_power";
+			gpio-export,output = <1>; // tmp
+			gpios = <&shift_io 12 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_status_2 {
+			gpio-export,name = "modem2_status";
+			gpio-export,input = <0>;
+			gpios = <&gpio 6 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_power {
+			label = "power";
+			gpios = <&gpio 0 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+			retain-state-shutdown;
+		};
+
+		led_gen_3 {
+			label = "mob_gen_3";
+			gpios = <&shift_io 23 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_4 {
+			label = "mob_gen_4";
+			gpios = <&shift_io 22 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_5 {
+			label = "mob_gen_5";
+			gpios = <&shift_io 21 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen2_3 {
+			label = "mob2_gen_3";
+			gpios = <&shift_io 15 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen2_4 {
+			label = "mob2_gen_4";
+			gpios = <&shift_io 14 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen2_5 {
+			label = "mob2_gen_5";
+			gpios = <&shift_io 13 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wifi_24 {
+			label = "wifi_gen_2";
+			gpios = <&gpio 13 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wifi_50 {
+			label = "wifi_gen_5";
+			gpios = <&gpio 17 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_sim1 {
+			label = "wan_sim_1";
+			gpios = <&shift_io 25 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_sim2 {
+			label = "wan_sim_2";
+			gpios = <&shift_io 26 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_eth {
+			label = "wan_eth_3";
+			gpios = <&shift_io 28 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_wifi {
+			label = "wan_wifi_4";
+			gpios = <&shift_io 27 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_ssid_1 {
+			label = "mob_ssid_1";
+			gpios = <&shift_io 18 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; // only
+		};
+
+		led_ssid_3 {
+			label = "mob_ssid_3";
+			gpios = <&shift_io 17 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; // only
+		};
+
+		led_ssid_5 {
+			label = "mob_ssid_5";
+			gpios = <&shift_io 16 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; //only
+		};
+
+		led_ssid2_1 {
+			label = "mob2_ssid_1";
+			gpios = <&shift_io 10 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; // only
+		};
+
+		led_ssid2_3 {
+			label = "mob2_ssid_3";
+			gpios = <&shift_io 9 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; // only
+		};
+
+		led_ssid2_5 {
+			label = "mob2_ssid_5";
+			gpios = <&shift_io 8 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; //only
+		};
+
+		led_eth_y5 {
+			label = "eth_y5";
+			gpios = <&gpio 15 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y4 {
+			label = "eth_y4";
+			gpios = <&shift_io 7 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_y3 {
+			label = "eth_y3";
+			gpios = <&shift_io 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y2 {
+			label = "eth_y2";
+			gpios = <&shift_io 5 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y1 {
+			label = "eth_y1";
+			gpios = <&shift_io 4 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g5 {
+			label = "eth_g5";
+			gpios = <&gpio 16 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g4 {
+			label = "eth_g4";
+			gpios = <&shift_io 3 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_g3 {
+			label = "eth_g3";
+			gpios = <&shift_io 2 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g2 {
+			label = "eth_g2";
+			gpios = <&shift_io 1 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g1 {
+			label = "eth_g1";
+			gpios = <&shift_io 0 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	tlt_gpios { // Modify according to wiki page "DTS syntax with Libgpiod changes"
+		gpiochip_info {
+			hw_0 {
+				hwver = <0>;
+				gpiochip_count = <4>;
+
+				gpiochip_0 = <32>; // Built-in
+				gpiochip_1 = <32>; // Built-in
+				gpiochip_2 = <32>; // Built-in
+				gpiochip_3 = <24>; // Shift Register
+			};
+		};
+
+		ioman {
+			GPIO_8 {
+				line_name = "GPIO_OUT_1";
+			};
+			GPIO_12 {
+				line_name = "GPIO_IN_1";
+				active_low;
+			};
+		};
+
+		misc {
+			GPIO_115 {
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_116 {
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_7 {
+				line_name = "GPIO_MODEM_STATUS_1";
+			};
+			GPIO_107 {
+				line_name = "GPIO_MODEM_RESET_2";
+			};
+			GPIO_108 {
+				line_name = "GPIO_MODEM_POWER_2";
+			};
+			GPIO_6 {
+				line_name = "GPIO_MODEM_STATUS_2";
+			};
+		};
+	};
+
+	reg_usb_vbus: regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "usb_vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	reg_3p3v: regulator-3p3v {
+		compatible = "regulator-fixed";
+		regulator-name = "fixed-3.3V";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+};
+
+&state_default {
+	gpio {
+		groups = "wdt", "jtag", "uart2", "uart3";
+		function = "gpio";
+	};
+};
+
+&switch0 {
+	ports {
+		port@0 {
+			status = "okay";
+			label = "lan1";
+		};
+
+		port@1 {
+			status = "okay";
+			label = "lan2";
+		};
+
+		port@2 {
+			status = "okay";
+			label = "lan3";
+		};
+
+		port@3 {
+			status = "okay";
+			label = "lan4";
+		};
+	};
+};
+
+&xhci {
+	vbus-supply = <&reg_usb_vbus>;
+	vusb33-supply = <&reg_3p3v>;
+
+
+	modem_usbhub_3: hub@1 {
+		compatible = "usb5e3,620";
+		reg = <1>;
+		reset-gpios = <&shift_io 29 GPIO_ACTIVE_LOW>;
+		peer-hub = <&modem_usbhub_2>;
+	};
+
+	modem_usbhub_2: hub@2 {
+		 compatible = "usb5e3,610";
+		 reg = <2>;
+		 reset-gpios = <&shift_io 29 GPIO_ACTIVE_LOW>;
+		 peer-hub = <&modem_usbhub_3>;
+	 };
+
+	/* 2.0 hub on port 1 */
+	modem_usbhub_2p_2: hub@3 {
+		compatible = "usb451,8027";
+		reg = <1>;
+		peer-hub = <&modem_usbhub_2p_3>;
+		reset-gpios = <&shift_io 29 GPIO_ACTIVE_LOW>;
+	};
+
+	/* 3.0 hub on port 2 */
+	modem_usbhub_2p_3: hub@4 {
+		compatible = "usb451,8025";
+		reg = <2>;
+		peer-hub = <&modem_usbhub_2p_2>;
+		reset-gpios = <&shift_io 29 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&i2c {
+	status = "okay";
+
+	tpm: tpm@0x2e {
+		compatible = "tpm_tis_i2c";
+		reg = <0x2e>;
+		status = "okay";
+	};
+};
+
+&sdhci {
+	status = "okay";
+};
+
+&mnfinfo {
+	simpin3 {
+		default = "";
+		sec;
+	};
+
+	simpin4 {
+		default = "";
+		sec;
+	};
+
+	sim_cfg {
+		default = "1111020_0000000_1211020_0000000";
+	};
+};

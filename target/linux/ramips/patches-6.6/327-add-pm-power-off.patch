@@ -1,0 +1,18 @@
+--- a/arch/mips/ralink/reset.c
++++ b/arch/mips/ralink/reset.c
+@@ -33,9 +33,15 @@ static void ralink_restart(char *command
+ 	unreachable();
+ }
+ 
++static void ralink_poweroff_do_restart(void)
++{
++	ralink_restart(NULL);
++}
++
+ static int __init mips_reboot_setup(void)
+ {
+ 	_machine_restart = ralink_restart;
++	pm_power_off = ralink_poweroff_do_restart;
+ 
+ 	return 0;
+ }

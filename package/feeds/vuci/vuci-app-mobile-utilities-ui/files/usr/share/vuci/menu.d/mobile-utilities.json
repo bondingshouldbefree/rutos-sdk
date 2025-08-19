@@ -1,0 +1,58 @@
+{
+  "services/mobile_utilities": {
+    "title": "Mobile Utilities",
+    "index": 30,
+    "depends": {
+      "board": {
+        "allOf": ["has_mobile"]
+      }
+    }
+  },
+  "services/mobile_utilities/sms_utilities": {
+    "view": "services/SMSUtilities",
+    "index": 1,
+    "title": "SMS Utilities",
+    "acls": ["services/mobile_utilities/sms_utilities"],
+    "main_page": true
+  },
+
+  "services/mobile_utilities/sms_gateway": {
+    "index": 2,
+    "title": "SMS Gateway"
+  },
+  "services/mobile_utilities/sms_gateway/auto_reply": {
+    "view": "services/AutoReply",
+    "title": "Auto Reply",
+    "index": 2,
+    "acls": ["services/mobile_utilities/sms_gateway/auto_reply"]
+  },
+  "services/mobile_utilities/sms_gateway/sms_forwarding": {
+    "view": "services/SMSForwarding",
+    "title": "SMS Forwarding",
+    "index": 3,
+    "acls": ["services/mobile_utilities/sms_gateway/sms_forwarding"]
+  },
+
+  "services/mobile_utilities/sms_messages": {
+    "index": 4,
+    "title": "Messages"
+  },
+  "services/mobile_utilities/sms_messages/read": {
+    "view": "services/ReadMessages",
+    "title": "Read Messages",
+    "index": 1,
+    "acls": ["services/mobile_utilities/sms_messages/read"]
+  },
+  "services/mobile_utilities/sms_messages/send": {
+    "view": "services/SendMessages",
+    "title": "Send Messages",
+    "index": 2,
+    "acls": ["services/mobile_utilities/sms_messages/send"]
+  },
+  "services/mobile_utilities/sms_messages/storage": {
+    "view": "services/Storage",
+    "title": "Storage",
+    "index": 3,
+    "acls": ["services/mobile_utilities/sms_messages/storage"]
+  }
+}

@@ -1,0 +1,210 @@
+Index: uhttpd-2021-03-21-15346de8/file.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/file.c
++++ uhttpd-2021-03-21-15346de8/file.c
+@@ -24,6 +24,7 @@
+ #define _BSD_SOURCE
+ #define _DARWIN_C_SOURCE
+ #define _XOPEN_SOURCE 700
++#define BASE_SECONDARY_PATH "/usr/local/www"
+ 
+ #include <sys/types.h>
+ #include <sys/dir.h>
+@@ -144,6 +145,7 @@ uh_path_lookup(struct client *cl, const
+ 	char *pathptr = NULL;
+ 	bool slash;
+ 	bool precompressed = 0;
++	bool docroot_removed = false;
+ 
+ 	int i = 0;
+ 	int len;
+@@ -176,7 +178,6 @@ uh_path_lookup(struct client *cl, const
+ 				return NULL;
+ 		}
+ 	}
+-
+ 	/* no query string, decode all of url */
+ 	else if (uh_urldecode(&uh_buf[docroot_len],
+ 			      sizeof(uh_buf) - docroot_len - 1,
+@@ -202,6 +203,14 @@ uh_path_lookup(struct client *cl, const
+ 		if (!exists)
+ 			continue;
+ 
++		char *first_docroot = strstr(path_phys, docroot);
++		if (first_docroot != NULL) {
++			char *second_docroot = strstr(first_docroot + docroot_len, docroot);
++			if (second_docroot != NULL) {
++				memmove(first_docroot, first_docroot + docroot_len, strlen(first_docroot + docroot_len) + 1);
++				docroot_removed = true;
++			}
++		}
+ 		/* test current path */
+ 		if (stat(path_phys, &p.stat) == 0) {
+ 			snprintf(path_info, sizeof(path_info), "%s", uh_buf + i);
+@@ -224,13 +233,12 @@ uh_path_lookup(struct client *cl, const
+ 
+ 		*pathptr = 0;
+ 	}
+-
+ 	/* check whether found path is within docroot */
+-	if (strncmp(path_phys, docroot, docroot_len) != 0 ||
+-	    (path_phys[docroot_len] != 0 &&
+-	     path_phys[docroot_len] != '/'))
++	if (!docroot_removed && (strncmp(path_phys, docroot, docroot_len) != 0 ||
++		(path_phys[docroot_len] != 0 &&
++		 path_phys[docroot_len] != '/'))) {
+ 		return NULL;
+-
++	}
+ 	/* is a regular file */
+ 	if (p.stat.st_mode & S_IFREG) {
+ 		p.root = docroot;
+@@ -609,9 +617,33 @@ static void uh_file_free(struct client *
+ 	close(cl->dispatch.file.fd);
+ }
+ 
++static bool uh_file_check_alternate_path(struct path_info *pi, char *alternate_phys) {
++	struct stat st;
++	if (stat(pi->phys, &st) == 0) {
++		return true;
++	}
++
++	snprintf(alternate_phys, PATH_MAX, "%s%s", BASE_SECONDARY_PATH, pi->phys);
++
++	if (stat(alternate_phys, &st) == 0) {
++		pi->phys = alternate_phys;
++		return true;
++	}
++	return false;
++}
++
+ static void uh_file_data(struct client *cl, struct path_info *pi, int fd)
+ {
+ 	static char name[PATH_MAX];
++	char alternate_phys[PATH_MAX];
++
++
++	if (!uh_file_check_alternate_path(pi, alternate_phys)) {
++		ustream_printf(cl->us, "\r\n");
++		uh_request_done(cl);
++		close(fd);
++		return;
++	}
+ 
+ 	/* test preconditions */
+ 	if (!cl->dispatch.no_cache &&
+@@ -619,7 +651,6 @@ static void uh_file_data(struct client *
+ 	     !uh_file_if_match(cl, &pi->stat) ||
+ 	     !uh_file_if_range(cl, &pi->stat) ||
+ 	     !uh_file_if_unmodified_since(cl, &pi->stat) ||
+-			 !uh_file_if_match(cl, &pi->stat) ||
+ 	     !uh_file_if_none_match(cl, &pi->stat))) {
+ 		ustream_printf(cl->us, "\r\n");
+ 		uh_request_done(cl);
+@@ -627,6 +658,7 @@ static void uh_file_data(struct client *
+ 		return;
+ 	}
+ 
++
+ 	/* write status */
+ 	uh_file_response_200(cl, &pi->stat);
+ 
+@@ -637,14 +669,12 @@ static void uh_file_data(struct client *
+ 		ustream_printf(cl->us, "Content-Encoding: gzip\r\n");
+ 	}
+ 
+-
+ 	ustream_printf(cl->us, "Content-Type: %s\r\n",
+ 			   uh_file_mime_lookup(name));
+ 
+ 	ustream_printf(cl->us, "Content-Length: %" PRIu64 "\r\n\r\n",
+ 			   pi->stat.st_size);
+ 
+-
+ 	/* send body */
+ 	if (cl->request.method == UH_HTTP_MSG_HEAD) {
+ 		uh_request_done(cl);
+@@ -873,13 +903,30 @@ static bool __handle_file_request(struct
+ 	struct blob_attr *tb[__HDR_MAX];
+ 	struct path_info *pi;
+ 	char *user, *pass, *auth;
+-
++	char *new_url = NULL;
+ 	pi = uh_path_lookup(cl, url);
+-	if (!pi)
+-		return false;
++	if (!pi) {
++		new_url = malloc(sizeof(BASE_SECONDARY_PATH) + strlen(url));
++		if (!new_url) {
++			return false;
++		}
++		strcpy(new_url, BASE_SECONDARY_PATH);
++		strcat(new_url, url);
++		pi = uh_path_lookup(cl, new_url);
++		if (!pi) {
++			free(new_url);
++			return false;
++		} else {
++			url = new_url;
++		}
++	}
+ 
+-	if (pi->redirected)
++	if (pi->redirected) {
++		if (new_url) free(new_url);
+ 		return true;
++	}
++
++	if (new_url) free(new_url);
+ 
+ 	blobmsg_parse(hdr_policy, __HDR_MAX, tb, blob_data(cl->hdr.head), blob_len(cl->hdr.head));
+ 
+Index: uhttpd-2021-03-21-15346de8/client.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/client.c
++++ uhttpd-2021-03-21-15346de8/client.c
+@@ -49,9 +49,19 @@ const char * const http_methods[] = {
+ static void add_security_headers(struct client *cl)
+ {
+ 	struct path_info *pi;
+-
++	const char *base_path = "/usr/local/www";
+ 	char *url = blobmsg_data(blob_data(cl->hdr.head));
+ 	pi = uh_path_lookup(cl, url);
++	if (!pi && strncmp(url, "/api", 4) != 0) {
++		char *new_url = malloc(strlen(base_path) + strlen(url) + 1);
++		if (!new_url) {
++			return;
++		}
++		strcpy(new_url, base_path);
++		strcat(new_url, url);
++		pi = uh_path_lookup(cl, new_url);
++		free(new_url);
++	}
+ 
+ 	if (cl->tls) {
+ 		ustream_printf(cl->us, "Expect-CT: max-age=86400\r\n");
+Index: uhttpd-2021-03-21-15346de8/cgi.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/cgi.c
++++ uhttpd-2021-03-21-15346de8/cgi.c
+@@ -113,8 +113,17 @@ static bool check_cgi_path(struct path_i
+ 	pi->ip = NULL;
+ 
+ 	if (conf.cgi_docroot_path)
+-		return uh_path_match(conf.cgi_docroot_path, pi->phys);
+-
++	{
++		bool match_result = uh_path_match(conf.cgi_docroot_path, pi->phys);
++		if (match_result) {
++			return true;
++		}
++		const char *additional_cgi_dir = "/usr/local/www/cgi-bin";
++		bool additional_match_result = uh_path_match(additional_cgi_dir, pi->phys);
++		if (additional_match_result) {
++			return true;
++		}
++	}
+ 	return false;
+ }
+ 

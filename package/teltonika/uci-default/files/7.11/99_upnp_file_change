@@ -1,0 +1,5 @@
+#!/bin/sh
+[ -f "/etc/config/firewall" ] || exit 0
+
+sed -i "s|/usr/share/miniupnpd/firewall.include|/usr/local/share/miniupnpd/firewall.include|g" /etc/config/firewall
+exit 0

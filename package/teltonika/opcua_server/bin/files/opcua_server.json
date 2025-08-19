@@ -1,0 +1,45 @@
+{
+	"user": "opcua_server",
+	"publish": [ "opcua-server" ],
+	"access": {
+		"tswconfig.stats": {
+			"methods": [
+				"get_stats"
+			]
+		},
+		"gpsd": {
+			"methods": [
+				"position"
+			]
+		},
+		"ioman.*": {
+			"methods": [
+				"status",
+				"location"
+			]
+		},
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_pin_state",
+				"get_temperature",
+				"get_sim_slot",
+				"get_signal_query",
+				"get_iccid",
+				"get_network_info",
+				"get_net_reg_stat_all",
+				"get_service_provider"
+			]
+		},
+		"network.interface": {
+			"methods": [
+				"dump"
+			]
+		}
+	}
+}

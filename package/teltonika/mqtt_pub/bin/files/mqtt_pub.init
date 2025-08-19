@@ -1,0 +1,31 @@
+#!/bin/sh /etc/rc.common
+
+APP=/usr/sbin/mqtt_pub
+USE_PROCD=1
+START=99
+STOP=01
+
+setup_config() {
+	config_load mqtt_pub
+	config_get enabled "mqtt_pub" enabled "0"
+}
+
+start_service() {
+	setup_config
+	if [ "$enabled" == "1" ]; then
+		if [ ! -x "$APP" ]; then
+			APP="/usr/local$APP"
+		fi
+
+		procd_open_instance
+		procd_set_param file /etc/config/mqtt_pub
+		procd_set_param command $APP
+		procd_set_param respawn ${respawn_threshold:-0} ${respawn_timeout:-60} ${respawn_retry:-0}
+		procd_set_param user mqtt_pub
+		procd_close_instance
+	fi
+}
+
+service_triggers() {
+	procd_add_reload_trigger "mqtt_pub"
+}

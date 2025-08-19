@@ -1,0 +1,12 @@
+{
+	"system/maintenance": {
+		"title": "Maintenance",
+		"index": 20
+	},
+	"system/maintenance/backup": {
+		"title": "Backup",
+		"index": 20,
+		"acls": [ "system/maintenance/backup" ],
+		"view": "system/Backup"
+	}
+}

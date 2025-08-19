@@ -1,0 +1,28 @@
+#!/bin/sh
+. /lib/functions.sh
+
+[ -f /etc/config/events_reporting ] || exit 0
+
+EVENTS_REPORTING_CFG="events_reporting"
+
+migrate_rule() {
+	local sec=$1
+	local action event
+
+	config_get event $sec event
+	config_get eventMark $sec eventMark
+
+	[ "$event" = "Web UI" ] || return
+
+	case $eventMark in
+		"Bad password attempt")		msg="Invalid password attempt for" ;;
+		"Password auth succeeded")	msg="successfully authenticated on HTTP" ;;
+		*) return ;;
+	esac
+	uci_set "$EVENTS_REPORTING_CFG" "$sec" "eventMark" "$msg"
+}
+
+config_load "$EVENTS_REPORTING_CFG"
+config_foreach migrate_rule rule
+
+uci commit "$EVENTS_REPORTING_CFG"

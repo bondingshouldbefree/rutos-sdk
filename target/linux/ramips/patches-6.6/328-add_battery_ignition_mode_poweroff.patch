@@ -1,0 +1,103 @@
+--- a/drivers/power/reset/gpio-poweroff.c
++++ b/drivers/power/reset/gpio-poweroff.c
+@@ -15,19 +15,61 @@
+ #include <linux/gpio/consumer.h>
+ #include <linux/mod_devicetable.h>
+ #include <linux/module.h>
++#include <linux/reboot.h>
+ 
+ #define DEFAULT_TIMEOUT_MS 3000
+ /*
+  * Hold configuration here, cannot be more than one instance of the driver
+  * since pm_power_off itself is global.
+  */
++struct device *device;
+ static struct gpio_desc *reset_gpio;
++static struct gpio_desc *battery_gpio;
++static struct gpio_desc *ignition_gpio;
+ static u32 timeout = DEFAULT_TIMEOUT_MS;
+ static u32 active_delay = 100;
+ static u32 inactive_delay = 100;
+ 
+ static void gpio_poweroff_do_poweroff(void)
+ {
++	int battery = 0;
++	int ignition = 0;
++
++	battery_gpio = gpiod_get_index(device, "battery", 0, GPIOD_IN);
++	if (IS_ERR(battery_gpio)) {
++		pr_err("Error creating battery GPIO \n");
++		return PTR_ERR(battery_gpio);
++	}
++
++	ignition_gpio = gpiod_get_index(device, "ignition", 0, GPIOD_IN);
++	if(IS_ERR(ignition_gpio)) {
++		pr_err("Error creating ignition GPIO");
++		return PTR_ERR(ignition_gpio);
++	}
++
++	gpiod_direction_input(battery_gpio);
++	gpiod_direction_input(ignition_gpio);
++
++	battery = gpiod_get_value_cansleep(battery_gpio);
++	ignition = gpiod_get_value_cansleep(ignition_gpio);
++
++	pr_info("Battery is %s level\n", battery == 1 ? "LOW" : "HIGH");
++	pr_info("Ignition is %s level\n", ignition == 1 ? "LOW" : "HIGH");
++
++	if (battery == 0 && ignition == 0) {
++		pr_info("Restarting device...\n");
++		machine_restart(NULL);
++	}
++
++	pr_info("Device shutdown\n");
++	reset_gpio = gpiod_get_index(device, "poweroff", 0, GPIOD_OUT_LOW);
++
++	if (IS_ERR(reset_gpio)) {
++		pr_err("Error creating reset GPIO\n");
++		return PTR_ERR(reset_gpio);
++	}
++
++	gpiod_direction_output(reset_gpio, 0);
+ 	BUG_ON(!reset_gpio);
+ 
+ 	/* drive it active, also inactive->active edge */
+@@ -51,14 +93,16 @@ static int gpio_poweroff_probe(struct pl
+ {
+ 	bool input = false;
+ 	enum gpiod_flags flags;
++	struct device_node *np = pdev->dev.of_node;
++	device = &pdev->dev;
+ 
+ 	/* If a pm_power_off function has already been added, leave it alone */
+-	if (pm_power_off != NULL) {
+-		dev_err(&pdev->dev,
+-			"%s: pm_power_off function already registered\n",
+-		       __func__);
+-		return -EBUSY;
+-	}
++	// if (pm_power_off != NULL) {
++	//	dev_err(&pdev->dev,
++	//		"%s: pm_power_off function already registered\n",
++	//	       __func__);
++	//	return -EBUSY;
++	// }
+ 
+ 	input = device_property_read_bool(&pdev->dev, "input");
+ 	if (input)
+@@ -71,11 +115,12 @@ static int gpio_poweroff_probe(struct pl
+ 				 &inactive_delay);
+ 	device_property_read_u32(&pdev->dev, "timeout-ms", &timeout);
+ 
+-	reset_gpio = devm_gpiod_get(&pdev->dev, NULL, flags);
+-	if (IS_ERR(reset_gpio))
+-		return PTR_ERR(reset_gpio);
++	// reset_gpio = devm_gpiod_get(&pdev->dev, NULL, flags);
++	// if (IS_ERR(reset_gpio))
++	//	return PTR_ERR(reset_gpio);
+ 
+ 	pm_power_off = &gpio_poweroff_do_poweroff;
++
+ 	return 0;
+ }
+ 

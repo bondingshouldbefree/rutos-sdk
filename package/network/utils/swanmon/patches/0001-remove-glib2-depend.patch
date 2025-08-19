@@ -1,0 +1,200 @@
+From 74f7ad79856cc8190c4809650652a283ffc9e54c Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Mon, 11 Nov 2024 15:35:24 +0200
+Subject: [PATCH 1/1] remove glib2 depend
+
+---
+ CMakeLists.txt |  9 ++++-----
+ format.c       | 31 +++++++++++++++----------------
+ swmon_queue.c  | 45 +++++++++++++++++++++++++++++++++++++++++++++
+ swmon_queue.h  |  9 +++++++++
+ 4 files changed, 73 insertions(+), 21 deletions(-)
+ create mode 100644 swmon_queue.c
+ create mode 100644 swmon_queue.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e9551ae..a4f6957 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -8,13 +8,12 @@ FIND_LIBRARY(DAVICI_LIBRARIES NAMES davici)
+ FIND_PATH(DAVICI_INCLUDE_DIRS davici.h)
+ 
+ FIND_PACKAGE(PkgConfig REQUIRED)
+-PKG_CHECK_MODULES(GLIB REQUIRED glib-2.0)
+ PKG_CHECK_MODULES(JSONC REQUIRED json-c)
+ 
+-INCLUDE_DIRECTORIES(${DAVICI_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS} ${JSONC_INCLUDE_DIRS})
+-LINK_DIRECTORIES(${GLIB_LIBRARY_DIRS} ${JSONC_LIBRARY_DIRS})
++INCLUDE_DIRECTORIES(${DAVICI_INCLUDE_DIRS} ${JSONC_INCLUDE_DIRS})
++LINK_DIRECTORIES(${JSONC_LIBRARY_DIRS})
+ 
+-ADD_EXECUTABLE(swanmon main.c query.c format.c)
+-TARGET_LINK_LIBRARIES(swanmon ${DAVICI_LIBRARIES} ${GLIB_LIBRARIES} ${JSONC_LIBRARIES})
++ADD_EXECUTABLE(swanmon main.c query.c format.c swmon_queue.c)
++TARGET_LINK_LIBRARIES(swanmon ${DAVICI_LIBRARIES} ${JSONC_LIBRARIES})
+ 
+ INSTALL(TARGETS swanmon RUNTIME DESTINATION /usr/sbin)
+diff --git a/format.c b/format.c
+index 830496f..f11fdba 100644
+--- a/format.c
++++ b/format.c
+@@ -11,9 +11,8 @@
+ #include <string.h>
+ #include <stdlib.h>
+ 
+-#include <glib.h>
+-
+ #include "format.h"
++#include "swmon_queue.h"
+ 
+ json_object *format_generate_response(bool is_event)
+ {
+@@ -78,7 +77,7 @@ void format_add_data(json_object *root, json_object *data)
+ 
+ json_object *format_parse_davici_response(struct davici_response *res)
+ {
+-	GQueue* queue = g_queue_new();
++	struct swmon_queue* queue = swmon_queue_create();
+ 	json_object *root = json_object_new_object();
+ 	json_object *current;
+ 	json_object *next;
+@@ -86,57 +85,57 @@ json_object *format_parse_davici_response(struct davici_response *res)
+ 	char buf[4096];
+ 	int ret;
+ 
+-	g_queue_push_head(queue, root);
++	swmon_queue_push_head(queue, root);
+ 
+ 	while (true) {
+ 		ret = davici_parse(res);
+ 		switch (ret) {
+ 			case DAVICI_END:
+-				g_queue_free(queue);
++				swmon_queue_free(queue);
+ 				return root;
+ 			case DAVICI_SECTION_START:
+-				current = g_queue_peek_head(queue);
++				current = swmon_queue_peek_head(queue);
+ 				next = json_object_new_object();
+ 				name = davici_get_name(res);
+ 				json_object_object_add(current, name, next);
+-				g_queue_push_head(queue, next);
++				swmon_queue_push_head(queue, next);
+ 				break;
+ 			case DAVICI_SECTION_END:
+-				g_queue_pop_head(queue);
++				swmon_queue_pop_head(queue);
+ 				break;
+ 			case DAVICI_KEY_VALUE:
+ 				ret = davici_get_value_str(res, buf, sizeof(buf));
+ 				if (ret < 0) {
+-					g_queue_free(queue);
++					swmon_queue_free(queue);
+ 					return root;
+ 				}
+ 
+ 				name = davici_get_name(res);
+-				current = g_queue_peek_head(queue);
++				current = swmon_queue_peek_head(queue);
+ 				json_object_object_add(current, name, json_object_new_string(buf));
+ 				break;
+ 			case DAVICI_LIST_START:
+-				current = g_queue_peek_head(queue);
++				current = swmon_queue_peek_head(queue);
+ 				next = json_object_new_array();
+ 				name = davici_get_name(res);
+ 				json_object_object_add(current, name, next);
+-				g_queue_push_head(queue, next);
++				swmon_queue_push_head(queue, next);
+ 				break;
+ 			case DAVICI_LIST_ITEM:
+ 				ret = davici_get_value_str(res, buf, sizeof(buf));
+ 				if (ret < 0) {
+-					g_queue_free(queue);
++					swmon_queue_free(queue);
+ 					return root;
+ 				}
+ 
+-				current = g_queue_peek_head(queue);
++				current = swmon_queue_peek_head(queue);
+ 				json_object_array_add(current, json_object_new_string(buf));
+ 				break;
+ 			case DAVICI_LIST_END:
+-				g_queue_pop_head(queue);
++				swmon_queue_pop_head(queue);
+ 				break;
+ 			default:
+-				g_queue_free(queue);
++				swmon_queue_free(queue);
+ 				return root;
+ 		}
+ 	}
+diff --git a/swmon_queue.c b/swmon_queue.c
+new file mode 100644
+index 0000000..5e03739
+--- /dev/null
++++ b/swmon_queue.c
+@@ -0,0 +1,45 @@
++#include "swmon_queue.h"
++#include <stdlib.h>
++
++struct swmon_queue_entry;
++struct swmon_queue_entry {
++	struct swmon_queue_entry* next;
++	void* data;
++};
++
++struct swmon_queue {
++	struct swmon_queue_entry* head;
++};
++
++struct swmon_queue* swmon_queue_create() {
++	return (struct swmon_queue*) calloc(1, sizeof(struct swmon_queue));
++}
++
++void swmon_queue_push_head(struct swmon_queue* q, void* data) {
++	struct swmon_queue_entry* new_head =
++		(struct swmon_queue_entry*) calloc(1, sizeof(struct swmon_queue_entry));
++	new_head->data = data;
++	if (q->head)
++		new_head->next = q->head;
++	q->head = new_head;
++}
++
++void swmon_queue_pop_head(struct swmon_queue* q) {
++	if (!q->head)
++		return;
++	struct swmon_queue_entry* last_head = q->head;
++	q->head = q->head->next;
++	free(last_head);
++}
++
++void* swmon_queue_peek_head(struct swmon_queue* q) {
++	if (q->head)
++		return q->head->data;
++	return NULL;
++}
++
++void swmon_queue_free(struct swmon_queue* q) {
++	while(q->head)
++		swmon_queue_pop_head(q);
++	free(q);
++}
+diff --git a/swmon_queue.h b/swmon_queue.h
+new file mode 100644
+index 0000000..9750a59
+--- /dev/null
++++ b/swmon_queue.h
+@@ -0,0 +1,9 @@
++#ifndef _H_SWMON_QUEUE
++#define _H_SWMON_QUEUE
++struct swmon_queue;
++void swmon_queue_push_head(struct swmon_queue* q, void* data);
++void swmon_queue_pop_head(struct swmon_queue* q);
++void swmon_queue_free(struct swmon_queue* q);
++void* swmon_queue_peek_head(struct swmon_queue* q);
++struct swmon_queue* swmon_queue_create();
++#endif
+-- 
+2.47.0
+

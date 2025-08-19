@@ -1,0 +1,98 @@
+From: Breno Leitao <leitao@debian.org>
+To: kuba@kernel.org, davem@davemloft.net, pabeni@redhat.com,
+	edumazet@google.com, "Bjørn Mork" <bjorn@mork.no>,
+	"Oliver Neukum" <oneukum@suse.com>
+Cc: linux-kernel@vger.kernel.org, netdev@vger.kernel.org,
+	linux-usb@vger.kernel.org (open list:USB NETWORKING DRIVERS)
+Subject: [PATCH net-next 1/2] net: usb: qmi_wwan: Leverage core stats allocator
+Date: Tue,  9 Apr 2024 06:33:05 -0700	[thread overview]
+Message-ID: <20240409133307.2058099-1-leitao@debian.org> (raw)
+
+With commit 34d21de99cea9 ("net: Move {l,t,d}stats allocation to core and
+convert veth & vrf"), stats allocation could be done on net core
+instead of in this driver.
+
+With this new approach, the driver doesn't have to bother with error
+handling (allocation failure checking, making sure free happens in the
+right spot, etc). This is core responsibility now.
+
+Remove the allocation in the qmi_wwan driver and leverage the network
+core allocation instead.
+
+Signed-off-by: Breno Leitao <leitao@debian.org>
+---
+PS: This was compiled-tested only due to lack of hardware.
+---
+ drivers/net/usb/qmi_wwan.c | 8 +-------
+ drivers/net/usb/usbnet.c   | 1 +
+ 2 files changed, 2 insertions(+), 7 deletions(-)
+
+--- a/drivers/net/usb/qmi_wwan.c
++++ b/drivers/net/usb/qmi_wwan.c
+@@ -133,6 +133,7 @@ static void qmimux_setup(struct net_devi
+ 	dev->flags           = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
+ 	dev->netdev_ops      = &qmimux_netdev_ops;
+ 	dev->mtu             = 1500;
++	dev->pcpu_stat_type  = NETDEV_PCPU_STAT_TSTATS;
+ 	dev->needs_free_netdev = true;
+ }
+ 
+@@ -258,12 +259,6 @@ static int qmimux_register_device(struct
+ 	priv->mux_id = mux_id;
+ 	priv->real_dev = real_dev;
+ 
+-	new_dev->tstats = netdev_alloc_pcpu_stats(struct pcpu_sw_netstats);
+-	if (!new_dev->tstats) {
+-		err = -ENOBUFS;
+-		goto out_free_newdev;
+-	}
+-
+ 	new_dev->sysfs_groups[0] = &qmi_wwan_sysfs_qmimux_attr_group;
+ 
+ 	err = register_netdevice(new_dev);
+@@ -296,7 +291,6 @@ static void qmimux_unregister_device(str
+ 	struct qmimux_priv *priv = netdev_priv(dev);
+ 	struct net_device *real_dev = priv->real_dev;
+ 
+-	free_percpu(dev->tstats);
+ 	netdev_upper_dev_unlink(real_dev, dev);
+ 	unregister_netdevice_queue(dev, head);
+ 
+--- a/drivers/net/usb/usbnet.c
++++ b/drivers/net/usb/usbnet.c
+@@ -1660,7 +1660,6 @@ void usbnet_disconnect (struct usb_inter
+ 	usb_free_urb(dev->interrupt);
+ 	kfree(dev->padding_pkt);
+ 
+-	free_percpu(net->tstats);
+ 	free_netdev(net);
+ }
+ EXPORT_SYMBOL_GPL(usbnet_disconnect);
+@@ -1737,10 +1736,6 @@ usbnet_probe (struct usb_interface *udev
+ 	dev->rx_speed = SPEED_UNSET;
+ 	dev->tx_speed = SPEED_UNSET;
+ 
+-	net->tstats = netdev_alloc_pcpu_stats(struct pcpu_sw_netstats);
+-	if (!net->tstats)
+-		goto out0;
+-
+ 	dev->msg_enable = netif_msg_init (msg_level, NETIF_MSG_DRV
+ 				| NETIF_MSG_PROBE | NETIF_MSG_LINK);
+ 	init_waitqueue_head(&dev->wait);
+@@ -1765,6 +1760,7 @@ usbnet_probe (struct usb_interface *udev
+ 	dev->hard_mtu = net->mtu + net->hard_header_len;
+ 	net->min_mtu = 0;
+ 	net->max_mtu = ETH_MAX_MTU;
++	net->pcpu_stat_type = NETDEV_PCPU_STAT_TSTATS;
+ 
+ 	net->netdev_ops = &usbnet_netdev_ops;
+ 	net->watchdog_timeo = TX_TIMEOUT_JIFFIES;
+@@ -1887,8 +1883,6 @@ out1:
+ 	usbnet_mark_going_away(dev);
+ 	cancel_work_sync(&dev->kevent);
+ 	del_timer_sync(&dev->delay);
+-	free_percpu(net->tstats);
+-out0:
+ 	free_netdev(net);
+ out:
+ 	return status;

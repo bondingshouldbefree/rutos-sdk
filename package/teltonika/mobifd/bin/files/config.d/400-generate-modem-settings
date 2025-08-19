@@ -1,0 +1,21 @@
+#!/bin/sh
+[ -f '/lib/functions/modem.sh' ] || return 0
+
+generate_settings_sections(){
+	. /lib/functions/modem.sh
+
+	if json_is_a modems array; then
+		local id modems modem
+		json_get_keys modems modems
+		json_select modems
+		for modem in $modems; do
+			json_select "$modem"
+			json_get_vars id
+			json_select ..
+			add_modem_settings_config "$id"
+		done
+		json_select ..
+	fi
+}
+
+conf_register_hook generate_settings_sections

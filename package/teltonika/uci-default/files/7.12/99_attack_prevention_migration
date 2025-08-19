@@ -1,0 +1,46 @@
+#!/bin/sh
+
+. /lib/functions.sh
+CONFIG="firewall"
+
+update_port_scan() {
+	local section="$1"
+
+	config_get "null_flags" "pscan" "null_flags" ""
+	config_get "syn_fin" "pscan" "syn_fin" ""
+	config_get "x_max" "pscan" "x_max" ""
+	config_get "syn_rst" "pscan" "syn_rst" ""
+	config_get "nmap_fin" "pscan" "nmap_fin" ""
+
+
+	[ -n "$null_flags" ] && uci_set "$CONFIG" "$section" "null_flags" "$null_flags" && uci_remove "$CONFIG" "pscan" "null_flags"
+	[ -n "$syn_fin" ] && uci_set "$CONFIG" "$section" "syn_fin" "$syn_fin" && uci_remove "$CONFIG" "pscan" "syn_fin"
+	[ -n "$x_max" ] && uci_set "$CONFIG" "$section" "x_max" "$x_max" && uci_remove "$CONFIG" "pscan" "x_max"
+	[ -n "$syn_rst" ] && uci_set "$CONFIG" "$section" "syn_rst" "$syn_rst" && uci_remove "$CONFIG" "pscan" "syn_rst"
+	[ -n "$nmap_fin" ] && uci_set "$CONFIG" "$section" "nmap_fin" "$nmap_fin" && uci_remove "$CONFIG" "pscan" "nmap_fin"
+}
+
+update_port_scan_zone(){
+	local section="$1"
+
+	config_get "name" "$section" "name" ""
+
+	[ "$name" != "wan" ] && return
+
+	config_get "hitcount" "pscan" "hitcount" ""
+	config_get "seconds" "pscan" "seconds" ""
+	config_get "port_scan" "pscan" "port_scan" ""
+
+	[ -n "$hitcount" ] && uci_set "$CONFIG" "$section" "hitcount" "$hitcount" && uci_remove "$CONFIG" "pscan" "hitcount"
+	[ -n "$seconds" ] && uci_set "$CONFIG" "$section" "seconds" "$seconds" && uci_remove "$CONFIG" "pscan" "seconds"
+	[ -n "$port_scan" ] && uci_set "$CONFIG" "$section" "port_scan" "$port_scan" && uci_remove "$CONFIG" "pscan" "port_scan"
+}
+
+config_load "$CONFIG"
+
+config_foreach  update_port_scan "defaults"
+config_foreach  update_port_scan_zone "zone"
+
+uci_commit firewall
+
+exit 0

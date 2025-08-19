@@ -1,0 +1,2 @@
+/etc/frr/              :frr          -       r
+/etc/frr/zebra.conf    zebra:frr     -       r

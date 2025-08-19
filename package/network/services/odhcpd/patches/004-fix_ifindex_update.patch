@@ -1,0 +1,12 @@
+--- a/src/config.c
++++ b/src/config.c
+@@ -500,8 +500,7 @@ int config_parse_interface(void *data, s
+ 		if (!iface->ifname)
+ 			goto err;
+ 
+-		if (!iface->ifindex &&
+-		    (iface->ifindex = if_nametoindex(iface->ifname)) <= 0)
++		if ((iface->ifindex = if_nametoindex(iface->ifname)) <= 0)
+ 			goto err;
+ 	}
+ 

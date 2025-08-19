@@ -1,0 +1,12 @@
+--- a/interface.c
++++ b/interface.c
+@@ -1438,6 +1438,9 @@ interface_update(struct vlist_tree *tree
+ 		proto_init_interface(if_new, if_new->config);
+ 		interface_claim_device(if_new);
+ 		netifd_ubus_add_interface(if_new);
++
++		if (if_new->assignment_length >= 48 && if_new->assignment_length <= 64)
++			interface_refresh_assignments(true);
+ 	}
+ }
+ 

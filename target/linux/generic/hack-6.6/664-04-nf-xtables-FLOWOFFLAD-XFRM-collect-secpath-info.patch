@@ -1,0 +1,35 @@
+net: netfilter: xtables: FLOWOFFLOAD: collect secpath info
+
+xtables integration. Since this is run on a FORWARD hook, that means
+that the packet has already passed the forward SP checks and should be
+allowed in the fastpath.
+
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -15,6 +15,7 @@
+ #include <net/netfilter/nf_conntrack_extend.h>
+ #include <net/netfilter/nf_conntrack_helper.h>
+ #include <net/netfilter/nf_flow_table.h>
++#include <net/netfilter/nf_flow_table_xfrm.h>
+ 
+ struct xt_flowoffload_hook {
+ 	struct hlist_node list;
+@@ -236,7 +237,7 @@ xt_flowoffload_hook_work(struct work_str
+ static bool
+ xt_flowoffload_skip(struct sk_buff *skb, int family)
+ {
+-	if (skb_sec_path(skb))
++	if (!nf_flow_xfrm_tuple_can_disect(skb))
+ 		return true;
+ 
+ 	if (family == NFPROTO_IPV4) {
+@@ -484,6 +485,9 @@ xt_flowoffload_route(struct sk_buff *skb
+ 	int ret;
+ #endif
+ 
++	if (nf_flow_xfrm_tuple_disect(skb, &route->in.xfrm_tuple))
++		return -1;
++
+ 	memset(&fl, 0, sizeof(fl));
+ 	switch (xt_family(par)) {
+ 	case NFPROTO_IPV4:

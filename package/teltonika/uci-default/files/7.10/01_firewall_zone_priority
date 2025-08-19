@@ -1,0 +1,16 @@
+#!/bin/sh
+
+[ -n "$(uci -q get "firewall.@rule[0].priority")" ] && exit 0
+
+. /lib/functions.sh
+
+priority="1"
+
+add_priority() {
+	uci_set "firewall" "$1" "priority" "$priority"
+	priority=$((priority + 1))
+}
+
+config_load "firewall"
+config_foreach add_priority "rule"
+uci_commit "firewall"

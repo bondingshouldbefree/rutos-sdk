@@ -1,0 +1,15 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+if [ "$(uci_get "gps.gpsd.glonass_sup")" = "7" ]; then
+	uci_set "gps" "gpsd" "glonass_sup" "1"
+fi
+if [ "$(uci_get "gps.gpsd.beidou_sup")" = "3" ]; then
+	uci_set "gps" "gpsd" "beidou_sup" "1"
+fi
+
+uci_commit "gps"
+
+exit 0
+

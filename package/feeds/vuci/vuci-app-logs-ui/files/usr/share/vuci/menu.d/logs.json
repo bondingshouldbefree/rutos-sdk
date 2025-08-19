@@ -1,0 +1,12 @@
+{
+	"system/maintenance": {
+		"title": "Maintenance",
+		"index": 20
+	},
+	"system/maintenance/eventlog": {
+		"title": "Events Log",
+		"acls": ["system/maintenance/eventlog/all"],
+		"view": "status/EventsLog",
+		"index": 40
+	}
+}

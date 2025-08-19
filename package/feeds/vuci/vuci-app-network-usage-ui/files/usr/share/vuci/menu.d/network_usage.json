@@ -1,0 +1,8 @@
+{
+  "status/network/network_usage": {
+    "title": "Network Usage",
+    "index": 70,
+    "view": "status/NetworkUsage",
+    "acls": [ "status/network/network_usage" ]
+  }
+}

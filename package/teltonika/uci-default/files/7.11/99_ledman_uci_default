@@ -1,0 +1,19 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+set_ledman_config() {
+	local en_val
+
+	en_val=$(uci_get system ledman enabled 2>/dev/null)
+	if [ -z "$en_val" ] || [ "$en_val" -ne 0 ]; then
+		uci -q set "system.ledman=ledman"
+		uci_set "system" "ledman" "enabled" "1"
+		uci_commit "system.ledman"
+	fi
+}
+
+# sets ledman default delman configuration to /etc/config/system
+set_ledman_config
+
+exit 0

@@ -1,0 +1,23 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+rm_duplicates() {
+	local value="$1"
+	local sid="$2"
+	uci_remove_list "firewall" "$sid" proto "$value"
+	uci_add_list "firewall" "$sid" proto "$value"
+}
+
+fix_rule() {
+	local sid="$1"
+	config_get vpn_type "$sid" "vpn_type" ""
+	config_get proto "$sid" "proto" ""
+	if [ "$vpn_type" = "openvpn" ] && [ -n "$proto" ]; then
+		config_list_foreach "$sid" proto rm_duplicates "$sid"
+	fi
+}
+
+config_load "firewall"
+config_foreach fix_rule "rule"
+uci_commit "firewall"

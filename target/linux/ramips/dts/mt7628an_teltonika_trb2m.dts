@@ -1,0 +1,446 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+/dts-v1/;
+
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/gpio/gpio.h>
+#include "mt7628an.dtsi"
+#include "platform_name.dtsi"
+
+/ {
+	compatible = "teltonika,trb2m", "mediatek,mt7628an-soc";
+	model = "Teltonika TRB2M";
+
+	chosen {
+		bootargs = "console=ttyS0,115200 root=/dev/mtdblock4";
+	};
+
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_modem_status {
+			gpio-export,name = "modem_status";
+			gpios = <&gpio 16 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_reset {
+			gpio-export,name = "modem_reset";
+			gpio-export,output = <0>;
+			gpios = <&gpio 2 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_power {
+			gpio-export,name = "modem_power";
+			gpio-export,output = <0>;
+			gpios = <&gpio 3 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_boot {
+			gpio-export,name = "modem_boot";
+			gpio-export,output = <0>;
+			gpios = <&gpio 42 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB236", "TRB247";
+		};
+
+		gpio_sim_select {
+			gpio-export,name = "sim_sel";
+			gpio-export,output = <0>;
+			gpios = <&gpio 0 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_sim_select_2 {
+			gpio-export,name = "sim_sel2";
+			gpio-export,output = <0>;
+			gpios = <&gpio 1 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB236", "TRB247";
+		};
+
+		gpio_tpm_reset {
+			gpio-export,name = "tpm_reset";
+			gpio-export,output = <1>;
+			gpios = <&gpio 36 GPIO_ACTIVE_HIGH>; // active low, but doesn't work with gpio-export,output = <0> correctly on startup
+		};
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		reset {
+			label = "reset";
+			gpios = <&gpio 22 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+			debounce-interval = <60>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		eth_led {
+			label = "eth_led";
+			gpios = <&gpio 43 GPIO_ACTIVE_LOW>;
+		};
+
+		led_power {
+			label = "power";
+			gpios = <&gpio 29 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+			retain-state-shutdown;
+		};
+
+		led_gen_2 {
+			label = "mob_gen_2";
+			gpios = <&gpio 11 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB246", "TRB256";
+		};
+
+		led_gen_3@1 {
+			label = "mob_gen_3";
+			gpios = <&gpio 1 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB246", "TRB256";
+		};
+
+		led_gen_3 {
+			label = "mob_gen_3";
+			gpios = <&gpio 14 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB236";
+		};
+
+		led_gen_4@2 {
+			label = "mob_gen_4";
+			gpios = <&gpio 28 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB236";
+		};
+
+		led_gen_4@1 {
+			label = "mob_gen_4";
+			gpios = <&gpio 42 GPIO_ACTIVE_LOW>;
+			tlt-mnf,device = "TRB246", "TRB256";
+		};
+
+		led_gen_4 {
+			label = "mob_gen_4";
+			gpios = <&gpio 14 GPIO_ACTIVE_HIGH>; // NB1 LED for EG915Q modem
+			tlt-mnf,device = "TRB247";
+		};
+
+		// led_gen_2 {
+		// 	label = "mob_gen_2";
+		// 	gpios = <&gpio 15 GPIO_ACTIVE_HIGH>;
+		// 	tlt-mnf,device = "TRB247";
+		// };
+
+		// led_gen_nb1 {
+		// 	label = "mob_gen_nb1";
+		// 	gpios = <&gpio 14 GPIO_ACTIVE_HIGH>;
+		// 	tlt-mnf,device = "TRB247";
+		// };
+
+		// led_gen_m1 {
+		// 	label = "mob_gen_m1";
+		// 	gpios = <&gpio 28 GPIO_ACTIVE_HIGH>;
+		// 	tlt-mnf,device = "TRB247";
+		// };
+
+		led_ssid_1@1 {
+			label = "mob_ssid_1";
+			gpios = <&gpio 39 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB246", "TRB256";
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_1 {
+			label = "mob_ssid_1";
+			gpios = <&gpio 26 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB236", "TRB247";
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_3@1 {
+			label = "mob_ssid_3";
+			gpios = <&gpio 40 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB246", "TRB256";
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_3 {
+			label = "mob_ssid_3";
+			gpios = <&gpio 27 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB236", "TRB247";
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_5@1 {
+			label = "mob_ssid_5";
+			gpios = <&gpio 41 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB246", "TRB256";
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_5 {
+			label = "mob_ssid_5";
+			gpios = <&gpio 24 GPIO_ACTIVE_HIGH>;
+			tlt-mnf,device = "TRB236", "TRB247";
+			linux,default-trigger = "timer";
+		};
+	};
+
+	tlt_gpios { // Modify according to wiki page "DTS syntax with Libgpiod changes"
+		gpiochip_info {
+			hw_0 {
+				hwver = <0>;
+				gpiochip_count = <3>;
+
+				gpiochip_0 = <32>; // Built-in
+				gpiochip_1 = <32>; // Built-in
+				gpiochip_2 = <32>; // Built-in
+			};
+		};
+
+		ioman {
+			GPIO_24 {
+				line_name = "GPIO_IN_1";
+				compatible_model = "TRB246", "TRB256";
+
+				active_low;
+			};
+			GPIO_44 {
+				line_name = "GPIO_OUT_1";
+			};
+			GPIO_27 {
+				line_name = "GPIO_IN_2";
+				compatible_model = "TRB246", "TRB256";
+
+				active_low;
+			};
+			GPIO_38 {
+				line_name = "GPIO_OUT_2";
+			};
+			GPIO_14 {
+				line_name = "GPIO_IN_3";
+				compatible_model = "TRB246", "TRB256";
+
+				active_low;
+			};
+			GPIO_37 {
+				line_name = "GPIO_OUT_3";
+			};
+			GPIO_41 {
+				line_name = "GPIO_IN_1";
+				compatible_model = "TRB236", "TRB247";
+			};
+			GPIO_39 {
+				line_name = "GPIO_IN_2";
+				compatible_model = "TRB236", "TRB247";
+			};
+			GPIO_40 {
+				line_name = "GPIO_IN_3";
+				compatible_model = "TRB236", "TRB247";
+			};
+		};
+
+		misc {
+			GPIO_2 {
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_3 {
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_16 {
+				line_name = "GPIO_MODEM_STATUS_1";
+			};
+			GPIO_0 {
+				line_name = "GPIO_SIM_SELECT";
+			};
+			GPIO_1 {
+				line_name = "GPIO_SIM_SELECT_2";
+				compatible_model = "TRB236", "TRB247";
+			};
+			GPIO_4 {
+				line_name = "GPIO_RS485_D_EN";
+				compatible_model = "TRB246", "TRB256";
+			};
+			GPIO_5 {
+				line_name = "GPIO_RS485_RX_EN";
+				compatible_model = "TRB246", "TRB256";
+				mode = "output-low";
+			};
+			GPIO_11 {
+				line_name = "GPIO_RS485_RX_EN";
+				compatible_model = "TRB236", "TRB247";
+				mode = "output-low";
+			};
+			GPIO_6 {
+				line_name = "GPIO_RS485_D_EN";
+				compatible_model = "TRB236", "TRB247";
+			};
+			GPIO_42 {
+				line_name = "GPIO_MODEM_BOOT";
+				compatible_model = "TRB236", "TRB247";
+			};
+		};
+	};
+
+	ioman {
+		layout@0 {
+			io@0 { // 16pin #2
+				label = "dio0";
+				block_type = BLOCK_16PIN;
+				block_pin = "2";
+				default_direction = "out";
+				gpio_in = "GPIO_IN_1";
+				gpio_out = "GPIO_OUT_1";
+				io_param = "g1";
+			};
+			io@1 { // 16pin #3
+				label = "dio1";
+				block_type = BLOCK_16PIN;
+				block_pin = "3";
+				default_direction = "in";
+				gpio_in = "GPIO_IN_2";
+				gpio_out = "GPIO_OUT_2";
+				io_param = "g2";
+			};
+			io@2 { // 16pin #4
+				label = "dio2";
+				block_type = BLOCK_16PIN;
+				block_pin = "4";
+				default_direction = "in";
+				gpio_in = "GPIO_IN_3";
+				gpio_out = "GPIO_OUT_3";
+				io_param = "g3";
+			};
+			adc@0 {
+				label = "adc0";
+				block_type = BLOCK_16PIN;
+				block_pin = "11";
+				tolerance = "0.01";
+				io_param = "g0";
+
+				adc_cof@0 {
+					devices =  "TRB236";
+					hwver = "1,99";
+					port = "0";
+					multiplier = "0.054209919"; // 47/867
+				};
+				adc_cof@1 {
+					devices =  "TRB246";
+					hwver = "1,99";
+					port = "1";
+					multiplier = "0.01098310771717256256";
+				};
+				adc_cof@2 {
+					devices = "TRB256";
+					hwver = "1,99";
+					port = "0";
+					multiplier = "0.02242152463556804";
+				};
+				adc_cof@3 {
+					devices = "TRB247";
+					hwver = "5,99";
+					port = "0";
+					multiplier = "0.03462"; // value modified after testing, original val. K=3/103
+				};
+			};
+		};
+	};
+};
+
+&mnfinfo {
+	simpin1 {
+		default = "";
+		sec;
+	};
+
+	simpin2 {
+		default = "";
+		sec;
+	};
+
+	sim_cfg {
+		default = "2111000_2112000";
+		// esim = "0120000"
+	};
+
+};
+
+&state_default {
+	gpio {
+		groups = "i2s", "p4led_an", "p3led_an", "p2led_an", "p1led_an", "p0led_an", "gpio", "wled_an", "perst", "refclk", "wdt", "spi cs1", "i2c";
+		function = "gpio";
+	};
+};
+
+&spi0 {
+	status = "okay";
+
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <10000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			boot: partition@0 {
+				label = "u-boot";
+				reg = <0x0 0x20000>;
+				read-only;
+			};
+
+			config: partition@20000 {
+				compatible = "nvmem-cells";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				label = "config";
+				reg = <0x020000 0x010000>;
+				read-only;
+
+				macaddr_config_0: macaddr@0 {
+					reg = <0x0 0x6>;
+				};
+			};
+
+			partition@30000 {
+				compatible = "denx,uimage";
+				label = "firmware";
+				reg = <0x030000 0xf40000>;
+			};
+
+			partition@f70000 {
+				label = "event-log";
+				reg = <0xf70000 0x90000>;
+			};
+		};
+	};
+};
+
+&ethernet {
+	nvmem-cells = <&macaddr_config_0>;
+	nvmem-cell-names = "mac-address";
+};
+
+&uart1 {
+	status = "okay";
+	linux,rs485-enabled-at-boot-time;
+	rs485-rts-delay = <0 0>;
+	rs485-rx-during-tx;
+};
+
+&uart2 {
+	status = "okay";
+};
+
+&i2c {
+	tlt-mnf,device = "TRB247";
+	status = "okay";
+
+	tpm@2e {
+		compatible = "infineon,slb9673";
+		reg = <0x2e>;
+		status = "okay";
+	};
+};

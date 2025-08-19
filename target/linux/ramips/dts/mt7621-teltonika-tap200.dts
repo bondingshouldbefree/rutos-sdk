@@ -1,0 +1,108 @@
+#include "mt7621-teltonika-common.dtsi"
+#include "mt7621-teltonika-tap200-flash.dtsi"
+
+/ {
+	compatible = "teltonika,tap200", "mediatek,mt7621-soc";
+	model = "Teltonika TAP200";
+
+	chosen {
+		bootargs = "console=ttyS0,115200 rootfstype=squashfs,jffs2 root=/dev/mtdblock6";
+	};
+
+	ext_io {
+		compatible = "spi-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		reset {
+			label = "reset";
+			gpios = <&gpio 10 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		power_led {
+			label = "power";
+			linux,default-trigger = "timer";
+			gpios = <&gpio 15 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_y4 {
+			label = "eth_y4";
+			gpios = <&gpio 8 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g4 {
+			label = "eth_g4";
+			gpios = <&gpio 7 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	tlt_gpios { // Modify according to wiki page "DTS syntax with Libgpiod changes"
+		gpiochip_info {
+			hw_0 {
+				hwver = <0>;
+				gpiochip_count = <3>;
+
+				gpiochip_0 = <32>; // Built-in
+				gpiochip_1 = <32>; // Built-in
+				gpiochip_2 = <32>; // Built-in
+			};
+		};
+	};
+};
+
+&mnfinfo {
+	blver {
+		reg = <&boot 0x40000 0xa>;
+	};
+};
+
+&spi0 {
+	flash@0 {
+		partitions {
+			partition@50000 {
+				read-only;
+			};
+
+			partition@60000 {
+				read-only;
+			};
+		};
+	};
+};
+
+&state_default {
+	gpio {
+		groups = "wdt", "jtag", "sdhci", "uart2", "uart3";
+		function = "gpio";
+	};
+};
+
+&gmac1 {
+	status = "okay";
+	label = "eth1";
+	phy-handle = <&ethphy4>;
+	nvmem-cells = <&macaddr_config_0 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ethphy4 {
+	/delete-property/ interrupts;
+};
+
+&mnfinfo {
+	/delete-node/ simpin1;
+	/delete-node/ simpin2;
+
+	sim_count {
+		default =  "0";
+	};
+};

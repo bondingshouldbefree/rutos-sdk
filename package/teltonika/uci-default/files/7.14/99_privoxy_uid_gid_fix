@@ -1,0 +1,17 @@
+#!/bin/sh
+
+fix_ownership=0
+
+if grep -q "^privoxy:x:8118:8118:" /etc/passwd; then
+	sed -i '/^privoxy:/ s|:8118:8118:|:543:543:|' /etc/passwd
+	fix_ownership=1
+fi
+
+if grep -q "^privoxy:x:8118:" /etc/group; then
+	sed -i '/^privoxy:/ s|:8118:|:543:|' /etc/group
+	fix_ownership=1
+fi
+
+[ $fix_ownership -eq 1 ] && chown -R privoxy:privoxy /var/run/privoxy
+
+exit 0

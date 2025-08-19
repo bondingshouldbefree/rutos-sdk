@@ -1,0 +1,126 @@
+#!/bin/sh
+
+# hook registry to store registered hooks
+HOOK_REGISTRY=""
+
+# board.json file path
+BOARD_JSON="/etc/board.json"
+
+debug_log() {
+    [ -n "$DEBUG" ] && [ "$DEBUG" -eq 1 ] && echo "[config.d]::[DEBUG] $1"
+}
+
+info_log() {
+    echo "[config.d]::[INFO] $1"
+}
+
+# function to register an init hook
+conf_register_init_hook() {
+    HOOK_REGISTRY="$HOOK_REGISTRY pre_init:$1"
+}
+
+# function to register an init hook with the required file
+# the hook will only run if the file does not exist
+conf_file_register_init_hook() {
+    HOOK_REGISTRY="$HOOK_REGISTRY pre_init:$1:need:$2"
+}
+
+# function to register a post init hook
+conf_register_hook() {
+    HOOK_REGISTRY="$HOOK_REGISTRY post_init:$1"
+}
+
+# function to register a post init hook with the required file
+# the hook will only run if the file does not exist
+conf_file_register_hook() {
+    HOOK_REGISTRY="$HOOK_REGISTRY post_init:$1:need:$2"
+}
+
+run_hook() {
+    local hook_name="$1"
+
+    debug_log "Executing $hook_name hooks"
+
+    echo "$HOOK_REGISTRY" | tr ' ' '\n' | grep "^$hook_name:" |
+        while IFS=: read -r _ hook_func hook_opt hook_opt_arg; do
+
+        # skip invalid functions
+        if ! type "$hook_func" >/dev/null 2>&1; then
+            debug_log "Skipped $hook_name hook: $hook_func (not a valid function)"
+            continue
+        fi
+
+        # check if hook needs a file and handle the missing file
+        if [ "$hook_opt" = "need" ]; then
+            if [ -z "$hook_opt_arg" ]; then
+                info_log "Hook file path is unset"
+            elif [ -f "$hook_opt_arg" ]; then
+                debug_log "Skipped $hook_name hook: $hook_func (hook file exists)"
+                continue
+            fi
+        fi
+
+        # execute the hook function
+        info_log "Executing $hook_name hook $hook_func"
+        $hook_func
+    done
+}
+
+# source and register hooks
+source_hooks() {
+    local hook_dirs="/lib/config.d /usr/local/lib/config.d"
+
+    debug_log "Sourcing hooks..."
+
+    for dir in $hook_dirs; do
+        if [ ! -d "$dir" ]; then
+            debug_log "Missing config.d directory: $dir"
+            continue
+        fi
+
+        for hook in "$dir"/*; do
+            if [ -f "$hook" ] && [ -r "$hook" ]; then
+                debug_log "Sourcing hook: $hook"
+                . "$hook"
+            fi
+        done
+    done
+}
+
+# execute registered hooks
+exec_hooks() {
+    debug_log "Launching hooks..."
+
+    if [ -z "$HOOK_REGISTRY" ]; then
+        debug_log "No hooks registered"
+        return
+    fi
+
+    # execute pre_init hooks
+    run_hook pre_init
+
+    # load board.json for post-init hooks
+    if [ -f "$BOARD_JSON" ]; then
+        debug_log "Loading board.json"
+
+        . /usr/share/libubox/jshn.sh
+        json_init
+        json_load_file "$BOARD_JSON"
+    else
+        debug_log "$BOARD_JSON not found, skipping json loading"
+    fi
+
+    # execute pre_init hooks
+    run_hook post_init
+}
+
+info_log "Starting config generation..."
+
+# source and exec hooks
+source_hooks
+exec_hooks
+
+# commit changes
+uci commit
+
+info_log "Config generation complete."

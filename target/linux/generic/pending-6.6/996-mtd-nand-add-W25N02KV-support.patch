@@ -1,0 +1,30 @@
+--- a/drivers/mtd/nand/spi/core.c
++++ b/drivers/mtd/nand/spi/core.c
+@@ -1096,6 +1096,7 @@ int spinand_match_and_init(struct spinan
+ 		spinand->flags = table[i].flags;
+ 		spinand->id.len = 1 + table[i].devid.len;
+ 		spinand->select_target = table[i].select_target;
++		spinand->info = info;
+ 
+ 		op = spinand_select_op_variant(spinand,
+ 					       info->op_variants.read_cache);
+@@ -1145,7 +1146,8 @@ static int spinand_detect(struct spinand
+ 	}
+ 
+ 	dev_info(&spinand->spimem->spi->dev,
+-		 "%s SPI NAND was found.\n", spinand->manufacturer->name);
++		 "%s SPI NAND %s was found.\n", spinand->manufacturer->name,
++		 spinand->info->model);
+ 	dev_info(&spinand->spimem->spi->dev,
+ 		 "%llu MiB, block size: %zu KiB, page size: %zu, OOB size: %u\n",
+ 		 nanddev_size(nand) >> 20, nanddev_eraseblock_size(nand) >> 10,
+--- a/include/linux/mtd/spinand.h
++++ b/include/linux/mtd/spinand.h
+@@ -451,6 +451,7 @@ struct spinand_device {
+ 	u8 *oobbuf;
+ 	u8 *scratchbuf;
+ 	const struct spinand_manufacturer *manufacturer;
++	const struct spinand_info *info;
+ 	void *priv;
+ };
+ 

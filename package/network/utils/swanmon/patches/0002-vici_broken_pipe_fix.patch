@@ -1,0 +1,73 @@
+--- a/query.c
++++ b/query.c
+@@ -23,6 +23,8 @@ struct dispatch_data {
+ 	bool is_event;
+ 	json_object *response;
+ 	int pending;
++	bool registered;
++	bool complete;
+ };
+ 
+ static int fd_cb(struct davici_conn *conn, int fd, int ops, void *user)
+@@ -68,9 +70,15 @@ static void stream_cb(struct davici_conn
+ 	if (err < 0) {
+ 		json_object *error = format_parse_error(name, -err);
+ 		format_add_error(dd->response, error);
++		dd->complete = true;
+ 	} else if (res) {
+ 		json_object *obj = format_parse_davici_response(res);
+ 		format_add_data(dd->response, obj);
++	} else {
++		if (dd->registered)
++			dd->complete = true;
++		else
++			dd->registered = true;
+ 	}
+ }
+ 
+@@ -102,7 +110,7 @@ static int dispatch(struct dispatch_data
+ {
+ 	int err, ret;
+ 
+-	while (dd->pending && dd->pfd.fd != -1) {
++	while ((dd->is_event && !dd->complete || dd->pending) && dd->pfd.fd != -1) {
+ 		ret = poll(&dd->pfd, 1, -1);
+ 		if (ret < 0)
+ 			return -errno;
+@@ -127,13 +135,15 @@ static int dispatch(struct dispatch_data
+ int query_command(const char *command, const char *event)
+ {
+ 	bool is_event = !!event;
+-
+ 	struct dispatch_data dd = {
+ 		.pfd = {
+ 			.fd = -1,
+ 		},
+ 		.is_event = is_event,
+-		.response = format_generate_response(is_event)
++		.response = format_generate_response(is_event),
++		.registered = false,
++		.complete = false,
++		.pending = 0,
+ 	};
+ 	int ret = 0;
+ 	int err;
+@@ -153,7 +163,7 @@ int query_command(const char *command, c
+ 			"Executing failed", -err);
+ 		format_add_error(dd.response, error);
+ 		ret = -err;
+-		goto out;
++		goto out_disconnect;
+ 	}
+ 
+ 	err = dispatch(&dd);
+@@ -165,7 +175,8 @@ int query_command(const char *command, c
+ 		goto out;
+ 	}
+ 
+-	davici_disconnect(dd.c);
++	out_disconnect:
++		davici_disconnect(dd.c);
+ 
+ 	out:
+ 		format_dump_json(dd.response, stdout);

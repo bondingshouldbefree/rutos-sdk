@@ -1,0 +1,26 @@
+From 342f0cec3ca449a42d47c279f8f05f017b3a3c31 Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Tue, 17 Dec 2024 15:41:02 +0200
+Subject: [PATCH 1/1] fix subscribe ACL when no methods are accessible
+
+---
+ ubusd_proto.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/ubusd_proto.c b/ubusd_proto.c
+index 48de9b9..062d1b6 100644
+--- a/ubusd_proto.c
++++ b/ubusd_proto.c
+@@ -182,7 +182,8 @@ static void ubusd_send_obj(struct ubus_client *cl, struct ubus_msg_buf *ub, stru
+ 	}
+ 	blob_nest_end(&b, s);
+ 
+-	if (cnt || !all_cnt)
++	if (cnt || !all_cnt ||
++			!ubusd_acl_check(cl, obj->path.key, NULL, UBUS_ACL_SUBSCRIBE))
+ 		ubus_proto_send_msg_from_blob(cl, ub, UBUS_MSG_DATA);
+ }
+ 
+-- 
+2.47.0
+

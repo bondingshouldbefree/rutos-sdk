@@ -1,0 +1,8 @@
+{
+	"services/mobile_utilities/smpp": {
+		"title": "SMPP",
+		"index": 5,
+		"view": "services/Smpp",
+		"acls": [ "services/mobile_utilities/smpp" ]
+	}
+}

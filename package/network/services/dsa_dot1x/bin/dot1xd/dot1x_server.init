@@ -1,0 +1,227 @@
+#!/bin/sh /etc/rc.common
+
+START=23 # start after port_events due to it being required for dot1xd
+STOP=20
+USE_PROCD=1
+
+PORT_BLOCKER="/usr/sbin/dot1x_port_blocker"
+[ -x "$PORT_BLOCKER" ] || PORT_BLOCKER="/usr/local$PORT_BLOCKER"
+DOT1XD="/usr/sbin/dot1xd"
+[ -x "$DOT1XD" ] || DOT1XD="/usr/local$DOT1XD"
+
+root_dir="/tmp/run/dot1x_server/"
+
+add_config_line() {
+	echo "$1=$2" >> "$root_dir/$3" 
+}
+
+read_radius_client() {
+	local section="$1"
+	local file="$2"
+	local address
+	local secret
+	local port
+	config_get address "$section" "address"
+	config_get secret "$section" "secret"
+	config_get port "$section" "port"
+	add_config_line "auth_server_addr" "$address" "$file"
+	add_config_line "auth_server_shared_secret" "$secret" "$file"
+	add_config_line "auth_server_port" "$port" "$file"
+
+	local backup_enable
+	config_get backup_enable "$section" "backup_enable"
+	if [ "$backup_enable" = "1" ]; then
+		local backup_address
+		local backup_secret
+		local backup_port
+		config_get backup_address "$section" "backup_address"
+		config_get backup_secret "$section" "backup_secret"
+		config_get backup_port "$section" "backup_port"
+
+		add_config_line "auth_server_addr" "$backup_address" "$file"
+		add_config_line "auth_server_shared_secret" "$backup_secret" "$file"
+		add_config_line "auth_server_port" "$backup_port" "$file"
+	fi
+}
+
+active_instances=false
+
+parse_vid() {
+	local vid="$1"
+	local parsed
+	[ "${vid::3}" = "cfg" ] && {
+		config_get parsed "$vid" "vlan"
+		echo "$parsed"
+		return 0
+	}
+	echo "$vid"
+}
+
+parse_port_section() {
+	local port="$1"
+	local vlans_updated=$2
+
+	# check if it should be enabled for this port
+	local enabled role iface
+	config_get enabled "$port" "enabled"
+	config_get role "$port" "role"
+	config_get iface "$port" "iface"
+	local file="$iface.config"
+	if [ "$enabled" != "1" ] || [ "$role" != "server" ] ; then
+		rm -f "$root_dir/$file"
+		ubus call hostapd config_remove "{\"iface\": \"$iface\"}" 2> /dev/null
+		$PORT_BLOCKER teardown_port "$iface" > /dev/null 2>&1
+		return
+	fi
+	active_instances=true
+
+	# keep old config for comparing
+	mv "$root_dir/$file" "$root_dir/$file.old" 2> /dev/null
+
+
+	# general hostapd settings
+	add_config_line "interface" "$iface" "$file"
+	add_config_line "driver" "wired" "$file"
+	add_config_line "ieee8021x" "1" "$file"
+	add_config_line "wired_vlans" "1" "$file"
+
+	# load radius
+	local radius
+	config_get radius "$port" "radius"
+	read_radius_client "$radius" "$file"
+
+	local no_vlans accept_vlan
+	config_get no_vlans "$port" "no_vlans"
+	local initial_block=true
+	local start_vlan="1"
+	[ "$no_vlans" != "1" ] && {
+		local guest_vlan reject_vlan fallback_vlan
+		config_get accept_vlan "$port" "accept_vlan"
+		config_get reject_vlan "$port" "reject_vlan" "disabled"
+		config_get fallback_vlan "$port" "fallback_vlan" "disabled"
+		config_get guest_vlan "$port" "guest_vlan" "disabled"
+
+		add_config_line "vlan_no_bridge" "1" "$file"
+		add_config_line "dynamic_vlan" "2" "$file"
+		add_config_line "vlan_file" "$root_dir/vlans" "$file"
+
+		[ "$accept_vlan" = "radius_assigned" ] && accept_vlan="0"
+		[ "$reject_vlan" = "disabled" ] && reject_vlan="0"
+		[ "$guest_vlan" = "disabled" ] && guest_vlan="0"
+		[ "$fallback_vlan" = "disabled" ] && fallback_vlan="0"
+		accept_vlan="$(parse_vid "$accept_vlan")"
+		reject_vlan="$(parse_vid "$reject_vlan")"
+		fallback_vlan="$(parse_vid "$fallback_vlan")"
+		guest_vlan="$(parse_vid "$guest_vlan")"
+
+		add_config_line "accept_vlan" "$accept_vlan" "$file"
+		[ "$reject_vlan" -gt 0 ] && add_config_line "reject_vlan" "$reject_vlan" "$file"
+		[ "$fallback_vlan" -gt 0 ] && add_config_line "fallback_vlan" "$fallback_vlan" "$file"
+		[ "$guest_vlan" -gt 0 ] && {
+			add_config_line "guest_vlan" "$guest_vlan" "$file"
+			initial_block=false
+			start_vlan="$guest_vlan"
+		}
+	}
+
+	# check if config has changed. always reload if vlans are used and the vlans file was updated
+	if [ "$no_vlans" = "1" ] || ! $vlans_updated || [ $accept_vlan != "0" ] ; then
+		cmp "$root_dir/$file" "$root_dir/$file.old" > /dev/null 2>&1
+		local cmpres="$?"
+		rm -f "$root_dir/$file.old"
+		[ "$cmpres" -eq "0" ] && return
+	fi
+	rm -f "$root_dir/$file.old"
+
+	ubus call hostapd config_remove "{\"iface\": \"$iface\"}" 2> /dev/null
+	ip link show dev "$iface" > /dev/null 2>&1 || {
+		# todo: replace this with getting board json and checking isolation method
+		ip link add dev "$iface" type dummy
+		ip link set dev "$iface" up
+		tc qdisc add dev "$iface" clsact
+		tc filter add dev "$iface" ingress matchall skip_hw action vlan pop
+	}
+	$PORT_BLOCKER toggle_controlled_port "$iface" $initial_block > /dev/null 2>&1
+	[ "$no_vlans" != "1" ] && $PORT_BLOCKER assign_vlan "$iface" "$start_vlan"
+	ubus call hostapd config_add "{\"iface\": \"$iface\", \"config\": \"$root_dir/$file\"}"
+}
+
+validate_vlans_usage() {
+	local section="$1"
+	local role
+	config_get role "$section" "role"
+	if [ "$role" != "server" ] ; then
+		return
+	fi
+	[ -f "$root_dir/vlans" ] || uci set "dot1x.$section.no_vlans=1"
+}
+
+update_vlan_file() {
+	mv "$root_dir/vlans" "$root_dir/vlans.old" 2> /dev/null
+	config_load network
+	add_vlan_to_file() {
+		local section="$1"
+		config_get vlan "$section" "vlan"
+		local dir="$root_dir/vlans"
+		echo "$vlan eth0" >> "$dir"
+	}
+	config_foreach add_vlan_to_file "bridge-vlan"
+	config_foreach add_vlan_to_file "switch_vlan"
+	cmp "$root_dir/vlans" "$root_dir/vlans.old" > /dev/null 2>&1
+	local cmpres="$?"
+	rm -f "$root_dir/vlans.old"
+	[ "$cmpres" -eq "0" ]
+}
+
+stop_port_section() {
+	local port="$1"
+	local file="$port.config"
+	local role
+	config_get role "$port" "role"
+	[ "$role" != "server" ] && return
+	rm -f "$root_dir/$file"
+	local iface
+	config_get iface "$port" "iface"
+	ubus call hostapd config_remove "{\"iface\": \"$iface\"}" 2> /dev/null
+	$PORT_BLOCKER teardown_port "$iface" > /dev/null 2>&1
+	return
+}
+
+stop_service() {
+	config_load dot1x
+	config_foreach stop_port_section port
+	$PORT_BLOCKER sync
+	rm -fr "$root_dir/"*
+}
+
+start_service() {
+
+	local vlans_updated=false
+	update_vlan_file || vlans_updated=true
+
+	config_load dot1x
+	config_foreach validate_vlans_usage port
+	uci commit dot1x
+	config_load dot1x
+	ubus wait_for hostapd
+	config_foreach parse_port_section port $vlans_updated
+	$PORT_BLOCKER sync
+
+	$active_instances || return
+
+	ubus wait_for port_events
+	procd_open_instance
+	procd_set_param user dot1x_server
+	procd_set_param command $DOT1XD
+	procd_close_instance
+}
+
+reload_service() {
+	start
+	ubus call dot1x_glue reload 2> /dev/null
+}
+
+service_triggers() {
+	procd_add_reload_trigger "dot1x"
+	procd_add_reload_trigger "network"
+}

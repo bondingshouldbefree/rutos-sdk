@@ -1,0 +1,12 @@
+{
+    "network/traffic_shaping": {
+        "title": "Traffic Shaping",
+        "index": 90
+    },
+        "network/traffic_shaping/sqm": {
+            "title": "SQM",
+            "index": 20,
+            "view": "services/Sqm",
+            "acls": [ "network/traffic_shaping/sqm" ]
+        }
+}

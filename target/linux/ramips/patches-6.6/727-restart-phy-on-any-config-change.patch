@@ -1,0 +1,32 @@
+--- a/drivers/net/phy/mdio_bus.c
++++ b/drivers/net/phy/mdio_bus.c
+@@ -948,8 +948,11 @@ int __mdiobus_modify_changed(struct mii_
+ 		return ret;
+ 
+ 	new = (ret & ~mask) | set;
+-	if (new == ret)
+-		return 0;
++	/* Forces settings to always be applied
++	* Fix for when setting same settings kills the port
++	*/
++	//if (new == ret)
++	//	return 0;
+ 
+ 	ret = __mdiobus_write(bus, addr, regnum, new);
+ 
+--- a/drivers/net/phy/phy_device.c
++++ b/drivers/net/phy/phy_device.c
+@@ -2208,6 +2208,13 @@ int genphy_setup_forced(struct phy_devic
+ 	phydev->pause = 0;
+ 	phydev->asym_pause = 0;
+ 
++	/* Workaround. Certain phy's need speed bit changes
++	* for settings to apply properly
++	*/
++	phy_modify(phydev, MII_BMCR,
++		~(BMCR_LOOPBACK | BMCR_ISOLATE | BMCR_PDOWN),
++		 BMCR_SPEED1000);
++
+ 	ctl = mii_bmcr_encode_fixed(phydev->speed, phydev->duplex);
+ 
+ 	return phy_modify(phydev, MII_BMCR,

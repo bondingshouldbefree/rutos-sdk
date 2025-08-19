@@ -1,0 +1,106 @@
+-- SQM --
+
+queueVlanGroup OBJECT-GROUP
+	OBJECTS { queueCount,
+		  queueIndex,
+		  queueName,
+		  queueEnabled,
+		  queueIface,
+		  queueDownLimit,
+		  queueUpLimit,
+		  queueQdisk,
+		  queueScript }
+	STATUS current
+	DESCRIPTION "SQM SNMP group defined according to RFC 2580"
+	::= { teltonikaSnmpGroups 11 }
+
+queueCount  OBJECT-TYPE
+	SYNTAX      INTEGER
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "Amount of traffic shaping configs"
+	::= { sqm 1 }
+
+queueTable OBJECT-TYPE
+	SYNTAX      SEQUENCE OF QueueEntry
+	MAX-ACCESS  not-accessible
+	STATUS      current
+	DESCRIPTION "A list of traffic shaping configs."
+	::= { sqm 2 }
+
+queueEntry OBJECT-TYPE
+	SYNTAX      QueueEntry
+	MAX-ACCESS  not-accessible
+	STATUS      current
+	DESCRIPTION "Entry containg info of a traffic shaping config."
+	INDEX   { queueIndex }
+	::= { queueTable 1 }
+
+QueueEntry ::=
+	SEQUENCE {
+	queueIndex     INTEGER,
+	queueName      DisplayString,
+	queueEnabled   INTEGER,
+	queueIface     DisplayString,
+	queueDownLimit INTEGER,
+	queueUpLimit   INTEGER,
+	queueQdisk     DisplayString,
+	queueScript    DisplayString
+	}
+
+
+queueIndex     OBJECT-TYPE
+	SYNTAX INTEGER (0..65535)
+	MAX-ACCESS read-only
+	STATUS  current
+	DESCRIPTION "The index of the queue"
+	::={ queueEntry 1 }
+
+queueName      OBJECT-TYPE
+	SYNTAX DisplayString
+	MAX-ACCESS read-only
+	STATUS  current
+	DESCRIPTION "The internal name of the queue"
+	::={ queueEntry 2 }
+
+queueEnabled   OBJECT-TYPE
+	SYNTAX INTEGER
+	MAX-ACCESS read-only
+	STATUS  current
+	DESCRIPTION "Is the queue enabled?"
+	::={ queueEntry 3 }
+
+queueIface OBJECT-TYPE
+	SYNTAX DisplayString
+	MAX-ACCESS read-only
+	STATUS  current
+	DESCRIPTION "The assigned interface of the queue"
+	::={ queueEntry 4 }
+
+queueDownLimit OBJECT-TYPE
+	SYNTAX INTEGER
+	MAX-ACCESS read-only
+	STATUS  current
+	DESCRIPTION "The download limit of the queue"
+	::={ queueEntry 5 }
+
+queueUpLimit OBJECT-TYPE
+	SYNTAX INTEGER
+	MAX-ACCESS read-only
+	STATUS  current
+	DESCRIPTION "The upload limit of the queue"
+	::={ queueEntry 6 }
+
+queueQdisk OBJECT-TYPE
+	SYNTAX DisplayString
+	MAX-ACCESS read-only
+	STATUS  current
+	DESCRIPTION "The queuing discipline in use for this queue"
+	::={ queueEntry 7 }
+
+queueScript OBJECT-TYPE
+	SYNTAX DisplayString
+	MAX-ACCESS read-only
+	STATUS  current
+	DESCRIPTION "The queuing discipline setup script used in this queue"
+	::={ queueEntry 8 }

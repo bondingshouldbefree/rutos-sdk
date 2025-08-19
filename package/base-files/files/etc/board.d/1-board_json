@@ -1,0 +1,80 @@
+#!/bin/sh
+#
+# Copyright (c) 2015 The Linux Foundation. All rights reserved.
+# Copyright (c) 2011-2015 OpenWrt.org
+#
+
+. /lib/functions/uci-defaults.sh
+. /lib/functions/system.sh
+
+[ -f /lib/functions/target-defaults.sh ] && \
+	. /lib/functions/target-defaults.sh
+
+setup_json() {
+	local model="$(mnf_info --name)" 2>/dev/null;
+	local hw_ver="$(cut -c -2 /sys/mnf_info/hwver)"
+	local branch_path="/sys/mnf_info/branch"
+	local branch
+	[ -f "$branch_path" ] && branch="$(cut -c -2 $branch_path)"
+
+	case "$model" in
+	x86*)
+		ucidef_set_board_platform "X86_64"
+		ucidef_set_interfaces_lan_wan "eth0" "eth1"
+		ucidef_set_hwinfo usb ethernet nat_offloading multi_tag port_link gigabit_port xfrm-offload dsa
+		ucidef_set_network_options "vlans" 4094 "max_mtu" 9000
+		[ -x /usr/sbin/gsmd ] && ucidef_set_hwinfo mobile
+
+		# If `mbus_client` config exists then this is likely the `x86_64_test` target
+		# TODO: Use a better method to determine if this is `x86_64_test`. Ideally someway through mnf_info
+		if [ -f /etc/config/mbus_client ]; then
+			ucidef_set_hwinfo mbus rs232 rs485
+
+			ucidef_add_serial_capabilities "mbus" \
+				"300 600 1200 2400 4800 9600" \
+				"8" \
+				"none" \
+				"1 2" \
+				"even odd none" \
+				"half" \
+				"/dev/null"
+			ucidef_add_serial_capabilities "rs232" \
+				"300 600 1200 2400 4800 9600 19200 38400 57600 115200" \
+				"5 6 7 8" \
+				"rts/cts xon/xoff none" \
+				"1 2" \
+				"even odd mark space none" \
+				"none" \
+				"/dev/null"
+			ucidef_add_serial_capabilities "rs485" \
+				"300 600 1200 2400 4800 9600 19200 38400 57600 115200 230400" \
+				"5 6 7 8" \
+				"xon/xoff none" \
+				"1 2" \
+				"even odd mark space none" \
+				"half full" \
+				"/dev/null"
+		fi
+		;;
+	*)
+		echo "Unsupported hardware. Network interfaces not intialized"
+		;;
+	esac
+
+	ucidef_set_interface "lan" "default_ip" "%%LAN_IP%%"
+
+	type ucidef_target_defaults &> /dev/null && \
+		ucidef_target_defaults "$model"
+}
+
+
+platform="$(cat /proc/device-tree/platform)" 2>/dev/null
+
+board_config_update
+setup_json
+[ -n "$platform" ] && ucidef_set_board_platform "$platform"
+ucidef_check_esim
+ucidef_check_tpm
+board_config_flush
+
+exit 0

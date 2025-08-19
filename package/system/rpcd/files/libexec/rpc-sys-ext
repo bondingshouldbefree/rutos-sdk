@@ -1,0 +1,40 @@
+#!/bin/sh
+
+. /usr/share/libubox/jshn.sh
+
+show () {
+	json_init
+	json_add_string output "$1"
+	json_add_string exit_code "$2"
+	json_dump
+}
+
+main () {
+	case "$1" in
+		list) echo '{ "troubleshoot": { "pass": "str" }, "firstboot": { "factory": true }, "userdefaults": {  } }' ;;
+		call)
+			case "$2" in
+				troubleshoot)
+					read input;
+					res="$(/sbin/troubleshoot.sh $(jsonfilter -s $input -e '@.pass'))"
+					code=$?
+					show "$res" "$code"
+				;;
+				firstboot)
+						read input;
+						[ "$(jsonfilter -s $input -e '@.factory')" = "true" ] && args=" -f"
+						/sbin/firstboot -y $args
+						code=$?
+						echo "{ \"result\": $code }"
+				;;
+				userdefaults)
+					/sbin/user_defaults
+					# procd implementation used to return error only on fork failure
+					echo "{ \"result\": 0 }"
+				;;
+			esac
+		;;
+	esac
+}
+
+main "$@"

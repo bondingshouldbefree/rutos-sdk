@@ -1,0 +1,38 @@
+Index: tpm2-tss-4.1.3/src/tss2-fapi/ifapi_ima_eventlog.c
+===================================================================
+--- tpm2-tss-4.1.3.orig/src/tss2-fapi/ifapi_ima_eventlog.c
++++ tpm2-tss-4.1.3/src/tss2-fapi/ifapi_ima_eventlog.c
+@@ -732,7 +732,6 @@ ifapi_read_ima_event_log(
+     return_if_null(jso_list, "Bad reference.", TSS2_FAPI_RC_BAD_VALUE);
+     template.event_buffer = NULL;
+ 
+-    OpenSSL_add_all_digests();
+     fp = fopen(filename, "r");
+     goto_if_null2(fp, "Could not open: %s", r, TSS2_FAPI_RC_IO_ERROR, error, filename);
+     LOG_INFO("IMA read file: %s", filename);
+Index: tpm2-tss-4.1.3/src/tss2-fapi/fapi_util.c
+===================================================================
+--- tpm2-tss-4.1.3.orig/src/tss2-fapi/fapi_util.c
++++ tpm2-tss-4.1.3/src/tss2-fapi/fapi_util.c
+@@ -441,7 +441,7 @@ ifapi_set_auth(
+         if (auth != NULL) {
+             authValue.size = strlen(auth);
+             if (authValue.size > sizeof(TPMU_HA)) {
+-                return_error2(TSS2_FAPI_RC_BAD_VALUE, "Size of auth value %u > %lu",
++                return_error2(TSS2_FAPI_RC_BAD_VALUE, "Size of auth value %u > %u",
+                               authValue.size, sizeof(TPMU_HA));
+             }
+             memcpy(&authValue.buffer[0], auth, authValue.size);
+Index: tpm2-tss-4.1.3/bootstrap
+===================================================================
+--- tpm2-tss-4.1.3.orig/bootstrap
++++ tpm2-tss-4.1.3/bootstrap
+@@ -1,7 +1,7 @@
+ #!/bin/sh
+ set -e
+ 
+-git describe --tags --always --dirty > VERSION
++echo "$PKG_VERSION" > VERSION
+ 
+ # generate list of source files for use in Makefile.am
+ # if you add new source files, you must run ./bootstrap again

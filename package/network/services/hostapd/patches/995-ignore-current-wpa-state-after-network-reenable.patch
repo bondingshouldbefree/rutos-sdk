@@ -1,0 +1,11 @@
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -126,7 +126,7 @@ void wpas_network_reenabled(void *eloop_
+ {
+ 	struct wpa_supplicant *wpa_s = eloop_ctx;
+ 
+-	if (wpa_s->disconnected || wpa_s->wpa_state != WPA_SCANNING)
++	if (wpa_s->disconnected)
+ 		return;
+ 
+ 	wpa_dbg(wpa_s, MSG_DEBUG,

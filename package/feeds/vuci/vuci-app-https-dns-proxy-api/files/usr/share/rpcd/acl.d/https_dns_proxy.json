@@ -1,0 +1,1 @@
+{"network/dns/https_dns_proxy":{"description":"https dns proxy configuration","read":{"api":{"/dns/https_proxy/*":["*"]}},"write":{"api":["/dns/https_proxy/*"]}}}

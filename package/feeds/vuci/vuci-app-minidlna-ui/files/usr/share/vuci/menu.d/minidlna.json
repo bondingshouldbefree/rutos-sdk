@@ -1,0 +1,12 @@
+{
+  "services/sd_usb_tools": {
+    "title": "SD & USB Tools",
+    "index": 70
+  },
+  "services/sd_usb_tools/minidlna": {
+    "title": "DLNA",
+    "index": 40,
+    "acls": ["services/sd_usb_tools/minidlna"],
+    "view": "services/DLNA"
+  }
+}

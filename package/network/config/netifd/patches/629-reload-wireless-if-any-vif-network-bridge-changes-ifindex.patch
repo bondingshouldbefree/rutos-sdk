@@ -1,0 +1,161 @@
+--- a/wireless.c
++++ b/wireless.c
+@@ -337,12 +337,39 @@ static void wireless_device_set_mcast_to
+ 	dev->settings.flags |= DEV_OPT_MULTICAST_TO_UNICAST;
+ }
+ 
++static void wireless_check_interface(struct blob_attr *list, int *enabled, int *ifindex)
++{
++	struct interface *iface;
++	struct blob_attr *cur;
++	size_t rem;
++
++	blobmsg_for_each_attr(cur, list, rem) {
++		struct device *mdev;
++
++		iface = vlist_find(&interfaces, blobmsg_get_string(cur), iface, node);
++		if (!iface)
++			continue;
++
++		if (iface->autostart)
++			*enabled = 1;
++		else if (*enabled != 1)
++			*enabled = 0;
++
++		mdev = iface->main_dev.dev;
++		if (!mdev || !mdev->hotplug_ops)
++			continue;
++
++		*ifindex = mdev->ifindex;
++	}
++}
++
+ static void wireless_interface_handle_link(struct wireless_interface *vif, const char *ifname, bool up)
+ {
+ 	struct interface *iface;
+ 	struct blob_attr *cur;
+ 	const char *network;
+ 	struct device *dev;
++	int enabled = -1;
+ 	size_t rem;
+ 
+ 	if (!vif->network || !vif->ifname)
+@@ -372,6 +399,7 @@ static void wireless_interface_handle_li
+ 	dev->bpdu_filter = dev->wireless_ap;
+ 
+ out:
++	wireless_check_interface(vif->network, &enabled, &vif->network_ifindex);
+ 	blobmsg_for_each_attr(cur, vif->network, rem) {
+ 		network = blobmsg_data(cur);
+ 
+@@ -388,6 +416,7 @@ static void wireless_vlan_handle_link(st
+ 	struct interface *iface;
+ 	struct blob_attr *cur;
+ 	const char *network;
++	int enabled = -1;
+ 	size_t rem;
+ 
+ 	if (!vlan->network || !vlan->ifname)
+@@ -406,6 +435,7 @@ static void wireless_vlan_handle_link(st
+ 		}
+ 	}
+ 
++	wireless_check_interface(vlan->network, &enabled, &vlan->network_ifindex);
+ 	blobmsg_for_each_attr(cur, vlan->network, rem) {
+ 		network = blobmsg_data(cur);
+ 
+@@ -1212,6 +1242,7 @@ wireless_vlan_create(struct wireless_int
+ 	vlan->name = strcpy(name_buf, name);
+ 	vlan->config = data;
+ 	vlan->section = section;
++	vlan->network_ifindex = -1;
+ 
+ 	vlist_add(&vif->vlans, &vlan->node, vlan->name);
+ }
+@@ -1255,6 +1286,7 @@ struct wireless_interface* wireless_inte
+ 	vif->config = data;
+ 	vif->section = section;
+ 	vif->isolate = false;
++	vif->network_ifindex = -1;
+ 
+ 	vlist_init(&vif->vlans, avl_strcmp, vlan_update);
+ 	vif->vlans.keep_old = true;
+@@ -1587,33 +1619,41 @@ wireless_device_notify(struct wireless_d
+ }
+ 
+ static void
++wdev_vlan_check_network_enabled(struct wireless_device *wdev,
++				struct wireless_interface *vif)
++{
++	struct wireless_vlan *vlan;
++
++	vlist_for_each_element(&vif->vlans, vlan, node) {
++		int enabled = -1, ifindex = -1;
++
++		wireless_check_interface(vlan->network, &enabled, &ifindex);
++
++		if (wdev->state != IFS_UP || vlan->network_ifindex == ifindex)
++			continue;
++
++		vlan->network_ifindex = ifindex;
++		wdev->config_update = true;
++	}
++}
++
++static void
+ wdev_check_network_enabled(struct wireless_device *wdev)
+ {
+ 	struct wireless_interface *vif;
+-	struct interface *iface;
+-	struct blob_attr *cur;
+-	size_t rem;
+ 
+ 	vlist_for_each_element(&wdev->interfaces, vif, node) {
+-		int enabled = -1;
+-
+-		blobmsg_for_each_attr(cur, vif->network, rem) {
+-			iface = vlist_find(&interfaces, blobmsg_get_string(cur), iface, node);
+-			if (!iface)
+-				continue;
++		int enabled = -1, ifindex = -1;
+ 
+-			if (iface->autostart) {
+-				enabled = 1;
+-				break;
+-			}
+-			if (enabled != 1)
+-				enabled = 0;
+-		}
++		wireless_check_interface(vif->network, &enabled, &ifindex);
++		wdev_vlan_check_network_enabled(wdev, vif);
+ 
+-		if (vif->disabled == !enabled)
++		if (vif->disabled == !enabled &&
++		    (wdev->state != IFS_UP || vif->network_ifindex == ifindex))
+ 			continue;
+ 
+ 		vif->disabled = !enabled;
++		vif->network_ifindex = ifindex;
+ 		wdev->config_update = true;
+ 	}
+ }
+--- a/wireless.h
++++ b/wireless.h
+@@ -96,6 +96,8 @@ struct wireless_interface {
+ 	int vlan_idx;
+ 	int sta_idx;
+ 	bool disabled;
++
++	int network_ifindex;
+ };
+ 
+ struct wireless_vlan {
+@@ -112,6 +114,8 @@ struct wireless_vlan {
+ 	int multicast_to_unicast;
+ 	bool isolate;
+ 	bool bridge_isolate;
++
++	int network_ifindex;
+ };
+ 
+ struct wireless_station {

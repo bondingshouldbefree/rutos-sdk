@@ -1,0 +1,105 @@
+net: netfilter: xtables: FLOWOFFLOAD: add --xfrm flag
+
+Lack of --xfrm flag prevents offloading any connections associated
+with an XFRM tunnel, i.e. any direction either has a secpath, or is 
+routed to an XFRM dst, or both.
+
+This was previously accomplished with additional iptables rules. Since
+now with 'nf_flow_xfrm_it_harder' the logic has gotten more complicated
+this functionality was moved into the FLOWOFFLOAD implementation.
+
+--- a/include/uapi/linux/netfilter/xt_FLOWOFFLOAD.h
++++ b/include/uapi/linux/netfilter/xt_FLOWOFFLOAD.h
+@@ -5,9 +5,14 @@
+ #include <linux/types.h>
+ 
+ enum {
+-	XT_FLOWOFFLOAD_HW	= 1 << 0,
++	XT_FLOWOFFLOAD_HW_BIT   = 0,
++	XT_FLOWOFFLOAD_HW	= (1 << XT_FLOWOFFLOAD_HW_BIT),
+ 
+-	XT_FLOWOFFLOAD_MASK	= XT_FLOWOFFLOAD_HW
++	XT_FLOWOFFLOAD_XFRM_BIT = 1,
++	XT_FLOWOFFLOAD_XFRM	= (1 << XT_FLOWOFFLOAD_XFRM_BIT),
++
++	__XT_FLOWOFFLOAD_MAX_BIT = 2,
++	XT_FLOWOFFLOAD_MASK	= ((1 << __XT_FLOWOFFLOAD_MAX_BIT) - 1)
+ };
+ 
+ struct xt_flowoffload_target_info {
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -234,13 +234,48 @@ xt_flowoffload_hook_work(struct work_str
+ 	queue_delayed_work(system_power_efficient_wq, &table->work, HZ);
+ }
+ 
+-static bool
+-xt_flowoffload_skip(struct sk_buff *skb, int family)
++static inline bool nf_flow_skb_xfrm_check(struct sk_buff *skb,
++					  const struct xt_action_param *par)
+ {
++#ifdef CONFIG_XFRM
++	struct xt_flowoffload_target_info const *info = par->targinfo;
++	if (info->flags & XT_FLOWOFFLOAD_XFRM)
++		return true;
++
++	if (skb_sec_path(skb))
++		return false;
++#endif
++	return true;
++}
++
++static inline bool nf_flow_dst_xfrm_check(struct dst_entry *dst,
++					  const struct xt_action_param *par)
++{
++#ifdef CONFIG_XFRM
++	struct xt_flowoffload_target_info const *info = par->targinfo;
++
++	if (dst->flags & DST_XFRM_QUEUE)
++		return false;
++
++	if (!(info->flags & XT_FLOWOFFLOAD_XFRM) && dst->xfrm)
++		return false;
++#endif
++	return true;
++}
++
++static bool xt_flowoffload_skip(struct sk_buff *skb,
++				const struct xt_action_param *par)
++{
++	if (!nf_flow_skb_xfrm_check(skb, par))
++		return true;
++
++	if (!nf_flow_dst_xfrm_check(skb_dst(skb), par))
++		return true;
++
+ 	if (!nf_flow_xfrm_tuple_can_disect(skb))
+ 		return true;
+ 
+-	if (family == NFPROTO_IPV4) {
++	if (xt_family(par) == NFPROTO_IPV4) {
+ 		const struct ip_options *opt = &(IPCB(skb)->opt);
+ 
+ 		if (unlikely(opt->optlen))
+@@ -497,6 +532,12 @@ xt_flowoffload_route(struct sk_buff *skb
+ 		return -1;
+ 	}
+ 
++	// this_dst might've changed, recheck it.
++	if (!nf_flow_dst_xfrm_check(this_dst, par)) {
++		dst_release(this_dst);
++		return -1;
++	}
++
+ 	memset(&fl, 0, sizeof(fl));
+ 	switch (xt_family(par)) {
+ 	case NFPROTO_IPV4:
+@@ -564,7 +605,7 @@ flowoffload_tg(struct sk_buff *skb, cons
+ 	struct nf_conn *ct;
+ 	struct net *net;
+ 
+-	if (xt_flowoffload_skip(skb, xt_family(par)))
++	if (xt_flowoffload_skip(skb, par))
+ 		return XT_CONTINUE;
+ 
+ 	ct = nf_ct_get(skb, &ctinfo);

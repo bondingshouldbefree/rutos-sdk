@@ -1,0 +1,11 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+devicename="$(uci_get system @system[0] routername)"
+[ -z "$devicename" ] && exit 0
+
+uci_remove "system" "@system[0]" "routername"
+uci_set "system" "@system[0]" "devicename" "$devicename"
+
+exit 0

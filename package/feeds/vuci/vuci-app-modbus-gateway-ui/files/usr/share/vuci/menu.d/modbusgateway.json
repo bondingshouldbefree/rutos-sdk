@@ -1,0 +1,12 @@
+{
+	"services/modbus": {
+		"title": "Modbus",
+		"index": 120
+	},
+		"services/modbus/modbus_gateway": {
+			"title": "MQTT Modbus Gateway",
+			"index": 40,
+			"view": "services/ModbusGateway",
+			"acls": [ "services/modbus/modbus_gateway" ]
+		}
+}

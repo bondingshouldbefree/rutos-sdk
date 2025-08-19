@@ -1,0 +1,46 @@
+{
+  "network/routes": {
+    "title": "Routing",
+    "index": 80
+  },
+  "network/routes/dynamic_routes": {
+    "title": "Dynamic Routes",
+    "index": 30
+  },
+  "network/routes/dynamic_routes/proto_eigrp": {
+    "title": "EIGRP",
+    "index": 40,
+    "view": "network/ProtoEigrp",
+    "acls": ["network/routes/dynamic_routes/proto_eigrp"],
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-eigrpd", "frr5-eigrpd"]
+      }
+    },
+    "main_page": true
+  },
+  "status/routes": {
+    "title": "Routes",
+    "index": 35
+  },
+  "status/routes/dynamic": {
+    "title": "Dynamic",
+    "index": 20,
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-eigrpd", "frr5-eigrpd"]
+      }
+    }
+  },
+  "status/routes/dynamic/eigrp": {
+    "title": "EIGRP",
+    "index": 40,
+    "view": "status/ProtoEigrp",
+    "acls": ["status/routes/dynamic/eigrp"],
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-eigrpd", "frr5-eigrpd"]
+      }
+    }
+  }
+}

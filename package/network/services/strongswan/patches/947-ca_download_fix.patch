@@ -1,0 +1,11 @@
+--- a/src/pki/pki_cert.c
++++ b/src/pki/pki_cert.c
+@@ -314,7 +314,7 @@ bool pki_cert_extract_cacerts(chunk_t da
+ 			trusted = FALSE;
+ 
+ 			cert_type = get_pki_cert_type(cert);
+-			if (cert_type == CERT_TYPE_ROOT_CA)
++			if (cert_type == CERT_TYPE_ROOT_CA || cert_type == CERT_TYPE_SUB_CA)
+ 			{
+ 				if (!print_cert_info(cert, cert_type))
+ 				{

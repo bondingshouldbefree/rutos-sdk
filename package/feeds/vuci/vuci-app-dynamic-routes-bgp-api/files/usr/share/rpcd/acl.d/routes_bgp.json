@@ -1,0 +1,1 @@
+{"network/routes/dynamic_routes/proto_bgp":{"description":"dynamic routes bgp configuration","read":{"api":{"/bgp/*":["*"],"/vrf/config/*":["id"]}},"write":{"api":["/bgp/*"]},"source":["/bgp/*"],"exception":["/bgp/instance/config/*","/bgp/status/*"]},"status/routes/dynamic/bgp":{"description":"bgp routes","read":{"api":{"/bgp/status/*":["*"]}}}}

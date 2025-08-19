@@ -1,0 +1,128 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /lib/functions/network.sh
+
+mtu_set() {
+	local wan_interface
+	[ "$ACTION" = "ifup" ] || [ "$ACTION" = "ifdown" ] || return
+	wan_interfaces="$(ip route show default | awk -F 'dev' '{print $2}' | awk '{print $1}')"
+	config_cb() {
+		local name="$2"
+		local proto mtu external_mtu wireguard_mtu new_mtu
+		config_get proto "$name" proto ""
+		config_get mtu "$name" mtu ""
+		[ "$proto" = "wireguard" ] && [ -z "$mtu" ] && [ -n "$wan_interfaces" ] && [ -n "$name" ] || return
+		for wan_interface in $wan_interfaces; do
+			[ "$name" = "$wan_interface" ] && continue
+			curr_mtu="$(cat /sys/class/net/"${wan_interface}"/mtu)"
+			external_mtu=${external_mtu:-$curr_mtu}
+			[ "$curr_mtu" -lt "$external_mtu" ] && external_mtu="$curr_mtu"
+		done
+		wireguard_mtu="$(cat /sys/class/net/"${name}"/mtu)"
+		new_mtu=$(( external_mtu - 80 ))
+		[ "$wireguard_mtu" != "$new_mtu" ] && [ -n "$external_mtu" ] && {
+			logger -t "wireguard" "Interface $name mtu size changed from $wireguard_mtu to $new_mtu"
+			ifconfig "$name" mtu "$new_mtu" up
+		}
+	}
+	config_load network
+}
+
+ip_to_int() {
+	echo "$1" | while IFS="." read o1 o2 o3 o4; do
+		[ -n "$o1" ] && [ -n "$o2" ] && [ -n "$o3" ] && [ -n "$o4" ] || return 1
+		case "$o1$o2$o3$o4" in
+			*[!0-9]*) return 1 ;;
+		esac
+		echo $(( (o1 << 24) | (o2 << 16) | (o3 << 8) | o4 ))
+	done
+}
+
+config_load network
+mtu_set
+
+default_route_set=false
+mwan3_up=false
+
+check_mwan_up(){
+	local section="$1" enabled
+	$mwan3_up && return
+	config_get enabled "$section" enabled
+	[ "$enabled" = "1" ] && mwan3_up=true
+}
+
+config_load mwan3
+config_foreach check_mwan_up "interface"
+config_load network
+for file in /tmp/wireguard/default-status*; do
+	[ -f "$file" ] || continue
+	DEFAULT_STATUS="${file}"
+	default="$(ip route show default | grep -w "$DEVICE" )"
+	[ -n "$default" ] || [ "$ACTION" = "ifdown" ] || exit 0
+
+	config="$(cat "$DEFAULT_STATUS" | sed '2q;d')"
+	peer_config="$(cat "$DEFAULT_STATUS" | sed '1q;d')"
+
+	[ "${default##*via }" != "$default" ] && gw=$(echo "${default##*via }" | awk '{print $1}')
+	iface="$(echo "$INTERFACE" | sed 's/_4//')"
+
+	[ "$iface" = "$config" ] && exit 0
+
+	for p in $peer_config; do
+		config_get endpoint_host "$p" endpoint_host
+		config_get tunlink "$p" tunlink
+		config_get force_tunlink "$p" force_tunlink
+		config_get metric "$iface" metric
+		config_get allowed_ips "$peer_config" allowed_ips
+		for allowed_ip in $allowed_ips; do
+			case "$allowed_ip" in
+				"0.0.0.0/0"|"::/0"|"0.0.0.0/1"|"128.0.0.0/1")
+					default_route_set=true
+					;;
+			esac
+		done
+		[ "$ACTION" = "ifup" ] || [ "$ACTION" = "ifdown" ] || return 0
+		$mwan3_up && $default_route_set && continue
+		for host in $endpoint_host; do
+			for ip in $(resolveip -4 "$host"); do
+				case "$ACTION" in
+					"ifup")
+						if [ -n "$tunlink" ] && [ "$tunlink" != "any" ]; then
+							network_get_device tunlink_dev $tunlink
+							[ "$tunlink_dev" = "wwan0" ] && { network_get_device tunlink_dev "${tunlink}"_4 || network_get_device tunlink_dev "${tunlink}"_6; }
+							tunlink_gw="$(ip route show default dev $tunlink_dev | awk -F"via " '{print $2}' | sed 's/\s.*$//')"
+							if ip route add "$ip" ${tunlink_gw:+via "$tunlink_gw"} dev "$tunlink_dev" metric "1"; then
+								route_del="ip route del $ip dev $tunlink_dev metric 1"
+								grep "$route_del" "$DEFAULT_STATUS" || echo "$route_del" >> "$DEFAULT_STATUS"
+								ip route del blackhole "$ip"
+							fi
+							continue
+						fi
+						wan_ip="$(ip addr show dev "$DEVICE" | awk '/inet / {print $2; exit}')"
+						eval "$(ipcalc.sh "$wan_ip")";wan_network="$NETWORK" wan_broadcast="$BROADCAST"
+						ip_dec=$(ip_to_int "$ip")
+						wan_network_dec=$(ip_to_int "$wan_network")
+						wan_broadcast_dec=$(ip_to_int "$wan_broadcast")
+						if [ "$ip_dec" -gt "$wan_network_dec" ] && [ "$ip_dec" -lt "$wan_broadcast_dec" ]; then
+							if ip route add "$ip" dev "$DEVICE" metric "$metric"; then
+								route_del="ip route del $ip dev $DEVICE metric $metric"
+							fi
+						else
+							if ip route add "$ip" ${gw:+via "$gw"} dev "$DEVICE" metric "$metric"; then
+								route_del="ip route del $ip dev $DEVICE metric $metric"
+							fi
+						fi
+						grep "$route_del" "$DEFAULT_STATUS" || echo "$route_del" >> "$DEFAULT_STATUS"
+						;;
+					"ifdown")
+						if [ "$force_tunlink" = "1" ] && [ -z "$(ip route show "$ip")" ]; then
+							ip route add blackhole "$ip"
+							echo "ip route del blackhole $ip" >> "$DEFAULT_STATUS"
+						fi
+						;;
+				esac
+			done
+		done
+	done
+done

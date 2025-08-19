@@ -1,0 +1,150 @@
+{
+	"user": "mobutils",
+	"access": {
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"send_sms",
+				"read_sms",
+				"delete_sms",
+				"get_service_provider",
+				"info",
+				"get_pin_state",
+				"get_sim_slot",
+				"get_iccid",
+				"get_signal_query",
+				"get_network_info",
+				"get_net_reg_stat_all",
+				"get_ca_info",
+				"get_serving_cell",
+				"get_imsi",
+				"get_neighbour_cells",
+				"set_func"
+			]
+		},
+		"network.interface": {
+			"methods": [
+				"dump",
+				"up",
+				"down"
+			]
+		},
+		"network.interface.*": {
+			"methods": [
+				"status"
+			]
+		},
+		"network.wireless": {
+			"methods": [
+				"up",
+				"down"
+			]
+		},
+		"rut_fota": {
+			"methods": [
+				"get_info"
+			]
+		},
+		"ioman.*": {
+			"methods": [
+				"*"
+			]
+		},
+		"gpsd": {
+			"methods": [
+				"position"
+			]
+		},
+		"rms": {
+			"methods": [
+				"get_status"
+			]
+		},
+		"system": {
+			"methods": [
+				"sysupgrade"
+			]
+		},
+		"rpc-profile": {
+			"methods": [
+				"list",
+				"change"
+			]
+		},
+		"rpc-sys-ext": {
+			"methods": [
+				"userdefaults",
+				"firstboot"
+			]
+		},
+		"ip_block": {
+			"methods": [
+				"unblock",
+				"clear"
+			]
+		},
+		"rpc-sys": {
+			"methods": [
+				"reboot"
+			]
+		},
+		"mobifd" : {
+			"methods": [
+				"reload"
+			]
+		},
+		"mobifd.modem*": {
+			"methods": [
+				"reset_conn",
+				"reload",
+				"status",
+				"change_esim_profile"
+			]
+		},
+		"service": {
+			"methods": [
+				"list",
+				"event"
+			]
+		},
+		"urcd.modem*": {
+			"methods": [
+				"remove"
+			]
+		},
+		"uci": {
+			"methods": [
+				"reload_config"
+			]
+		},
+		"quota_limit.*": {
+			"methods": [
+				"status"
+			]
+		},
+		"log": {
+			"methods": [
+				"write_ext"
+			]
+		},
+		"esim.modem*": {
+			"methods": [
+				"status",
+				"download"
+			]
+		},
+		"api": {
+			"methods": [
+				"get",
+				"post",
+				"put",
+				"delete"
+			]
+		}
+	},
+	"send": [ "vuci.notify" ]
+}

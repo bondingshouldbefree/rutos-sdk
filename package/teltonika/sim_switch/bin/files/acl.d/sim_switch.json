@@ -1,0 +1,40 @@
+{
+        "user": "sim_switch",
+        "access": {
+                "gsm.modem*": {
+                        "methods": [ "get_sim_slot", "get_esim_profile_id", "get_signal_query",
+                    "get_net_reg_stat_all", "info", "get_pin_state" ]
+                },
+                "mobifd.modem*": {
+                        "methods": [ "switch_sim" ]
+                },
+                "network.interface.*": {
+                        "methods": [ "status" ]
+                },
+                "network.interface": {
+                        "methods": [ "dump" ]
+                },
+                "boardjson": {
+                        "methods": [ "get" ]
+                },
+                "sms_limit": {
+                        "methods": [ "check" ]
+                },
+                "quota_limit.*": {
+                        "methods": [ "status" ]
+                },
+                "rpc-ping": {
+                        "methods": [ "pingv4", "pingv6" ]
+                },
+                "sim_switch": {
+                        "methods": [ "reload" ]
+                },
+                "log" : {
+                        "methods": [ "write_ext" ]
+                }
+        },
+        "publish": ["sim_switch"],
+        "listen": [
+                "sim.changed"
+        ]
+}

@@ -1,0 +1,44 @@
+{
+  "network/wan": {
+    "title": "WAN",
+    "acls": ["network/wan"],
+    "view": "network/WanInterfaces",
+    "index": 20
+  },
+  "network/lan": {
+    "title": "LAN",
+    "acls": ["network/lan"],
+    "view": "network/LanInterfaces",
+    "index": 30
+  },
+  "status/network": {
+    "title": "Network",
+    "index": 30
+  },
+  "status/network/mobile": {
+    "title": "Mobile",
+    "acls": ["status/network/mobile"],
+    "view": "status/Mobile",
+    "index": 10,
+    "depends": {
+      "board": {
+        "allOf": ["has_mobile"]
+      }
+    }
+  },
+  "status/wireless": {
+    "title": "Wireless",
+    "index": 40,
+    "depends": {
+      "board": {
+        "allOf": ["has_wifi"]
+      }
+    }
+  },
+  "status/wireless/interfaces": {
+    "title": "Interfaces",
+    "view": "status/Wireless",
+    "acls": ["status/wireless/interfaces"],
+    "index": 10
+  }
+}

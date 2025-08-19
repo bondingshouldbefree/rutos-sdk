@@ -1,0 +1,22 @@
+{
+  "companyURL": "https://teltonika-networks.com",
+  "companyURLDisplay": "www.teltonika-networks.com",
+  "rmsURL": "rms.teltonika-networks.com",
+  "wikiURL": "https://wiki.teltonika-networks.com",
+  "fwSdkDownloadsURL": "https://wiki.teltonika-networks.com/view/Downloads",
+  "fwDownloadUrl": "https://firmware.teltonika-networks.com/%s/%s/%s_WEBUI.bin",
+  "packageDownloadURL": "https://wiki.teltonika-networks.com/view/%s_Package_Downloads#%s",
+  "fwChangelog": "https://wiki.teltonika-networks.com/view/%s_Firmware_Downloads#Changelog",
+  "company": "Teltonika Networks",
+  "companyShort": "Teltonika",
+  "companyFull": "TELTONIKA NETWORKS UAB",
+  "companyEmail": "networks.gpl@teltonika.lt",
+  "companyLocation": "K.Baršausko st. 66, LT-51436, Kaunas, Lithuania",
+  "companyGpl": "https://www.teltonika-networks.com/support/gpl",
+  "licenseUrl": "https://wiki.teltonika-networks.com/view/GPL#Licensing",
+  "mqttWikiURL": "https://wiki.teltonika-networks.com/view/Monitoring_via_MQTT#How_MQTT_works",
+  "modemUpdateWikiURL": "https://wiki.teltonika-networks.com/view/AT%26T_3G_Network_shutdown_information",
+  "mobileRSSIWikiURL": "https://wiki.teltonika-networks.com/view/RSSI",
+  "privacyPolicyURL": "https://teltonika-networks.com/privacy-policy/",
+  "sentryDSN": "https://069badc955f8757279eb08bb2ed16b5d@o1317009.ingest.sentry.io/4505872765943808"
+}

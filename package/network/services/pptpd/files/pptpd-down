@@ -1,0 +1,8 @@
+#!/bin/sh
+. /lib/functions.sh
+
+IFNAME_HASH="pptp-$(printf '%s' "${PEERNAME}" | md5sum | cut -c1-8)"
+ip link del "${IFNAME_HASH}"
+
+exit 0
+

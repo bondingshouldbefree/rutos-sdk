@@ -1,0 +1,16 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+fix_condition() {
+	local section="$1"
+
+	config_get interface "$section" interface
+
+	[ "$interface" == "dchp" ] && uci_set mwan3 $section interface "dhcp"
+}
+
+config_load mwan3
+config_foreach "fix_condition" "condition"
+uci_commit mwan3
+exit 0

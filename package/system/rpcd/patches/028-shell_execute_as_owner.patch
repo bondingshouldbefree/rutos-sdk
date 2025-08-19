@@ -1,0 +1,36 @@
+Index: rpcd-2021-03-11-ccb75178/exec.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/exec.c
++++ rpcd-2021-03-11-ccb75178/exec.c
+@@ -31,6 +31,9 @@
+ 
+ #include <rpcd/exec.h>
+ 
++#define NOBODY_UID 65534
++#define NOBODY_GID 65534
++
+ static int
+ rpc_errno_status(void)
+ {
+@@ -281,13 +284,17 @@ rpc_exec_epipe_state_cb(struct ustream *
+ 
+ 
+ static int change_user_and_group(int uid, int gid) {
+-	uid = (uid == NO_USER) || uid;
+-	gid = (gid == NO_GROUP) || gid;
++	uid = (uid == NO_USER) ? NOBODY_UID : uid;
++	gid = (gid == NO_GROUP) ? NOBODY_GID : gid;
++
++	if (setgid(gid))
++		return -1;
+ 
+-	if (initgroups(getpwuid(uid)->pw_name, gid) != 0)
++	struct passwd *pw = getpwuid(uid);
++	if (pw && initgroups(pw->pw_name, gid))
+ 		return -1;
+ 
+-	if (setgid(gid) || setuid(uid))
++	if (setuid(uid))
+ 		return -1;
+ 
+ 	return 0;

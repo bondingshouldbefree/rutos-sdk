@@ -1,0 +1,27 @@
+#include "mt7621-teltonika-common.dtsi"
+#include "mt7621-teltonika-rutm-flash.dtsi"
+
+/ {
+	chosen {
+                bootargs = "console=ttyS0,115200";
+        };
+
+	ioman: ioman {
+		layout@0 {
+			io@0 { // 4pin #3
+				label = "din1";
+				block_type = BLOCK_4PIN;
+				block_pin = "3";
+				gpio_in = "GPIO_IN_1";
+				io_param = "g0";
+			};
+			io@1 { // 4pin #4
+				label = "dout1";
+				block_type = BLOCK_4PIN;
+				block_pin = "4";
+				gpio_out = "GPIO_OUT_1";
+				io_param = "g1";
+			};
+		};
+	};
+};

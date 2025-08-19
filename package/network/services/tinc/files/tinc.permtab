@@ -1,0 +1,2 @@
+/etc/tinc	tinc:tinc	-	r
+/etc/config/tinc	tinc:tinc	660	-
