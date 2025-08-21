@@ -1,0 +1,107 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /lib/functions/network.sh
+. /usr/share/libubox/jshn.sh
+
+EXCLUDE_PROTOS="relay sstp pptp gre l2tp l2tpv3 wireguard mirror vrf"
+MWAN_TRACK_DIR="/var/run/mwan3track"
+MIN_METRIC=999999
+MIN_WANIF=""
+INCLUDE_VPN=0  # TODO: pass as an argument to get()
+IGNORE_FAILOVER=0  # TODO: pass as an argument to get()
+
+main() {
+	case "$1" in
+	list)
+		json_init
+		json_add_object "get"
+		json_close_object
+		json_dump
+		;;
+	call)
+		case "$2" in
+		get)
+			json_init
+			get_wan_iface
+			json_add_string "interface" "$wanif"
+			if [ -n "$wanif" ]; then
+				# TODO: no implicit shell variable sharing between functions (wanif_to_*())
+				wanif_to_state "$wanif"
+				wanif_to_wanadr "$wanif"
+				json_add_string "state" "$state"
+				json_add_string "ip" "$wanadr"
+			fi
+			json_dump
+			;;
+		esac
+	esac
+}
+
+get_wan_iface() {
+	if ! network_find_wan wanif "" 10; then
+		wanif=""
+		return
+	fi
+
+	[ -d "$MWAN_TRACK_DIR" ] && [ $IGNORE_FAILOVER -eq 0 ] && {
+		config_load mwan3
+		config_foreach parse_mwan3_wan member
+	}
+
+	if [ -z $MIN_WANIF ]; then
+		for i in $wanif
+		do
+			network_get_metric metric "$i"
+			network_get_protocol proto "$i"
+			[ "$metric" -gt "$MIN_METRIC" ] || [ -z "$proto" ] && continue
+			[ $INCLUDE_VPN -eq 0 ] && [[ "$EXCLUDE_PROTOS" == *"$proto"* ]] && continue
+			MIN_METRIC="$metric"
+			MIN_WANIF="$i"
+		done
+	fi
+
+	wanif="$MIN_WANIF"
+}
+
+parse_mwan3_wan(){
+	local section="$1"
+
+	! echo "$section" | grep -q "_member_mwan" && return
+
+	config_get metric "$section" metric "999999"
+	config_get iface "$section" interface ""
+	network_get_protocol proto "$iface"
+	local is_online=0
+
+	[ "$(cat ${MWAN_TRACK_DIR}/${iface}/STATUS 2>/dev/null)" = "online" ] && is_online=1
+
+	[ $is_online -eq 0 ] || [ "$metric" -gt "$MIN_METRIC" ] || [ -z "$proto" ]  && return
+	[ $INCLUDE_VPN -eq 0 ] && [[ "$EXCLUDE_PROTOS" == *"$proto"* ]] && return
+	MIN_METRIC="$metric"
+	MIN_WANIF="$iface"
+}
+
+wanif_to_state() {
+	state=""
+	network_get_device wandev "$1"
+	case "$wandev" in
+		"wwan"* | "rmnet"* | "qmimux"* | "usb"* | "ppp-"*)
+			state="Mobile"
+			;;
+		"eth"* | "wan"* | "pppoe-"* | *"_to_wan")
+			state="Wired"
+			;;
+		"wlan"* | "apcli"*)
+			state="WiFi"
+			;;
+	esac
+}
+
+wanif_to_wanadr() {
+	network_get_ipaddrs wanadr "$wanif"
+	[ -z "$wanadr" ] && network_get_ipaddrs wanadr "$wanif"_4
+	[ -z "$wanadr" ] && network_get_ipaddrs wanadr "$wanif"_6
+}
+
+main "$@"

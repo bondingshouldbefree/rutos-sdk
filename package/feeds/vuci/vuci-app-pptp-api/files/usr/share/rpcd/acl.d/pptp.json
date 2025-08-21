@@ -1,0 +1,1 @@
+{"services/vpn/pptp":{"description":"pptp configuration","read":{"api":{"/pptp/*":["*"],"/interfaces/config/*":["id"]}},"write":{"api":["/pptp/*"]},"source":["/pptp/*"],"exception":["/pptp/client/config/*","/pptp/server/config/*"]}}

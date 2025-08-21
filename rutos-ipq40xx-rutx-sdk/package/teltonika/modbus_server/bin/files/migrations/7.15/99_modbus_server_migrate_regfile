@@ -1,0 +1,37 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+migrate_regfile() {
+    local sec="$1"
+    local clientregs=""
+    local regfile=""
+    local regfilestart=""
+    local regfilesize=""
+
+    config_get clientregs "$sec" "clientregs" "0"
+
+    [ "$clientregs" = "0" ] && return
+
+    config_get regfile "$sec" "regfile"
+    [ -n "$regfile" ] && return
+
+    config_get regfile "modbus" "regfile"
+    config_get regfilestart "modbus" "regfilestart" "1025"
+    config_get regfilesize "modbus" "regfilesize" "128"
+
+    [ -z "$regfile" ] && return
+
+    [ -f "$regfile" ] && cp "$regfile" "$regfile"_"$sec"
+
+    uci_set "modbus_server" "$sec" "regfile" "$regfile"_"$sec"
+    uci_set "modbus_server" "$sec" "regfilestart" "$regfilestart"
+    uci_set "modbus_server" "$sec" "regfilesize" "$regfilesize"
+}
+
+config_load modbus_server
+
+config_foreach migrate_regfile rtu_device
+
+uci commit modbus_server
+

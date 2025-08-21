@@ -1,0 +1,9 @@
+config core main
+	option session_timeout '1800'
+	option api_session_timeout '300'
+	option lang 'en'
+	option firstlogin '1'
+	option data_analytics '0'
+
+config internal 'languages'
+	option en 'English'

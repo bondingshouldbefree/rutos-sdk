@@ -1,0 +1,96 @@
+#!/bin/sh
+
+(
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+migrate_io() {
+	local current_sleep=0
+
+	config_get action "$1" "action"
+	[ "$action" = "send_status" ] || [ "$action" = "io_set" ] || return
+
+	while [ -z "$io_list" ] && [ "$current_sleep" -lt 100 ]; do
+		io_list=$(ubus list ioman.*)
+		current_sleep=$((current_sleep + 1))
+		sleep 1
+	done
+
+	[ -z "$io_list" ] && return
+
+	config_get smstext "$1" "smstext"
+	[ "$smstext" = "iostatus" ] && migrate_io_status "$1" "$io_list"
+	[ "$smstext" = "ioset" ] && migrate_io_set "$1" "$io_list"
+}
+
+migrate_io_status() {
+	local section_id="$1"
+	local io_list="$2"
+	local message=""
+
+	for io_ubus in $io_list; do
+		local call=$(ubus call "$io_ubus" location)
+		json_load "$call"
+		json_get_var io_param io_param
+		json_get_var io_name io_name
+		[ -z "$io_param" ] || [ -z "$io_name" ] || ! json_is_a block_pins array && continue
+		json_select block_pins
+		message="${message:+$message}"$io_name" ("
+		json_get_keys keys
+		for var in $keys; do
+			json_get_var pin "$var"
+			message="${message:+$message}"$pin","
+		done
+		message="${message:+${message::-1}}) - %"$io_param"; "
+	done
+
+	message=$(echo ${message::-1})
+
+	uci_set "sms_utils" "$section_id" "message" "$message"
+	uci_commit "sms_utils"
+}
+
+migrate_io_set() {
+	local section_id="$1"
+	local io_list="$2"
+	local pin=""
+
+	for io_ubus in $io_list; do
+		local call=$(ubus call "$io_ubus" status)
+		json_load "$call"
+		json_get_var direction direction
+		[[ -z "$direction" || "$direction" != "out" ]] && continue
+		pin=$(echo "$io_ubus" | cut -d '.' -f 3)
+		break
+	done
+
+	[ -z "$pin" ] && return
+
+	uci_set "sms_utils" "$section_id" "io" "$pin"
+	uci_commit "sms_utils"
+}
+
+# Check if fw was uploaded with keep-settings
+[ -e "/tmp/.ksrestored" ] && return
+
+# Check if IO is supported
+ios="$(jsonfilter -i /etc/board.json -e '$.hwinfo.ios')"
+power_ios="$(jsonfilter -i /etc/board.json -e '$.hwinfo.power_ios')"
+[ "$ios" != "true" ] && [ "$power_ios" != "true" ] && return
+
+config_load "sms_utils"
+config_foreach migrate_io "rule"
+
+# update config file in default profile template
+profiles="/etc/profiles"
+config="/etc/config/sms_utils"
+
+tar xzf "${profiles}/template.tar.gz" -C "$profiles"
+cp "$config" "${profiles}${config}"
+tar czf "${profiles}/template.tar.gz" etc -C "$profiles"
+rm -rf "${profiles}/etc"
+
+sed -i '/\/etc\/config\/sms_utils/d' "${profiles}/template.md5"
+md5sum "$config" >> "${profiles}/template.md5"
+) </dev/null >/dev/null 2>&1 &
+# launch script in a subshell in background to not hang up the device if ioman is not yet available through ubus

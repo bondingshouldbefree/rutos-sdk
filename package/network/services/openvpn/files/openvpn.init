@@ -1,0 +1,446 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2008-2013 OpenWrt.org
+# Copyright (C) 2008 Jo-Philipp Wich
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+. /usr/share/libubox/jshn.sh
+. /lib/functions/openvpn.sh
+
+START=90
+STOP=10
+
+USE_PROCD=1
+PROG=/usr/sbin/openvpn
+TMP_DIR="/var/run/openvpn"
+
+LIST_SEP="
+"
+
+UCI_STARTED=
+UCI_DISABLED=
+
+# generates selective config file for specific
+# client and integrates client parameters into
+# global OpenVPN server logic (routes, pushs etc.)
+config_client() {
+	local sid="$1"
+	local ula_prefix ip6assign netw_ip netw_ip6 netw_mask netw_mask6
+	local common_name local_ip remote_ip private_network covered_network local_ipv6 private_network_ipv6 instance local_net topology
+
+	# get client params from /etc/config/openvpn
+	config_get common_name "$sid" common_name
+	[ -z "$common_name" ] && return
+
+	config_get instance "$sid" instance
+	[ -n "$instance" ] && topology="$(uci -q get openvpn."${instance}".topology)"
+
+	config_get local_ip "$sid" local_ip
+	config_get remote_ip "$sid" remote_ip
+	config_get local_net "$sid" local_net
+	config_get private_network "$sid" private_network
+	config_get covered_network "$sid" covered_network
+	config_get local_ipv6 "$sid" local_ipv6
+	config_get private_network_ipv6 "$sid" private_network_ipv6
+
+	# generate selective config in /etc/openvpn/ccd
+	if [ "$topology" = "subnet" ]; then
+		[ -n "$local_net" ] && {
+			eval "$(ipcalc.sh "$local_net")"
+			printf "ifconfig-push %s %s\n" "$IP" "$NETMASK" >/etc/openvpn/ccd/"$common_name"
+		}
+	else
+		[ -n "$local_ip" ] && [ -n "$remote_ip" ] && printf "ifconfig-push %s %s\n" "$local_ip" "$remote_ip" >/etc/openvpn/ccd/"$common_name"
+	fi
+	[ -n "$local_ipv6" ] && printf "ifconfig-ipv6-push %s\n" "$local_ipv6" >>/etc/openvpn/ccd/"$common_name"
+	[ -n "$private_network" ] && {
+		for r in $private_network; do
+			[ -n "${r##*/*}" ] && r="${r}/32"
+			eval "$(ipcalc.sh "$r")"
+			printf "iroute %s %s\n" "$NETWORK" "$NETMASK" >>/etc/openvpn/ccd/"$common_name"
+		done
+	}
+	[ -n "$private_network_ipv6" ] && {
+		for r6 in $private_network_ipv6; do
+			printf "iroute-ipv6 %s\n" "$r6" >>/etc/openvpn/ccd/"$common_name"
+		done
+	}
+	for iface in ${covered_network}; do
+		eval "$(ubus call network.interface dump | jsonfilter -e \
+		'netw_ip=@.interface[@.interface="'"$iface"'"]["ipv4-address"][0].address' -e \
+		'netw_mask=@.interface[@.interface="'"$iface"'"]["ipv4-address"][0].mask' -e \
+		'netw_ip6=@.interface[@.interface="'"$iface"'"]["ipv6-address"][0].address' -e \
+		'netw_mask6=@.interface[@.interface="'"$iface"'"]["ipv6-address"][0].mask')"
+		[ -n "$netw_ip" ] && [ -n "$netw_mask" ] && {
+			eval "$(ipcalc.sh "${netw_ip}/${netw_mask}")"
+			printf "push \"route %s %s\"\n" "$NETWORK" "$NETMASK" >>/etc/openvpn/ccd/"$common_name"
+			netw_ip=""
+		}
+		if [ -n "$local_ipv6" ] || [ -n "$private_network_ipv6" ]; then
+			if [ -n "$netw_ip6" ] && [ -n "$netw_mask6" ]; then
+				printf "push \"route-ipv6 %s\"\n" "${netw_ip6}/${netw_mask6}" >>/etc/openvpn/ccd/"$common_name"
+				netw_ip6=""
+			else
+				ula_prefix=$(/sbin/uci -q get network.globals.ula_prefix 2>/dev/null)
+				ula_prefix="${ula_prefix%%/*}"
+				ip6assign=$(/sbin/uci -q get network."$iface".ip6assign 2>/dev/null)
+				[ -n "$ip6assign" ] && [ -n "$ula_prefix" ] && {
+					printf "push \"route-ipv6 %s\"\n" "${ula_prefix}/${ip6assign}" >>/etc/openvpn/ccd/"$common_name"
+					ip6assign=""
+				}
+			fi
+		fi
+	done
+}
+
+init_ccd() {
+	if [ ! -d ${TMP_DIR}/openvpn-ccd ]; then
+		mkdir -p ${TMP_DIR}//openvpn-ccd
+	fi
+
+	if [ -h /etc/openvpn/ccd ]; then
+		rm /etc/openvpn/ccd/* 2>/dev/null
+	else
+		ln -s ${TMP_DIR}/openvpn-ccd /etc/openvpn/ccd
+	fi
+}
+
+prepare_clients() {
+	init_ccd
+	config_foreach config_client 'client'
+}
+
+append_param() {
+	local s="$1"
+	local v="$2"
+	case "$v" in
+	*_*_*_*)
+		v=${v%%_*}-${v#*_}
+		v=${v%%_*}-${v#*_}
+		v=${v%%_*}-${v#*_}
+		;;
+	*_*_*)
+		v=${v%%_*}-${v#*_}
+		v=${v%%_*}-${v#*_}
+		;;
+	*_*)
+		v=${v%%_*}-${v#*_}
+		;;
+	esac
+	echo -n "$v" >>"${TMP_DIR}/openvpn-$s.conf"
+	return 0
+}
+
+append_bools() {
+	local p
+	local v
+	local s="$1"
+	shift
+	for p in "$@"; do
+		config_get_bool v "$s" "$p"
+		[ "$v" = 1 ] && append_param "$s" "$p" && echo >>"${TMP_DIR}/openvpn-$s.conf"
+	done
+}
+
+increase_ipv6() {
+	local ipv6=$1
+	local ip mask last last_dec last_hex
+	ip="${ipv6%/*}"
+	mask="${ipv6##*/}"
+	[ "$mask" = "$ip" ] && mask="64"
+	last="${ip##*:}"
+	[ -n "$last" ] && last_dec=$(printf "%d" "0x$last") || last_dec=0
+	if [ "$last_dec" -lt 65535 ]; then
+		if [ "$last_dec" = 0 ]; then
+			last_dec=2
+		else
+			last_dec=$(( last_dec + 1 ))
+		fi
+	fi
+	last_hex=$(printf "%x" "$last_dec")
+	echo "${ip%:*}:${last_hex}/${mask}"
+}
+
+append_params() {
+	local p
+	local v
+	local s="$1"
+	local pool=0
+	config_get ifconfig_ipv6_pool "$s" ifconfig_ipv6_pool ""
+	config_get ifconfig_pool_start "$s" ifconfig_pool_start ""
+	config_get ifconfig_pool_end "$s" ifconfig_pool_end ""
+	config_get askpass "$s" askpass ""
+	[ -n "$ifconfig_ipv6_pool" ] || { [ -n "$ifconfig_pool_start" ] && [ -n "$ifconfig_pool_end" ]; } && pool=1
+	shift
+	for p in "$@"; do
+		config_get v "$s" "$p"
+		IFS="$LIST_SEP"
+		for v in $v; do
+			if [ "$p" = "server_ipv6" ] && [ "$pool" = 1 ]; then
+				{
+				echo "ifconfig-ipv6 $v ${v%/*}"
+				[ -n "$ifconfig_ipv6_pool" ] && echo "ifconfig-ipv6-pool $ifconfig_ipv6_pool" || echo "ifconfig-ipv6-pool $(increase_ipv6 "$v")"
+				echo "push tun-ipv6"
+				} >>"${TMP_DIR}/openvpn-$s.conf"
+			elif [ "$p" = "key" ] ; then
+				key_path="$v"
+				tpm_handle="$(/bin/tpm2_importer "$key_path" get_handle 2> /dev/null)" && {
+					key_path="handle:$tpm_handle"
+					echo "providers tpm2 default" >> "${TMP_DIR}/openvpn-$s.conf"
+				}
+				echo "key $key_path" >> "${TMP_DIR}/openvpn-$s.conf"
+			elif [ "$p" = "askpass" ] && [ -n "$askpass" ] && [ ! -s "$askpass" ]; then
+				continue
+			else
+				[ -n "$v" ] && [ "$p" != "push" ] && append_param "$s" "$p" && echo " $v" >>"${TMP_DIR}/openvpn-$s.conf"
+				[ -n "$v" ] && [ "$p" = "push" ] && append_param "$s" "$p" && echo " \"$v\"" >>"${TMP_DIR}/openvpn-$s.conf"
+			fi
+		done
+		unset IFS
+	done
+}
+
+append_extended_params() {
+	local arg="$1"
+	[ -n "$arg" ] && echo "$arg" | sed -e 's/^[ \t]*//' >>"${TMP_DIR}/openvpn-$s.conf"
+}
+
+append_list() {
+	local p; local v; local s="$1"; shift
+
+	list_cb_append() {
+		v="${v}:$1"
+	}
+
+	for p in $*; do
+		unset v
+		config_list_foreach "$s" "$p" list_cb_append
+		[ -n "$v" ] && append_param "$s" "$p" && echo " ${v:1}" >> "${TMP_DIR}/openvpn-$s.conf"
+	done
+}
+
+section_enabled() {
+	config_get_bool enable "$1" 'enable' 0
+	config_get_bool enabled "$1" 'enabled' 0
+	[ "$enable" -gt 0 ] || [ "$enabled" -gt 0 ]
+}
+
+append_tracked_files() {
+	local p
+	local v
+	local s="$1"
+	shift
+	for p in "$@"; do
+		[ "$p" == "status" ] && continue
+		config_get v "$s" "$p"
+		IFS="$LIST_SEP"
+		[ -f "$v" ] && [ "$(dirname "$v")" != "." ] && procd_append_param file "$v"
+		unset IFS
+	done
+	# Additional custom options to track
+	config_get userpass "$s" 'userpass' ''
+	[ -f "$userpass" ] && procd_append_param file "$userpass"
+}
+
+append_other_options() {
+	local sid="$1"
+	local type="$2"
+	local nopool=""
+
+	config_get local_ip "$sid" 'local_ip'
+	config_get remote_ip "$sid" 'remote_ip'
+	config_get local_ipv6 "$sid" 'local_ipv6'
+	config_get remote_ipv6 "$sid" 'remote_ipv6'
+	config_get network_ip "$sid" 'network_ip'
+	config_get network_mask "$sid" 'network_mask'
+	config_get network "$sid" 'network'
+	config_get server_ip "$sid" 'server_ip'
+	config_get server_netmask "$sid" 'server_netmask'
+	config_get ifconfig_pool_start "$sid" 'ifconfig_pool_start'
+	config_get ifconfig_pool_end "$sid" 'ifconfig_pool_end'
+	config_get status "$sid" 'status'
+	config_get auth_mode "$sid" 'auth_mode'
+	config_get userpass "$sid" 'userpass'
+
+	[ -n "$local_ip" ] && [ -n "$remote_ip" ] && echo "ifconfig $local_ip $remote_ip" >> ${TMP_DIR}/openvpn-"$sid".conf
+	[ -n "$local_ipv6" ] && [ -n "$remote_ipv6" ] && echo "ifconfig-ipv6 $local_ipv6 $remote_ipv6" >> ${TMP_DIR}/openvpn-"$sid".conf
+	[ -n "$network_ip" ] && [ -n "$network_mask" ] && echo "route $network_ip $network_mask" >> ${TMP_DIR}/openvpn-"$sid".conf
+	[ -n "$network" ] && {
+		for net in $network; do
+			case "$net" in
+				*:*)
+					echo "route-ipv6 $net" >> ${TMP_DIR}/openvpn-"$sid".conf
+					;;
+				*.*)
+					eval "$(ipcalc.sh "$net")"
+					printf "route %s %s\n" "$NETWORK" "$NETMASK" >>${TMP_DIR}/openvpn-"$sid".conf
+					;;
+			esac
+		done
+	}
+	if [ -n "$ifconfig_pool_start" ] && [ -n "$ifconfig_pool_end" ]; then
+		echo "ifconfig-pool $ifconfig_pool_start $ifconfig_pool_end" >> ${TMP_DIR}/openvpn-"$sid".conf
+		nopool="nopool"
+	fi
+	[ -n "$server_ip" ] && [ -n "$server_netmask" ] && echo "server $server_ip $server_netmask $nopool" >> ${TMP_DIR}/openvpn-"$sid".conf
+	[ -z "$status" ] && {
+		echo "status ${TMP_DIR}/openvpn.$sid.status 10" >> ${TMP_DIR}/openvpn-"$sid".conf
+		: > "${TMP_DIR}/openvpn.$sid.status"
+	}
+
+	# add addition options
+	{
+		[ "$type" = "client" ] && echo "nobind"
+		[ "$type" = "server" ] && {
+			[ -n "$(ls /etc/openvpn/ccd/)" ] && echo "learn-address /etc/openvpn/route.sh"
+			[ "$auth_mode" = "tls/pass" ] || [ "$auth_mode" = "pass" ] && echo "auth-user-pass-verify /etc/openvpn/auth-pam-fixed.sh via-file"
+			[ "$auth_mode" = "pass" ] && echo "verify-client-cert none"
+		}
+	} >>${TMP_DIR}/openvpn-"$sid".conf
+	[ -n "$userpass" ] && ln -sf "$userpass" "/etc/openvpn/auth_$sid" &>/dev/null
+}
+
+openvpn_add_instance() {
+	local name="$1"
+	local dir="$2"
+	local conf="$3"
+	local security="$4"
+
+	chown -R openvpn:openvpn "${TMP_DIR}"
+	procd_open_instance "$name"
+	procd_set_param command "$PROG" \
+		--syslog "openvpn($name)" \
+		--cd "$dir" \
+		--config "${TMP_DIR}/openvpn-$name.conf"
+        if [ "$security" -lt 2 ]; then
+            logger -t "openvpn(${name})" "Not adding hotplug scripts due to script-security $security"
+			awk '{print $1}' /proc/uptime > "${TMP_DIR}/openvpn-${name}.time"
+        else
+            procd_append_param command \
+            --up "/usr/libexec/openvpn-hotplug up $name" \
+            --down "/usr/libexec/openvpn-hotplug down $name"
+        fi
+	procd_set_param file "$dir/$conf"
+	append_tracked_files "$name" $OPENVPN_PARAMS
+	procd_set_param respawn
+	procd_append_param respawn 3600
+	procd_append_param respawn 5
+	procd_append_param respawn 5
+	procd_set_param user openvpn
+	procd_close_instance
+}
+
+start_instance() {
+	local s="$1"
+	local type config config_parsed script_security
+	OPENVPN_CONFIG="${TMP_DIR}/openvpn-$s.conf"
+
+	config_get type "$s" type
+	config_get config "$s" config
+	config_get config_parsed "$s" config_parsed
+	config="${config:+$(readlink -f "$config")}"
+
+	section_enabled "$s" || {
+		append UCI_DISABLED "$config" "$LIST_SEP"
+		return 1
+	}
+
+	[ -f "${TMP_DIR}/openvpn-$s.conf" ] && rm "${TMP_DIR}/openvpn-$s.conf"
+
+	if [ -n "$config" ] && [ "$config_parsed" != "1" ]; then
+		cp "$config" "$OPENVPN_CONFIG"
+		config_get dev "$s" dev
+		[ -n "$dev" ] && sed -i "s/dev .*/dev ${dev}/" "$OPENVPN_CONFIG"
+		append UCI_STARTED "$config" "$LIST_SEP"
+	else
+		echo -e "\n# MAIN PARAMETERS" >> "$OPENVPN_CONFIG"
+		append_bools "$s" $OPENVPN_BOOLS
+		append_params "$s" $OPENVPN_PARAMS
+		append_list "$s" $OPENVPN_LIST
+		append_other_options "$s" "$type"
+		echo -e "\n# CUSTOM PARAMETERS" >> "$OPENVPN_CONFIG"
+		config_list_foreach "$s" "extra" append_extended_params
+	fi
+
+	get_openvpn_option "$OPENVPN_CONFIG" script_security script-security
+	get_openvpn_option "$OPENVPN_CONFIG" verb verb
+	{
+		echo -e "\n# ADDITIONAL PARAMETERS"
+		echo "auth-nocache"
+		[ -z "$script_security" ] && echo "script-security 2"
+		[ -z "$verb" ] && echo "verb 5"
+		[ -n "$config" ] && [ "$config_parsed" != "1" ] && echo "status ${TMP_DIR}/openvpn.$s.status 10"
+	} >> "$OPENVPN_CONFIG"
+
+	openvpn_add_instance "$s" "${OPENVPN_CONFIG%/*}" "${OPENVPN_CONFIG##*/}" "$script_security"
+}
+
+start_service() {
+	[ -n "$(uci -q get openvpn.@openvpn[0])" ] || return
+	local instance="$1"
+	local instance_found=0
+
+	config_cb() {
+		local type="$1"
+		local name="$2"
+		if [ "$type" = "openvpn" ]; then
+			if [ -n "$instance" ] && [ "$instance" = "$name" ]; then
+				instance_found=1
+			fi
+		fi
+	}
+
+	. /usr/share/openvpn/openvpn.options
+	config_load 'openvpn'
+	prepare_clients
+
+	if [ -n "$instance" ]; then
+		[ "$instance_found" -gt 0 ] || return
+		start_instance "$instance"
+	else
+		config_foreach start_instance 'openvpn'
+
+		local path name
+		for path in /etc/openvpn/*.conf; do
+			if [ -f "$path" ]; then
+				name="${path##*/}"
+				name="${name%.conf}"
+
+				# don't start configs again that are already started by uci
+				if echo "$UCI_STARTED" | grep -qxF "$path"; then
+					continue
+
+				# don't start configs which are set to disabled in uci
+				elif echo "$UCI_DISABLED" | grep -qxF "$path"; then
+					logger -t openvpn "$name.conf is disabled in /etc/config/openvpn"
+					continue
+				fi
+
+				openvpn_add_instance "$name" "${path%/*}" "$path"
+			fi
+		done
+	fi
+}
+
+add_interface_trigger() {
+	local s_name="$1"
+	local ifname proto
+
+	config_get ifname "$s_name" ifname
+	config_get proto "$s_name" proto
+
+	if [ "$proto" == "static" ]; then
+		case "$ifname" in
+		eth0*) procd_add_interface_trigger "interface.*.up" "$s_name" /etc/init.d/openvpn restart ;;
+		br-$s_name) procd_add_interface_trigger "interface.*.up" "$s_name" /etc/init.d/openvpn restart ;;
+		br-lan) procd_add_interface_trigger "interface.*.up" "$s_name" /etc/init.d/openvpn restart ;;
+		esac
+	fi
+}
+
+service_triggers() {
+	procd_add_reload_trigger openvpn
+
+	config_load 'network'
+	config_foreach add_interface_trigger 'interface'
+	config_load 'openvpn'
+}

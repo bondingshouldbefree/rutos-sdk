@@ -1,0 +1,268 @@
+#!/bin/sh /etc/rc.common
+
+. /lib/functions/network.sh
+
+START=42
+STOP=1
+USE_PROCD=1
+
+PROG="/usr/sbin/tincd"
+[ -x "$PROG" ] || PROG="/usr/local${PROG}"
+TMP_TINC="/var/run/tinc"
+
+append_param() {
+	local net="$1"
+	local host="$2"
+	local param="$3"
+	local val="$4"
+	local ip port tmp_file
+
+	if [ -n "$host" ]; then
+		tmp_file="$TMP_TINC/$net/hosts/$host"
+	else
+		tmp_file="$TMP_TINC/$net/tinc.conf"
+	fi
+
+	for j in $val; do
+		if [ "$param" = "address" ];then
+			if [ -z "${j##*.*}" ]; then
+				ip="${j%:*}"
+				[ "${j}" != "${j##*:}" ] && port=" ${j##*:}" || port=
+			else
+				ip="${j%]:*}"
+				ip="${ip#*[}"
+				[ "${j}" != "${j##*]:}" ] && port=" ${j##*]:}" || port=
+			fi
+			echo "$param = ${ip}${port}" >> "$tmp_file"
+		else
+			echo "$param = $j" >> "$tmp_file"
+		fi
+	done
+}
+
+append_net_params() {
+	s="$1"
+	shift
+
+	for i in "$@"; do
+		config_get val "$s" "$i"
+		[ -z "$val" ] && continue
+		[ "$i" = "subnet" ] && {
+			append_param "$s" "$s" "$i" "$val"
+			continue
+		}
+		[ "$i" = "privatekeyfile" ] && {
+			cp "$val" "$TMP_TINC/$s/rsa_key.priv"
+			continue
+		}
+		[ "$i" = "publickeyfile" ] && {
+			cat "$val" >> "$TMP_TINC/$s/hosts/$s"
+			continue
+		}
+		[ "$i" = "bindtointerface" ] && {
+			network_get_device l3_device "$val"
+			trigger_interface="$val"
+			echo "${i} = ${l3_device}" >> "$TMP_TINC/$s/hosts/$s"
+			continue
+		}
+		[ "$i" = "connectto" ] && {
+			append_param "$s" "" "$i" "$val"
+			continue
+		}
+		echo "$i = $val" >> "$TMP_TINC/$s/tinc.conf"
+	done
+	echo "Interface = tinc_${s}" >> "$TMP_TINC/$s/tinc.conf"
+}
+
+prepare_net() {
+	local s="$1"
+	local local_ip local_ipv6
+	config_get enabled "$s" enabled "0"
+	[ "$enabled" = "0" ] && return
+
+	[ -d "$TMP_TINC/$s" ] && rm -rf "$TMP_TINC/$s"
+	mkdir -p "$TMP_TINC/$s"
+	mkdir -p "$TMP_TINC/$s/hosts"
+	[ -d "/etc/tinc/$s" ] && cp -r "/etc/tinc/$s" "$TMP_TINC/"
+
+	append_net_params "$s" \
+		addressfamily \
+		bindtoaddress \
+		bindtointerface \
+		broadcast \
+		connectto \
+		device \
+		devicetype \
+		forwarding \
+		interface \
+		mode \
+		keyexpire \
+		macexpire \
+		name \
+		pinginterval \
+		pingtimeout \
+		privatekey \
+		privatekeyfile \
+		processpriority \
+		proxy \
+		replaywindow \
+		udprcvbuf \
+		udpsndbuf \
+		port \
+		subnet
+
+	config_get local_ip "$s" local_ip
+	config_get local_ipv6 "$s" local_ipv6
+	[ ! -e "$TMP_TINC/$s/hosts/$s" ] && touch "$TMP_TINC/$s/hosts/$s"
+	[ -n "$local_ip" ] && ! grep -q "^Subnet = ${local_ip%/*}$" "$TMP_TINC/$s/hosts/$s" && echo "Subnet = ${local_ip%/*}" >> "$TMP_TINC/$s/hosts/$s"
+	[ -n "$local_ipv6" ] && ! grep -q "^Subnet = ${local_ipv6%/*}$" "$TMP_TINC/$s/hosts/$s" && echo "Subnet = ${local_ipv6%/*}" >> "$TMP_TINC/$s/hosts/$s"
+
+	config_foreach prepare_host "tinc-host_${s}" "$s"
+	setup_up "$s"
+	setup_down "$s"
+}
+
+append_host_params() {
+	n="$1"
+	shift
+	s="$1"
+	shift
+	for i in "$@"; do
+		config_get val "$s" "$i"
+		[ -z "$val" ] && continue
+		[ "$i" = "PublicKeyFile" ] && {
+			cat "$val" >> "$TMP_TINC/$n/hosts/$s"
+			continue
+		}
+		[ "$i" = "subnet" ] && {
+			append_param "$n" "$s" "$i" "$val"
+			continue
+		}
+		[ "$i" = "address" ] && {
+			append_param "$n" "$s" "$i" "$val"
+			continue
+		}
+		echo "$i = $val" >> "$TMP_TINC/$n/hosts/$s"
+	done
+}
+
+append_route() {
+	local subnet="$1"
+	local net="$2"
+	[ -n "$subnet" ] && echo 'ip route add "'$subnet'" dev $INTERFACE' >> $TMP_TINC/${net}/tinc-up
+}
+
+add_hosts_routes() {
+	local host="$1"
+	local net="$2"
+	local enabled
+	config_get enabled "$host" enabled "0"
+	[ "$enabled" = "1" ] && config_list_foreach "$host" "subnet" append_route "$net"
+}
+
+setup_up() {
+	local net="$1"
+	local local_ip local_ipv6
+	config_get local_ip "$net" local_ip
+	config_get local_ipv6 "$net" local_ipv6
+	[ -n "$local_ip" ] && {
+		eval "$(ipcalc.sh "$local_ip")"
+	}
+	echo '
+#!/bin/sh
+ip link set $INTERFACE up
+' > "$TMP_TINC/${net}/tinc-up"
+
+	if [ -n "$IP" ] && [ -n "$NETMASK" ]; then
+		echo 'ifconfig $INTERFACE '"$IP"' netmask '"$NETMASK"'' >> "$TMP_TINC/${net}/tinc-up"
+	fi
+	[ -n "$local_ipv6" ] && echo 'ifconfig $INTERFACE add '"$local_ipv6"'' >> "$TMP_TINC/${net}/tinc-up"
+	config_list_foreach "$net" "connectto" add_hosts_routes "$net"
+	chmod +x "$TMP_TINC/${net}/tinc-up"
+}
+
+
+setup_down() {
+	local net="$1"
+	echo '
+#!/bin/sh
+ip link set $INTERFACE down
+' > "$TMP_TINC/${net}/tinc-down"
+	chmod +x "$TMP_TINC/${net}/tinc-down"
+}
+
+check_host_use() {
+	local connectto="$1"
+	local host="$2"
+	[ "$connectto" = "$host" ] && connected=true
+}
+
+prepare_host() {
+	local s="$1"
+	local n="$2"
+
+	local net enabled
+	local connected=false
+
+	config_get enabled "$s" enabled "0"
+	config_get net "$s" net
+	if [ "$enabled" != "1" ] || [ "$net" != "$n" ]; then
+		return
+	fi
+
+	config_list_foreach "$net" "connectto" check_host_use "$s"
+	[ "$connected" = false ] && return
+
+	[ ! -e "$TMP_TINC/$net/hosts/$s" ] && touch "$TMP_TINC/$net/hosts/$s"
+	append_host_params "$net" "$s" \
+		address \
+		cipher \
+		clampmss \
+		compression \
+		digest \
+		indirectdata \
+		maclength \
+		pmtu \
+		pmtudiscovery \
+		port \
+		publickey \
+		publickeyfile \
+		subnet \
+		tcponly \
+		name
+}
+
+start_instance() {
+	local s="$1"
+	config_get enabled "$s" enabled "0"
+	[ "$enabled" = "0" ] && return
+	chown -R tinc:tinc "$TMP_TINC"
+
+	procd_open_instance
+	procd_set_param command $PROG -c "$TMP_TINC/$s" -n "$s" -D -d1 --pidfile="$TMP_TINC/tinc.$s.pid" --user=tinc
+	procd_set_param stderr 1
+	procd_set_param respawn
+	procd_set_param file "$TMP_TINC/$s/tinc.conf"
+	procd_add_reload_trigger tinc
+	procd_close_instance
+}
+
+start_service() {
+	config_load 'tinc'
+	config_foreach prepare_net 'tinc-net'
+	config_foreach start_instance 'tinc-net'
+}
+
+stop_service() {
+	rm -rf "$TMP_TINC"
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger 'tinc'
+	procd_add_reload_interface_trigger "$trigger_interface"
+}

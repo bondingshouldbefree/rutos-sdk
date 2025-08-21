@@ -1,0 +1,80 @@
+<html>
+    <%include("header")%>
+    <body>
+        <div class="main-body">
+            <div class="theme-picture">
+                <div class="picture-text"><div class="picture-title"><%:Hotspot%></div></div>
+            </div>
+            <div class="login-panel">
+                <div class="content">
+                    <div class="logo">
+                        <img src="<%=logo%>" alt="logo">
+                    </div>
+                    <nav class="links">
+                        <a href="" class="nav-link active"><%:Login%></a> <% if signup then %>/<a href="" class="nav-link"><%:Register%></a> <%end%>
+                    </nav>
+
+                    <div class="msg">
+                        <div class="msg-title"><%:Welcome To RutOS!%></div>
+                        <div class="msg-content"><%:Thank you for using Teltonika RutOS hotspot services!%></div>
+                    </div>
+
+                    <%- if res == "failed" then %>
+                    <div class="login-error">
+                        <% if reason then %>
+                            <% if reason == "data_limit" then %>
+                                <%:Data limit has been reached.%>
+                            <% elseif reason == "time_limit" then %>
+                                <%:Time limit has been reached.%>
+                            <% elseif reason == "tos" then %>
+                                <%:Please indicate that you have read and agree to the Terms of Service%>
+                            <% elseif reason == "time_limit_trial" then %>
+                                <%:Trial time limit has been reached.%>
+                            <% elseif reason == "data_limit_trial" then %>
+                                <%:Trial data limit has been reached.%>
+                            <% elseif reason == "user_duplicate" then %>
+                                <%:Duplicate passwords are not allowed.%>
+                            <%else%>
+                                <%:Please try again.%>
+                            <% end %>
+                        <% else %>
+                            <%:Please try again.%>
+                        <% end %>
+                    <%-elseif termcause then-%>
+                        <% if termcause =="14" then%>
+                            <%:Data limit has been reached%>
+                        <%end%>
+                    <%end%>
+                    <%- if res == "failed" then %>
+                        </div>
+                    <%end%>
+
+                    <div class="form-container">
+                        <form action="javascript:void(0);" class="form">
+                            <input type="hidden" name="challenge" value="<%=challenge%>">
+                            <input type="hidden" name="uamip" value="<%=uamip%>">
+                            <input type="hidden" name="uamport" value="<%=uamport%>">
+                            <input type="hidden" name="userurl" value="<%=userurl%>">
+                            <% if macpass then%>
+                            <div class="form-item">
+                                <label for="" class="form-label"><%:Password%>*</label>
+                                <input name="password" type="password" class="form-input" placeholder="<%:Password%>" required>
+                            </div>
+                            <%end%>
+                            <%- if tos then -%>
+                                <div class="checkbox-container">
+                                    <input class="dialog-input" name="agreetos" id="agreetos" type="checkbox" value="1" required>
+                                    <%:I agree to the %><a target="_blank" href="tos"><%:Terms of Service%></a>
+                                </div>
+                            <%- end -%>
+                            <%- if trial then -%>
+                                <div class="checkbox-container mleft"><a id="trial_link" href="#"><%=translatef("Click here %s for trial access", "</a>")%></div>
+                            <%- end -%>
+                            <button class="form-btn" type="submit"><%:Log In%></button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

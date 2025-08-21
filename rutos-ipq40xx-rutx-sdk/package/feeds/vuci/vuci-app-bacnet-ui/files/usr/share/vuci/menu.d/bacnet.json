@@ -1,0 +1,8 @@
+{
+	"services/bacnet": {
+		"title": "BACnet",
+		"index": 95,
+		"view": "services/Bacnet",
+		"acls": ["services/bacnet"]
+	}
+}

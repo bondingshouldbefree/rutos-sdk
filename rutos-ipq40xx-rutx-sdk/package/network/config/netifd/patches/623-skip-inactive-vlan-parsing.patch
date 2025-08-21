@@ -1,0 +1,51 @@
+--- a/device.c
++++ b/device.c
+@@ -1312,7 +1312,7 @@
+ void
+ device_dump_status(struct blob_buf *b, struct device *dev)
+ {
+-	struct device_settings st;
++	struct device_settings st = {0};
+ 	void *c, *s;
+ 
+ 	if (!dev) {
+@@ -1338,14 +1338,17 @@
+ 	blobmsg_add_u8(b, "carrier", !!dev->link_active);
+ 	blobmsg_add_u8(b, "auth_status", !!dev->auth_status);
+ 
+-	system_if_get_settings(dev, &dev->settings);
+-	device_merge_settings(dev, &st);
++	if (dev->active) {
++		system_if_get_settings(dev, &dev->settings);
++		device_merge_settings(dev, &st);
++	}
++
+ 	if (st.flags & DEV_OPT_MACADDR)
+ 		blobmsg_add_string(b, "macaddr", format_macaddr(st.macaddr));
+ 
+-	if (dev->type->dump_info)
++	if (dev->active && dev->type->dump_info)
+ 		dev->type->dump_info(dev, b);
+-	else
++	else if (dev->active)
+ 		system_if_dump_info(dev, b);
+ 
+ 	if (dev->active) {
+
+ --- a/vlandev.c
++++ b/vlandev.c
+@@ -239,7 +239,11 @@
+ 
+ 	mvdev = container_of(dev, struct vlandev_device, dev);
+ 	blobmsg_add_string(b, "parent", mvdev->parent.dev->ifname);
+-	system_if_dump_info(dev, b);
++
++	if (dev->active) {
++		system_if_dump_info(dev, b);
++	}
++
+ 	blobmsg_add_u32(b, "vid", mvdev->config.vid);
+ 	vlandev_qos_mapping_dump(b, "ingress_qos_mapping", &mvdev->config.ingress_qos_mapping_list);
+ 	vlandev_qos_mapping_dump(b, "egress_qos_mapping", &mvdev->config.egress_qos_mapping_list);
+
+

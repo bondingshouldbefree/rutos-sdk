@@ -1,0 +1,13 @@
+#!/bin/sh
+
+APN_DB=/usr/local/share/mobifd/apn.db.gz
+
+uncompress_apn_db(){
+	# check if apn db is already uncompressed
+	[ -f "/tmp/apn.db" ] && return
+
+	# Uncompress APN database
+	[ -f "$APN_DB" ] && gzip -dkc "$APN_DB" > /tmp/apn.db
+}
+
+conf_register_init_hook uncompress_apn_db

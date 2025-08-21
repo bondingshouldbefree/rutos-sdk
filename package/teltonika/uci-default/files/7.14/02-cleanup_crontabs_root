@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# "/YqIsVsyLyk/d" means Ulogd FTP upload scheduled task
+sed -i -e '\/usr\/bin\/email_to_sms/d' -e "/# periodic_reboot/d" \
+    -e '/sbin\/ping_reboot/d' -e "/YqIsVsyLyk/d" /etc/crontabs/root
+
+exit 0

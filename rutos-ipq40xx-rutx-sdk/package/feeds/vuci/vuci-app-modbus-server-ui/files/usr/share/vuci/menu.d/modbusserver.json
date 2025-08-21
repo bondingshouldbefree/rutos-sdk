@@ -1,0 +1,46 @@
+{
+  "services/modbus": {
+    "title": "Modbus",
+    "index": 120
+  },
+  "services/modbus/modbus_server": {
+    "title": "Modbus TCP Server",
+    "index": 10
+  },
+  "services/modbus/modbus_server/general": {
+    "title": "General",
+    "index": 1,
+    "view": "services/ModbusServer",
+    "acls": ["services/modbus/modbus_server/general"],
+    "files": ["/etc/config/modbus_server"],
+    "main_page": true
+  },
+  "services/modbus/modbus_server/data_source": {
+    "title": "Data Sources",
+    "index": 2,
+    "view": "services/ModbusServerDataSource",
+    "acls": ["services/modbus/modbus_server/data_source"],
+    "files": ["/etc/config/modbus_server"]
+  },
+  "services/modbus/modbus_serial_server": {
+    "title": "Modbus Serial Server",
+    "index": 11,
+    "depends": {
+      "board": {
+        "anyOf": ["has_usb", "has_rs232", "has_rs485", "has_console"]
+      }
+    }
+  },
+  "services/modbus/modbus_serial_server/general": {
+    "title": "General",
+    "index": 1,
+    "view": "services/ModbusSerialServer",
+    "acls": [ "services/modbus/modbus_serial_server/general" ]
+  },
+  "services/modbus/modbus_serial_server/data_source": {
+    "title": "Data Sources",
+    "index": 2,
+    "view": "services/ModbusSerialServerDataSource",
+    "acls": [ "services/modbus/modbus_serial_server/data_source" ]
+  }
+}

@@ -1,0 +1,145 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2015 OpenWrt.org
+
+START=60
+USE_PROCD=1
+
+BIN=/usr/sbin/pptpd
+TMP_DIR="/var/run/pptpd"
+CONFIG="${TMP_DIR}/pptpd.conf"
+CHAP_SECRETS="${TMP_DIR}/pptpd-chap-secrets"
+DEFAULT=/etc/default/pptpd
+OPTIONS="${TMP_DIR}/options.pptpd"
+
+service_triggers()
+{
+	procd_add_reload_trigger "pptpd"
+}
+
+setup_login() {
+	config_get username "$1" username
+	config_get password "$1" password
+	config_get remoteip "$1" remoteip
+
+	[ -n "${username}" ] || return 0
+	[ -n "${password}" ] || return 0
+
+	password="${password//\\/\\\\}"
+	password="${password//\"/'\"'}"
+	username="${username//\\/\\\\}"
+
+	echo "${username} pptp-server \"${password}\" ${remoteip:-*}" >> $CHAP_SECRETS
+}
+
+append_options() {
+	local arg="$1"
+	[ -n "$arg" ] && echo "$arg" | sed -e 's/^[ \t]*//' >>"$OPTIONS"
+}
+
+setup_config() {
+	local enabled localip remoteip type idle dns1 dns2
+
+	config_get enabled "$1" enabled 0
+	config_get type "$1" type
+
+	[ "$enabled" -eq 0 ] && return 1
+	[ "$type" = "server" ] || return 1
+	config_get idle "$1" idle
+	config_get dns1 "$1" dns1
+	config_get dns2 "$1" dns2
+	config_get mppe "$1" mppe
+	config_get mppe_encryption "$1" mppe_encryption
+
+	counter=$(( counter + 1 ))
+
+	mkdir -p /var/etc
+	cp /etc/pptpd.conf $CONFIG
+	echo -e "# MAIN PARAMETERS" > "$OPTIONS"
+
+	config_get localip "$1" localip
+	config_get remoteipstart "$1" start
+	config_get remoteipend "$1" limit
+
+	if [ -n "$remoteipstart" ] && [ -n "$remoteipend" ]; then
+		remoteip="${remoteipstart}-${remoteipend##*.}"
+	else
+		config_get remoteip "$1" remoteip
+	fi
+
+	{
+		echo "${localip:+localip  $localip}"
+		echo "${remoteip:+remoteip  $remoteip}"
+	} >> "$CONFIG"
+
+	{
+		echo "${idle:+idle  $idle}"
+		echo "${dns1:+ms-dns  $dns1}"
+		echo "${dns2:+ms-dns  $dns2}"
+		[ -z "$dns1" ] && [ -z "$dns2" ] && echo "ms-dns $localip"
+		[ "$mppe" = "none" ] && echo "nomppe"
+	} >> "$OPTIONS"
+
+	if [ "$mppe" != "none" ]; then
+		encryptions="no40,no56,no128"
+		if [ -n "$mppe_encryption" ]; then
+			for enc in $mppe_encryption; do
+				encryptions=$(echo "$encryptions" | sed -e "s/,*no$enc//g" -e 's/^,//')
+			done
+		fi
+		[ "$mppe" = "stateful" ] && mppe=""
+		echo "mppe required${encryptions:+,$encryptions}${mppe:+,$mppe}" >>"$OPTIONS"
+	fi
+
+	{
+		echo -e "\n# ADDITIONAL PARAMETERS"
+		echo "ip-up-script /etc/ppp/pptpd-up"
+		echo "ip-down-script /etc/ppp/pptpd-down"
+		echo "ifname pptp"
+		echo "name \"pptp-server\""
+		echo "chap-secrets ${TMP_DIR}/pptpd-chap-secrets"
+	} >> "$OPTIONS"
+
+	echo -e "\n# CUSTOM PARAMETERS" >> $OPTIONS
+	config_list_foreach "$1" "pptp_options" append_options
+	return 0
+}
+
+start_service() {
+	# only run if "service" section exists in config
+	uci -q get pptpd.@service[0] &> /dev/null || return
+
+	local counter=0
+	[ -e "$CHAP_SECRETS" ] && rm -f $CHAP_SECRETS 2>/dev/null
+
+	config_load pptpd
+	config_foreach setup_config service
+	config_foreach setup_login login
+	chown -R pptpd:pptpd "${TMP_DIR}"
+
+	[ -f $DEFAULT ] && . $DEFAULT
+	for m in arc4 sha1_generic slhc crc-ccitt ppp_generic ppp_async ppp_mppe; do
+		insmod $m >/dev/null 2>&1
+	done
+
+	[ "$counter" -gt 0 ] && {
+		procd_open_instance
+		procd_set_param command $BIN -p ${TMP_DIR}/pptpd.pid -c $CONFIG --fg
+		procd_set_param user pptpd
+		procd_close_instance
+	}
+}
+
+stop_service() {
+	instances=$(ps | grep -v grep | grep "options.pptpd" | awk '{print $1}' ORS=' ')
+	for inst in $instances; do
+		kill $inst
+	done
+}
+
+reload_service() {
+	restart
+}
+
+restart_service() {
+	restart
+}

@@ -1,0 +1,13 @@
+{
+	"services/wol": {
+		"title": "Wake on LAN",
+		"index": 240,
+		"view": "services/Wol",
+		"acls": [ "services/wol" ],
+		"depends": {
+		 	"board": {
+				"allOf": ["has_ethernet"]
+			}
+		}
+	}
+}

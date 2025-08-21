@@ -1,0 +1,13 @@
+Index: mwan3-2.10.12/files/usr/share/15-mwan3
+===================================================================
+--- mwan3-2.10.12.orig/files/usr/share/15-mwan3
++++ mwan3-2.10.12/files/usr/share/15-mwan3
+@@ -86,6 +86,8 @@ case "$ACTION" in
+ 	;;
+ esac
+ 
++mwan3_flush_conntrack "$INTERFACE" "$ACTION"
++
+ flush_conntrack() {
+ 	local enabled
+ 	local conn_name="${1%_*}"

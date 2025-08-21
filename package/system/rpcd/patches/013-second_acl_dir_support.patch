@@ -1,0 +1,31 @@
+Index: rpcd-2021-03-11-ccb75178/include/rpcd/session.h
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/include/rpcd/session.h
++++ rpcd-2021-03-11-ccb75178/include/rpcd/session.h
+@@ -35,6 +35,7 @@
+ #define RPC_DEFAULT_SESSION_ID	"00000000000000000000000000000000"
+ #define RPC_SESSION_DIRECTORY	"/var/run/rpcd/sessions"
+ #define RPC_SESSION_ACL_DIR		"/usr/share/rpcd/acl.d"
++#define RPC_SESSION_ACL_DIR2		"/usr/local/usr/share/rpcd/acl.d"
+ 
+ #ifdef ENABLE_PAM_SUPPORT
+ enum {
+Index: rpcd-2021-03-11-ccb75178/session.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/session.c
++++ rpcd-2021-03-11-ccb75178/session.c
+@@ -1517,8 +1517,13 @@ rpc_login_setup_acls(struct rpc_session
+ 	INIT_LIST_HEAD(&permissions_manager.source_permissions);
+ 	INIT_LIST_HEAD(&permissions_manager.endpoint_permissions);
+ 
+-	if (glob(RPC_SESSION_ACL_DIR "/*.json", 0, NULL, &gl))
++	int ret1 = glob(RPC_SESSION_ACL_DIR "/*.json", 0, NULL, &gl);
++	int ret2 = glob(RPC_SESSION_ACL_DIR2 "/*.json", GLOB_APPEND, NULL, &gl);
++
++	if (ret1 != 0 && ret2 != 0) {
++		globfree(&gl);
+ 		return;
++	}
+ 
+ 	for (int i = 0; i < gl.gl_pathc; i++) {
+ 		rpc_login_setup_acl_file(ses, login, gl.gl_pathv[i], &permissions_manager);

@@ -1,0 +1,81 @@
+net: netfilter: flowtables: implement refcounting for 'flow_offload'
+
+flowtable XFRM output offload code will need flowtable entries to stay valid
+between RCU critical sections. To allow this an optional refcounting mechanism
+is added on the flow_offload struct.
+
+With this implementation flow entry can be considered to be valid for one 
+RCU grace period after being read from the hashtable, or as long as there is
+at least one reference being held to it. Note that the flow entry might be
+free'd immediately after setting the reference count to zero.
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -212,6 +212,7 @@ struct flow_offload {
+ 	u32					timeout;
+ 	struct rcu_head				rcu_head;
+ 	spinlock_t				lock;
++	atomic_t				refs;
+ };
+ 
+ #define NF_FLOW_TIMEOUT (30 * HZ)
+@@ -286,6 +287,19 @@ static inline void flow_offload_unlock(s
+ 	spin_unlock_bh(&flow->lock);
+ }
+ 
++static inline void nf_flow_offload_hold(struct flow_offload *flow)
++{
++	atomic_inc(&flow->refs);
++}
++
++static inline void nf_flow_offload_put(struct flow_offload *flow)
++{
++	int refs = atomic_dec_return_release(&flow->refs);
++
++	if (unlikely(refs < 0))
++		WARN_ONCE(1, "flow_offload: reference underflow");
++}
++
+ struct flow_offload *flow_offload_alloc(struct nf_conn *ct);
+ void flow_offload_free(struct flow_offload *flow);
+ 
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -242,7 +242,7 @@ void flow_offload_free(struct flow_offlo
+ 		break;
+ 	}
+ 	nf_ct_put(flow->ct);
+-	kfree_rcu(flow, rcu_head);
++	kfree(flow);
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_free);
+ 
+@@ -424,6 +424,19 @@ static inline bool nf_flow_has_expired(c
+ 	return nf_flow_timeout_delta(READ_ONCE(flow->timeout)) <= 0;
+ }
+ 
++static void flow_offload_free_rcu(struct rcu_head *head)
++{
++	struct flow_offload *flow = container_of(head, struct flow_offload, rcu_head);
++
++	if (atomic_read_acquire(&flow->refs)) {
++		// Someone is still holding a reference, defer cleanup one more time.
++		call_rcu(&flow->rcu_head, flow_offload_free_rcu);
++		return;
++	}
++
++	flow_offload_free(flow);
++}
++
+ static void flow_offload_del(struct nf_flowtable *flow_table,
+ 			     struct flow_offload *flow)
+ {
+@@ -440,7 +453,7 @@ static void flow_offload_del(struct nf_f
+ 	}
+ 
+ 	nf_flow_offload_deregister(flow_table, flow);
+-	flow_offload_free(flow);
++	call_rcu(&flow->rcu_head, flow_offload_free_rcu);
+ }
+ 
+ void flow_offload_teardown(struct flow_offload *flow)

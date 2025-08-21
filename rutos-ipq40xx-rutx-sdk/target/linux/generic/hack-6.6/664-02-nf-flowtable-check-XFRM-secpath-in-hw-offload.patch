@@ -1,0 +1,56 @@
+net: netfiler: flowtables: XFRM secpath TC offload stub
+
+Add TC offload stub for XFRM secpath. Right now this is mainly here to make
+sure we don't offload flows to HW that are tied to an XFRM tunnel.
+
+--- a/include/net/netfilter/nf_flow_table_xfrm.h
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -68,4 +68,28 @@ static inline void nf_flow_xfrm_tuple_cl
+ #endif
+ }
+ 
++static inline int
++nf_flow_xfrm_tuple_has_secpath(const struct flow_xfrm_tuple *xtuple)
++{
++#ifdef CONFIG_XFRM
++	if (xtuple->secpath[0])
++		return true;
++#endif
++	return false;
++}
++
++static inline int flow_offload_xfrm_decap(struct net *net,
++					  const struct flow_offload *flow,
++					  enum flow_offload_tuple_dir dir,
++					  struct nf_flow_rule *flow_rule)
++{
++#ifdef CONFIG_XFRM
++	const struct flow_offload_tuple *tuple = &flow->tuplehash[dir].tuple;
++
++	if (nf_flow_xfrm_tuple_has_secpath(&tuple->xfrm_tuple))
++		return -ENOTSUPP;
++#endif
++	return 0;
++}
++
+ #endif /* _NF_FLOW_TABLE_XFRM_H */
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -7,6 +7,7 @@
+ #include <linux/tc_act/tc_csum.h>
+ #include <net/flow_offload.h>
+ #include <net/netfilter/nf_flow_table.h>
++#include <net/netfilter/nf_flow_table_xfrm.h>
+ #include <net/netfilter/nf_tables.h>
+ #include <net/netfilter/nf_conntrack.h>
+ #include <net/netfilter/nf_conntrack_acct.h>
+@@ -630,6 +631,9 @@ nf_flow_rule_route_common(struct net *ne
+ 	flow_offload_decap_tunnel(flow, dir, flow_rule);
+ 	flow_offload_encap_tunnel(flow, dir, flow_rule);
+ 
++	if (flow_offload_xfrm_decap(net, flow, dir, flow_rule))
++		return -1;
++
+ 	if (flow_offload_eth_src(net, flow, dir, flow_rule) < 0 ||
+ 	    flow_offload_eth_dst(net, flow, dir, flow_rule) < 0)
+ 		return -1;

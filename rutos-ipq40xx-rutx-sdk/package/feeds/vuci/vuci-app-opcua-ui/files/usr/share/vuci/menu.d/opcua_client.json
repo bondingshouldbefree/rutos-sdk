@@ -1,0 +1,12 @@
+{
+    "services/opcua": {
+        "title": "OPC UA",
+        "index": 110
+    },
+        "services/opcua/opcua_client": {
+            "title": "OPC UA Client",
+            "index": 10,
+            "view": "services/Opcua",
+            "acls": ["services/opcua/opcua_client"]
+        }
+}

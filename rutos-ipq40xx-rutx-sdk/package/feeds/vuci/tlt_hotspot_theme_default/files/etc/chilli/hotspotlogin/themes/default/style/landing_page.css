@@ -1,0 +1,328 @@
+:root {
+    --main_color: #0054a6;
+    --main_color_hue: 210
+   }
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0
+}
+
+@font-face {
+    font-family: 'Oswald';
+    font-weight: normal;
+    font-style: normal;
+    src: url('../fonts/Oswald-Regular.woff') format('woff');
+}
+
+@font-face {
+    font-family: 'Open Sans';
+    src: url('../fonts/OpenSans-Regular.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+}
+
+html, body{
+    font-size: 12px;
+    font-family: 'Open Sans', sans-serif;
+    color: #444444;
+}
+
+.picture-text{
+    font-family: 'Oswald';
+    font-weight: 600;
+    font-size: 110px;
+    text-transform: uppercase;
+}
+
+.main-body{
+    min-height: 100vh;
+    display: flex;
+}
+
+.main-body .theme-picture{
+    background: linear-gradient(184.78deg, hsla(var(--main_color), 100%, 20%, 0.75) 5.02%, hsla(var(--main_color_hue), 100%, 33%, 0) 93.26%);
+    background: linear-gradient(180deg, rgba(0, 38, 76, 0.9) -1.25%, rgba(0, 47, 94, 0.9) -1.24%, rgba(0, 84, 166, 0.405) 100%), url("../img/background.jpg");
+    background-size: cover;
+    padding-left: 6.25vw;
+    padding-top: 7.4vh;
+    width: 60%;
+    color: #FFFFFF;
+}
+
+.theme-picture .picture-title{
+    height: 300px;
+    line-height: 100%;
+    font-size: 80px;
+    letter-spacing: -0.03em;
+}
+
+.main-body .login-panel{
+    padding-bottom: 50px;
+    width: 40%;
+}
+
+.content{
+    display: flex;
+    flex-direction: column;
+    padding-top: 16vh;
+    justify-items: left;
+}
+
+.content .logo, .content .links, .content .msg, .content .form-container, .login-error, .login-success{
+    padding-left: 5vw;
+    padding-right: 5vw;
+    display: block;
+}
+
+.content .logo{
+    margin-right: auto;
+    margin-bottom: 6.5vh;
+}
+
+.content .logo > img{
+    height: 36px;
+}
+
+.links{
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 5.5vh;
+}
+
+.links, .links *{
+    text-transform: uppercase;
+    font-size: 48px;
+    font-family: 'Oswald';
+    color: #0054A6;
+    text-decoration: none;
+}
+
+.links .nav-link{
+    transition-duration: 0.2s;
+}
+
+.links .nav-link:hover{
+    color: #0054a6
+}
+
+.nav-link:first-of-type{
+    margin-right: 22px;
+}
+
+.nav-link+.nav-link{
+    margin-left: 22px;
+    margin-right: 22px;
+}
+
+.nav-link:not(.active){
+    color: #D3D3D3
+}
+
+.content .msg, .msg .msg-title, .msg .msg-content{
+    height: max-content;
+    color: #0054a6;
+}
+
+.content .msg{
+    margin-bottom: 20px;
+}
+
+.content .msg .msg-title{
+    font-family: 'Oswald';
+    font-size: 36px;
+    text-transform: uppercase;
+}
+
+.content .msg .msg-content{
+    font-size: 14px;
+    line-height: 25px;
+    font-family: 'Open Sans';
+    letter-spacing: -0.05em;
+    max-width: 420px;
+    height: 76px;
+    word-wrap: normal;
+}
+
+.mleft{
+	margin-left: 24px;
+}
+
+.login-error, .login-success{
+    margin-bottom: 25px;
+}
+
+.login-error{
+    color: #DD4B39;
+}
+.login-success{
+    color: #499C6C;
+}
+
+.form-container .form .form-item{
+    height: max-content;
+    position: relative;
+    margin-bottom: 48px;
+}
+
+ .checkbox-container a{
+    font-family: 'Open Sans';
+    font-size: 13px;
+    line-height: 18px;
+    color: #0054A6;
+    text-decoration: none;
+}
+
+.form-item+.checkbox-container{
+    position: relative;
+    top: -20px;
+}
+
+.form-input{
+    background-color: #FFFFFF;
+    filter: none;
+    transition: border linear 0.2s, box-shadow linear 0.2s;
+    height: 46px;
+    color: inherit;
+    padding: 0.5em;
+    padding-top: 0.6em;
+    border: 1px solid #AFAFAF;
+    min-height: 40px;
+    box-sizing: border-box;
+    border-radius: 8px;
+    width: 100%;
+}
+
+.form-input:focus{
+    border-color: #0054a6;
+}
+
+.form-label{
+    position: absolute;
+    left: 20px;
+    top: -8px;
+    background-color: #FFFFFF;
+    color: #AFAFAF;
+    padding-left: 5px;
+    padding-right: 5px;
+}
+
+.form .form-btn{
+	cursor: pointer;
+    font-family: 'Oswald';
+    padding: 7px 16px 7px 16px;
+    display: block;
+    margin-left: auto;
+    border: 1px solid #0054a6;
+    border-radius: 7px;
+    color: #0054a6;
+    background-color: #FFFFFF;
+    text-transform: uppercase;
+    font-size: 16px;
+    letter-spacing: 0.1em;
+}
+
+.form-text{
+    font-family: 'Open Sans';
+    color: #444444
+}
+
+.form-text a{
+    color: #0054a6;
+    text-decoration: none;
+}
+
+input[type="checkbox"] {
+    background: #ffffff;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    padding: 0;
+    cursor: pointer;
+    margin: 0;
+    margin-right: 8px;
+    vertical-align: -2px;
+    border: 1px solid #e6e6e6;
+    -webkit-transition: .2s all;
+    transition: .2s all;
+    border-radius: 50%;
+    -webkit-box-shadow: 0 4px 8px rgba(0,0,0,.14);
+    box-shadow: 0 4px 8px rgba(0,0,0,.14);
+}
+
+input[type="checkbox"]:checked::after {
+    background-image: url("../img/checkbox_tick.svg");
+    background-position: 1px -3px;
+    background-repeat: no-repeat;
+    width: 15px;
+    height: 15px;
+    content: "";
+    position: absolute;
+}
+
+.hidden{
+	display: none;
+}
+
+@media only screen and (max-width: 840px){
+    .main-body{
+        flex-direction: column;
+    }
+
+    .main-body .theme-picture{
+        height: 35vw;
+        width: unset;
+        padding-top: 10vw;
+    }
+
+    .main-body .login-panel{
+        width: unset;
+    }
+
+    .picture-text .picture-title{
+        font-size: 10vw;
+    }
+
+    .picture-text{
+        font-size: 40vw;
+    }
+
+    .content{
+        padding-top: 5vh
+    }
+    .content .logo{
+        margin-right: auto;
+        min-height: 28px;
+        max-width: 230px;
+        margin-bottom: 30px;
+    }
+
+    .links, .links *{
+        margin-bottom: 3vh;
+        font-size: 150%;
+    }
+    .links .nav-link{
+        font-size: 150%;
+    }
+
+
+    .nav-link:first-of-type{
+        margin-right: 5px;
+    }
+
+    .nav-link+.nav-link{
+        margin-left: 5px;
+        margin-right: 5px;
+    }
+
+    .form-input{
+        height: 30px;
+    }
+
+    .content .msg .msg-title{
+        font-size: 26px;
+    }
+}

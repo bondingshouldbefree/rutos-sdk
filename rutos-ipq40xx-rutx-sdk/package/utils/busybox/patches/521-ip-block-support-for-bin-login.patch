@@ -1,0 +1,644 @@
+--- a/Makefile
++++ b/Makefile
+@@ -600,7 +600,9 @@ libs-y		:= $(libs-y1) $(libs-y2)
+ # System.map is generated to document addresses of all kernel symbols
+ 
+ busybox-all  := $(core-y) $(libs-y)
+-
++ifdef CONFIG_FEATURE_IP_BLOCKD
++CONFIG_EXTRA_LDLIBS+=ubus ubox log
++endif
+ # Rule to link busybox - also used during CONFIG_KALLSYMS
+ # May be overridden by arch/$(ARCH)/Makefile
+ quiet_cmd_busybox__ ?= LINK    $@
+--- a/loginutils/login.c
++++ b/loginutils/login.c
+@@ -47,6 +47,12 @@
+ //config:	The file /etc/securetty is used by (some versions of) login(1).
+ //config:	The file contains the device names of tty lines (one per line,
+ //config:	without leading /dev/) on which root is allowed to login.
++//config:
++//config:config FEATURE_IP_BLOCKD
++//config:	bool "Support for IP block daemon"
++//config:	default y
++//config:	depends on LOGIN
++//config:
+ 
+ //applet:/* Needs to be run by root or be suid root - needs to change uid and gid: */
+ //applet:IF_LOGIN(APPLET(login, BB_DIR_BIN, BB_SUID_REQUIRE))
+@@ -54,11 +60,13 @@
+ //kbuild:lib-$(CONFIG_LOGIN) += login.o
+ 
+ //usage:#define login_trivial_usage
+-//usage:       "[-p] [-h HOST] [[-f] USER]"
++//usage:       "[-p] [-h HOST] [-P PORT] [-R PROTO] [[-f] USER]"
+ //usage:#define login_full_usage "\n\n"
+ //usage:       "Begin a new session on the system\n"
+ //usage:     "\n	-f	Don't authenticate (user already authenticated)"
+ //usage:     "\n	-h HOST	Host user came from (for network logins)"
++//usage:     "\n	-P PORT	Port user came from (for network logins)"
++//usage:     "\n	-R PROTO	Protocol user came from (for network logins)"
+ //usage:     "\n	-p	Preserve environment"
+ //usage:     "\n"
+ //usage:     "\n$LOGIN_TIMEOUT		Seconds (default 60, 0 - disable)"
+@@ -69,6 +77,18 @@
+ #include "libbb.h"
+ #include "common_bufsiz.h"
+ #include <syslog.h>
++#ifdef CONFIG_FEATURE_IP_BLOCKD
++#include <liblog.h>
++#include <libubus.h>
++#include <libubox/blobmsg.h>
++#include <string.h>
++#include "lock_manager.h"
++#include "ip_block.h"
++#endif // CONFIG_FEATURE_IP_BLOCKD
++
++#ifdef CONFIG_FEATURE_IP_BLOCKD
++static void push_log(char *format, ...);
++#endif // CONFIG_FEATURE_IP_BLOCKD
+ 
+ #if ENABLE_SELINUX
+ # include <selinux/selinux.h>  /* for is_selinux_enabled()  */
+@@ -315,6 +335,28 @@ static void alarm_handler(int sig UNUSED
+ 	_exit(EXIT_SUCCESS);
+ }
+ 
++static int valid_shell(const char *shell)
++{
++	if (shell == NULL || shell[0] == '\0') {
++		/* from passwd(5) - if empty, use /bin/sh */
++		shell = DEFAULT_SHELL;
++	}
++
++	char *listshell = NULL;
++	int result = 0;
++
++	setusershell();
++	while ((listshell = getusershell()) != NULL) {
++		if (strcmp(listshell, shell) == 0) {
++			/* have a match */
++			result = 1;
++			break;
++		}
++	}
++	endusershell();
++	return result;
++}
++
+ int login_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int login_main(int argc UNUSED_PARAM, char **argv)
+ {
+@@ -330,6 +372,8 @@ int login_main(int argc UNUSED_PARAM, ch
+ 	int count = 0;
+ 	struct passwd *pw;
+ 	char *opt_host = NULL;
++	char *opt_port = NULL;
++	char *opt_proto = NULL;
+ 	char *opt_user = opt_user; /* for compiler */
+ 	char *full_tty;
+ 	char *short_tty;
+@@ -363,7 +407,7 @@ int login_main(int argc UNUSED_PARAM, ch
+ 	bb_daemon_helper(DAEMON_CLOSE_EXTRA_FDS);
+ 
+ 	username[0] = '\0';
+-	opt = getopt32(argv, "f:h:p", &opt_user, &opt_host);
++	opt = getopt32(argv, "f:h:pP:R:", &opt_user, &opt_host, &opt_port, &opt_proto);
+ 	if (opt & LOGIN_OPT_f) {
+ 		if (!run_by_root)
+ 			bb_simple_error_msg_and_die("-f is for root only");
+@@ -392,9 +436,16 @@ int login_main(int argc UNUSED_PARAM, ch
+ 	short_tty = skip_dev_pfx(full_tty);
+ 
+ 	if (opt_host) {
+-		fromhost = xasprintf(" on '%s' from '%s'", short_tty, opt_host);
++		// Fix IPv4 mapped IPv6 address
++		char *ip_log = opt_host;
++
++		if (strncmp(ip_log, "::ffff:", 7) == 0) {
++			ip_log += 7;
++		}
++
++		fromhost = xasprintf(" on %s (%s) from %s", opt_proto ? opt_proto : "-", short_tty, ip_log);
+ 	} else {
+-		fromhost = xasprintf(" on '%s'", short_tty);
++		fromhost = xasprintf(" on %s (%s)", opt_proto ? opt_proto : "-", short_tty);
+ 	}
+ 
+ 	/* Was breaking "login <username>" from shell command line: */
+@@ -402,6 +453,10 @@ int login_main(int argc UNUSED_PARAM, ch
+ 
+ 	openlog(applet_name, LOG_PID | LOG_CONS, LOG_AUTH);
+ 
++#ifdef CONFIG_FEATURE_IP_BLOCKD
++	initialize_lock();
++#endif // CONFIG_FEATURE_IP_BLOCKD
++
+ 	while (1) {
+ 		/* flush away any type-ahead (as getty does) */
+ 		tcflush(0, TCIFLUSH);
+@@ -485,11 +540,9 @@ int login_main(int argc UNUSED_PARAM, ch
+ 		syslog(LOG_WARNING, "pam_%s call failed: %s (%d)", failed_msg,
+ 					pam_strerror(pamh, pamret), pamret);
+ 		login_pam_end(pamh);
+-		safe_strncpy(username, "UNKNOWN", sizeof(username));
+ #else /* not PAM */
+ 		pw = getpwnam(username);
+ 		if (!pw) {
+-			strcpy(username, "UNKNOWN");
+ 			goto fake_it;
+ 		}
+ 
+@@ -510,24 +563,69 @@ int login_main(int argc UNUSED_PARAM, ch
+ 		 * Note that reads (in no-echo mode) trash tty attributes.
+ 		 * If we get interrupted by SIGALRM, we need to restore attrs.
+ 		 */
+-		if (ask_and_check_password(pw) > 0)
+-			break;
++		if (ask_and_check_password(pw) > 0) {
++			if (pw && !valid_shell(pw->pw_shell)) {
++				syslog(LOG_WARNING, "User '%s' has invalid shell, rejected",
++					username);
++				goto auth_failed;
++			}
++			break; /* success, continue login process */
++		}
+ #endif /* ENABLE_PAM */
+  auth_failed:
+ 		opt &= ~LOGIN_OPT_f;
++#ifdef CONFIG_FEATURE_IP_BLOCKD
++		if (opt_host && opt_port) {
++			// Fix IPv4 mapped IPv6 address
++			char *fixed_ip = opt_host;
++
++			if (strncmp(fixed_ip, "::ffff:", 7) == 0) {
++				fixed_ip += 7;
++			}
++			if (signal_ip_block("push", fixed_ip, NULL, opt_port, opt_proto)) {
++				if (ENABLE_FEATURE_CLEAN_UP)
++					free(fromhost);
++				destroy_lock();
++				return EXIT_FAILURE;
++			}
++		}
++		push_log("Bad password attempt for %s%s", username, fromhost);
++#endif // CONFIG_FEATURE_IP_BLOCKD
+ 		pause_after_failed_login();
+ 		/* TODO: doesn't sound like correct English phrase to me */
+ 		puts("Login incorrect");
++#ifndef CONFIG_FEATURE_IP_BLOCKD
+ 		syslog(LOG_WARNING, "invalid password for '%s'%s",
+ 					username, fromhost);
++#endif // CONFIG_FEATURE_IP_BLOCKD
+ 		if (++count == 3) {
+ 			if (ENABLE_FEATURE_CLEAN_UP)
+ 				free(fromhost);
++#ifdef CONFIG_FEATURE_IP_BLOCKD
++			destroy_lock();
++#endif // CONFIG_FEATURE_IP_BLOCKD
+ 			return EXIT_FAILURE;
+ 		}
+ 		username[0] = '\0';
+ 	} /* while (1) */
++#ifdef CONFIG_FEATURE_IP_BLOCKD
++	/* Tell ip_blockd to unblock host, if provided. */
++	if (opt_host && opt_port) {
++		// Fix IPv4 mapped IPv6 address
++		char *fixed_ip = opt_host;
+ 
++		if (strncmp(fixed_ip, "::ffff:", 7) == 0) {
++			fixed_ip += 7;
++		}
++		if (signal_ip_block("unblock", fixed_ip, NULL, opt_port, NULL)) {
++			if (ENABLE_FEATURE_CLEAN_UP)
++				free(fromhost);
++			destroy_lock();
++			return EXIT_FAILURE;
++		}
++	}
++	destroy_lock();
++#endif // CONFIG_FEATURE_IP_BLOCKD
+ 	alarm(0);
+ 	/* We can ignore /etc/nologin if we are logging in as root,
+ 	 * it doesn't matter whether we are run by root or not */
+@@ -581,7 +679,11 @@ int login_main(int argc UNUSED_PARAM, ch
+ 		motd();
+ 
+ 	if (pw->pw_uid == 0)
++#ifndef CONFIG_FEATURE_IP_BLOCKD
+ 		syslog(LOG_INFO, "root login%s", fromhost);
++#else
++		push_log("Password auth succeeded for %s%s", username, fromhost);
++#endif // CONFIG_FEATURE_IP_BLOCKD
+ 
+ 	if (ENABLE_FEATURE_CLEAN_UP)
+ 		free(fromhost);
+@@ -616,3 +718,35 @@ int login_main(int argc UNUSED_PARAM, ch
+ 
+ 	/* return EXIT_FAILURE; - not reached */
+ }
++
++#ifdef CONFIG_FEATURE_IP_BLOCKD
++static void push_log(char *format, ...)
++{
++
++	struct ubus_context *ubus = NULL;
++	ubus = ubus_connect(NULL);
++
++	if (!ubus) {
++		syslog(LOG_ERR, "Failed to connect to ubus");
++		return;
++	}
++
++	char el_text[200 + 1] = { 0 };
++	struct events_log el		      = {
++		 .table	   = LLOG_CONNECTIONS,
++		 .sender   = "Login",
++		 .text	   = el_text,
++		 .priority = EVENTLOG_NOTICE,
++		 .db_flag  = 1,
++	};
++
++	va_list ap;
++	va_start(ap, format);
++	vsnprintf(el.text, 200, format, ap);
++	va_end(ap);
++	llog_add_task(ubus, &el);
++
++	ubus_free(ubus);
++
++}
++#endif // CONFIG_FEATURE_IP_BLOCKD
+--- a/networking/telnetd.c
++++ b/networking/telnetd.c
+@@ -155,6 +155,9 @@ struct globals {
+ 	struct tsession *sessions;
+ 	const char *loginpath;
+ 	const char *issuefile;
++#if ENABLE_FEATURE_TELNETD_STANDALONE
++	const char *port;
++#endif
+ 	int maxfd;
+ } FIX_ALIASING;
+ #define G (*(struct globals*)bb_common_bufsiz1)
+@@ -426,7 +429,7 @@ make_new_session(
+ #if !ENABLE_FEATURE_TELNETD_STANDALONE
+ 	enum { sock = 0 };
+ #endif
+-	const char *login_argv[2];
++	const char *login_argv[6];
+ 	struct termios termbuf;
+ 	int fd, pid;
+ 	char tty_name[GETPTY_BUFSIZE];
+@@ -513,8 +516,16 @@ make_new_session(
+ 
+ 	pid = getpid();
+ 
++	/* Acquire simple hostname */
++	len_and_sockaddr *lsa = get_peer_lsa(sock);
++	char *ipaddr = NULL;
++	if (lsa) {
++		ipaddr = xmalloc_sockaddr2dotted_noport(&lsa->u.sa);
++		free(lsa);
++	}
++
+ 	if (ENABLE_FEATURE_UTMP) {
+-		len_and_sockaddr *lsa = get_peer_lsa(sock);
++		lsa = get_peer_lsa(sock);
+ 		char *hostname = NULL;
+ 		if (lsa) {
+ 			hostname = xmalloc_sockaddr2dotted(&lsa->u.sa);
+@@ -556,13 +567,29 @@ make_new_session(
+ 
+ 	/* Exec shell / login / whatever */
+ 	login_argv[0] = G.loginpath;
+-	login_argv[1] = NULL;
++	login_argv[1] = "-h";
++	login_argv[2] = ipaddr;
++	login_argv[3] = NULL;
++#if ENABLE_FEATURE_TELNETD_STANDALONE
++	if (G.port) {
++		login_argv[3] = "-P";
++		login_argv[4] = G.port;
++		login_argv[5] = NULL;
++	}
++#endif
+ 	/* exec busybox applet (if PREFER_APPLETS=y), if that fails,
+ 	 * exec external program.
+ 	 * NB: sock is either 0 or has CLOEXEC set on it.
+ 	 * fd has CLOEXEC set on it too. These two fds will be closed here.
+ 	 */
+ 	BB_EXECVP(G.loginpath, (char **)login_argv);
++	free(ipaddr);
++#if ENABLE_FEATURE_TELNETD_STANDALONE
++	if(G.port) {
++		free(G.port);
++		G.port = NULL;
++	}
++#endif
+ 	/* _exit is safer with vfork, and we shouldn't send message
+ 	 * to remote clients anyway */
+ 	_exit(EXIT_FAILURE); /*bb_perror_msg_and_die("execv %s", G.loginpath);*/
+@@ -701,6 +728,7 @@ int telnetd_main(int argc UNUSED_PARAM,
+ 		logmode = LOGMODE_SYSLOG;
+ 	}
+ #if ENABLE_FEATURE_TELNETD_STANDALONE
++	G.port = strdup(opt_portnbr);
+ 	if (IS_INETD) {
+ 		G.sessions = make_new_session(0);
+ 		if (!G.sessions) /* pty opening or vfork problem, exit */
+--- a/libbb/Kbuild.src
++++ b/libbb/Kbuild.src
+@@ -155,6 +155,7 @@ lib-$(CONFIG_SU) += pw_encrypt.o correct
+ lib-$(CONFIG_LOGIN) += pw_encrypt.o correct_password.o
+ lib-$(CONFIG_FEATURE_HTTPD_AUTH_MD5) += pw_encrypt.o
+ lib-$(CONFIG_FEATURE_FTP_AUTHENTICATION) += pw_encrypt.o
++lib-$(CONFIG_FEATURE_IP_BLOCKD) += ip_block.o lock_manager.o
+ 
+ lib-$(CONFIG_DF) += find_mount_point.o
+ lib-$(CONFIG_MKFS_MINIX) += find_mount_point.o
+--- /dev/null
++++ b/libbb/lock_manager.c
+@@ -0,0 +1,87 @@
++#include "lock_manager.h"
++#include <semaphore.h>
++#include <sys/mman.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <time.h>
++#include <signal.h>
++
++#define SHM_NAME "/ip_block_busybox"
++
++static sem_t *lock;
++
++int initialize_lock(void)
++{
++	if (lock != NULL) {
++		return 0;
++	}
++
++	signal(SIGINT, cleanup);
++	signal(SIGTERM, cleanup);
++
++	lock = sem_open(SHM_NAME, O_CREAT, 0644, 1);
++	if (lock == SEM_FAILED) {
++		return -1;
++	}
++
++	return 0;
++}
++
++int destroy_lock(void)
++{
++	if (lock == NULL) {
++		return -1;
++	}
++
++	if (sem_close(lock) == -1) {
++		return -1;
++	}
++
++	if (sem_unlink(SHM_NAME) == -1) {
++		return -1;
++	}
++
++	lock = NULL;
++	return 0;
++}
++
++int acquire_lock(void)
++{
++	if (lock == NULL) {
++		return -1;
++	}
++
++	// Timeout to avoid deadlocks
++	struct timespec timeout;
++	clock_gettime(CLOCK_REALTIME, &timeout);
++	timeout.tv_sec += 30;
++
++	int ret = sem_timedwait(lock, &timeout);
++	if (ret != 0) {
++		release_lock();
++	}
++
++	return 0;
++}
++
++int release_lock(void)
++{
++	if (lock == NULL) {
++		return -1;
++	}
++
++	if (sem_post(lock) == -1) {
++		destroy_lock();
++		return -1;
++	}
++
++	return 0;
++}
++void cleanup(int signal)
++{
++	(void)signal;
++	destroy_lock();
++	exit(EXIT_FAILURE);
++}
+--- /dev/null
++++ b/libbb/lock_manager.h
+@@ -0,0 +1,10 @@
++#ifndef LOCK_MANAGER_H
++#define LOCK_MANAGER_H
++
++int initialize_lock(void);
++int destroy_lock(void);
++int acquire_lock(void);
++int release_lock(void);
++void cleanup(int signal);
++
++#endif
+--- /dev/null
++++ b/libbb/ip_block.c
+@@ -0,0 +1,170 @@
++#include "ip_block.h"
++#include "lock_manager.h"
++
++#include <libubus.h>
++#include <libubox/blobmsg.h>
++
++enum { IP_BLOCK_BLOCKED, _IP_BLOCK_MAX };
++
++static const struct blobmsg_policy ip_block_policy[_IP_BLOCK_MAX] = {
++	[IP_BLOCK_BLOCKED] = { .name = "blocked", .type = BLOBMSG_TYPE_BOOL },
++};
++
++enum { IP_BLOCK_SHOW_GLOBALS, IP_BLOCK_SHOW_IPS, _IP_BLOCK_SHOW_MAX };
++
++static const struct blobmsg_policy ip_block_show_policy[_IP_BLOCK_SHOW_MAX] = {
++	[IP_BLOCK_SHOW_GLOBALS] = { .name = "globals", .type = BLOBMSG_TYPE_TABLE },
++	[IP_BLOCK_SHOW_IPS]	= { .name = "ips", .type = BLOBMSG_TYPE_ARRAY },
++};
++
++enum { IP_BLOCK_SHOW_NUM_IP, IP_BLOCK_SHOW_NUM_DEST_IP, IP_BLOCK_SHOW_NUM_PORT, _IP_BLOCK_SHOW_NUM_MAX };
++
++static const struct blobmsg_policy ip_block_show_num_policy[_IP_BLOCK_SHOW_NUM_MAX] = {
++	[IP_BLOCK_SHOW_NUM_IP]	    = { .name = "ip", .type = BLOBMSG_TYPE_STRING },
++	[IP_BLOCK_SHOW_NUM_DEST_IP] = { .name = "destination_ip", .type = BLOBMSG_TYPE_STRING },
++	[IP_BLOCK_SHOW_NUM_PORT]    = { .name = "port", .type = BLOBMSG_TYPE_STRING },
++};
++
++struct callback_data {
++	char *ip;
++	char *dest_ip;
++	char *port;
++	bool found;
++};
++
++static void blocked_ip_block_cb(struct ubus_request *req, int type, struct blob_attr *msg)
++{
++	size_t rem;
++	struct blob_attr *num_attr;
++	struct blob_attr *tb[_IP_BLOCK_SHOW_MAX];
++	struct callback_data *result = (struct callback_data *)req->priv;
++
++	if (!msg) {
++		result->found = false;
++		return;
++	}
++
++	blobmsg_parse(ip_block_show_policy, _IP_BLOCK_SHOW_MAX, tb, blobmsg_data(msg), blobmsg_len(msg));
++
++	struct blob_attr *ips = tb[IP_BLOCK_SHOW_IPS];
++	if (!ips) {
++		result->found = false;
++		return;
++	}
++
++	blobmsg_for_each_attr (num_attr, ips, rem) {
++		struct blob_attr *num_tb[_IP_BLOCK_SHOW_NUM_MAX];
++		blobmsg_parse(ip_block_show_num_policy, _IP_BLOCK_SHOW_NUM_MAX, num_tb,
++			      blobmsg_data(num_attr), blobmsg_len(num_attr));
++		if (!num_tb[IP_BLOCK_SHOW_NUM_IP] ||
++		    (result->dest_ip && !num_tb[IP_BLOCK_SHOW_NUM_DEST_IP]) ||
++		    (!result->dest_ip && num_tb[IP_BLOCK_SHOW_NUM_DEST_IP]) ||
++		    !num_tb[IP_BLOCK_SHOW_NUM_PORT]) {
++			continue;
++		}
++
++		const char *ip	    = blobmsg_get_string(num_tb[IP_BLOCK_SHOW_NUM_IP]);
++		const char *dest_ip = blobmsg_get_string(num_tb[IP_BLOCK_SHOW_NUM_DEST_IP]);
++		const char *port    = blobmsg_get_string(num_tb[IP_BLOCK_SHOW_NUM_PORT]);
++
++		int dest_ip_match =
++			result->dest_ip != NULL ?
++				(dest_ip && !strncmp(dest_ip, result->dest_ip, strlen(result->dest_ip))) :
++				1;
++		if (ip && !strncmp(ip, result->ip, strlen(result->ip)) && port &&
++		    !strncmp(port, result->port, strlen(result->port)) && dest_ip_match) {
++			result->found = true;
++			return;
++		}
++	}
++
++	result->found = false;
++}
++
++static int blocked_ip_block(char *ip, char *dest_ip, char *port)
++{
++	struct callback_data result  = { .found = false, .ip = ip, .dest_ip = dest_ip, .port = port };
++	struct ubus_context ubus_ctx = { 0 };
++	if (ubus_connect_ctx(&ubus_ctx, NULL)) {
++		return result.found;
++	}
++
++	uint32_t ip_block_obj = 0;
++	if (ubus_lookup_id(&ubus_ctx, "ip_block", &ip_block_obj)) {
++		goto clean;
++	}
++
++	struct blob_buf buffer = { 0 };
++	blob_buf_init(&buffer, 0);
++	blobmsg_add_string(&buffer, "type", "ip");
++	blobmsg_add_u8(&buffer, "blocked", true);
++
++	ubus_invoke(&ubus_ctx, ip_block_obj, "show", buffer.head, blocked_ip_block_cb, &result, 1000);
++
++	blob_buf_free(&buffer);
++clean:
++	ubus_shutdown(&ubus_ctx);
++
++	return result.found;
++}
++
++static void signal_ip_block_cb(struct ubus_request *req, int type, struct blob_attr *msg)
++{
++	struct blob_attr *tb[_IP_BLOCK_MAX];
++	int *blocked = (int *)req->priv;
++
++	if (!msg) {
++		*blocked = 0;
++		return;
++	}
++
++	blobmsg_parse(ip_block_policy, _IP_BLOCK_MAX, tb, blobmsg_data(msg), blobmsg_len(msg));
++	if (!tb[IP_BLOCK_BLOCKED]) {
++		*blocked = 0;
++		return;
++	}
++
++	*blocked = blobmsg_get_u8(tb[IP_BLOCK_BLOCKED]);
++}
++
++int signal_ip_block(char *op, char *ip, char *dest_ip, char *port, char *proto)
++{
++	acquire_lock();
++	int ret = 0;
++	if (blocked_ip_block(ip, dest_ip, port)) {
++		ret = 1;
++		goto ret;
++	}
++	struct ubus_context ubus_ctx = { 0 };
++	if (ubus_connect_ctx(&ubus_ctx, NULL)) {
++		goto ret;
++	}
++
++	uint32_t ip_block_obj = 0;
++	if (ubus_lookup_id(&ubus_ctx, "ip_block", &ip_block_obj)) {
++		goto clean;
++	}
++
++	struct blob_buf buffer = { 0 };
++	blob_buf_init(&buffer, 0);
++	blobmsg_add_string(&buffer, "ip", ip);
++
++	if (dest_ip) {
++		blobmsg_add_string(&buffer, "destination_ip", dest_ip);
++	}
++
++	blobmsg_add_string(&buffer, "port", port);
++
++	if (proto) {
++		blobmsg_add_string(&buffer, "proto", proto);
++	}
++
++	ubus_invoke(&ubus_ctx, ip_block_obj, op, buffer.head, signal_ip_block_cb, &ret, 1000);
++
++	blob_buf_free(&buffer);
++clean:
++	ubus_shutdown(&ubus_ctx);
++ret:
++	release_lock();
++	return ret;
++}
+--- /dev/null
++++ b/libbb/ip_block.h
+@@ -0,0 +1,6 @@
++#ifndef __IP_BLOCK_H
++#define __IP_BLOCK_H
++
++int signal_ip_block(char *op, char *ip, char *dest_ip, char *port, char *proto);
++
++#endif

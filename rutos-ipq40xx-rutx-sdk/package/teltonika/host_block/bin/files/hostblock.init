@@ -1,0 +1,57 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2017 Teltonika
+
+START=99
+STOP=01
+SCRIPT_FILE="hostblock.sh"
+USE_PROCD=1
+USER="hostblock"
+SERVER_CONF=/tmp/dnsmasq.d/server
+ADDR_CONF=/tmp/dnsmasq.d/address
+
+get_conf() {
+	local network="$(uci -q get hostblock.config.network)"
+	[ "$network" = "all" ] && network=""
+
+	SERVER_CONF="/tmp/dnsmasq.d${network:+_}${network}/server"
+	ADDR_CONF="/tmp/dnsmasq.d${network:+_}${network}/address"
+}
+
+create_files() {
+	get_conf
+	touch "$SERVER_CONF" "$ADDR_CONF"
+	chown $USER:$USER "$SERVER_CONF" "$ADDR_CONF"
+}
+
+cleanup() {
+	get_conf
+	rm -f "$SERVER_CONF" "$ADDR_CONF" "/tmp/dnsmasq.d/server" "/tmp/dnsmasq.d/address"
+}
+
+start_service() {
+	local enabled="$(uci -q get hostblock.config.enabled || echo 0)"
+	[ "$enabled" -eq 1 ] || return
+
+	create_files
+	su "$USER" -s /bin/sh -pc "$SCRIPT_FILE enable"
+}
+
+stop_service() {
+	create_files
+	su "$USER" -s /bin/sh -pc "$SCRIPT_FILE disable"
+	cleanup
+}
+
+service_triggers() {
+	procd_add_reload_trigger "hostblock"
+}
+
+reload_service() {
+	local action="restart"
+	local enabled="$(uci -q get hostblock.config.enabled || echo 0)"
+	[ "$enabled" -eq 1 ] || action="disable"
+
+	create_files
+	su "$USER" -s /bin/sh -pc "$SCRIPT_FILE $action"
+	[ "$action" = "disable" ] && cleanup
+}

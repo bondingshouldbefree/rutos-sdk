@@ -1,0 +1,90 @@
+--- a/interface-ip.c
++++ b/interface-ip.c
+@@ -34,7 +34,7 @@
+ 	[ROUTE_TARGET] = { .name = "target", .type = BLOBMSG_TYPE_STRING },
+ 	[ROUTE_MASK] = { .name = "netmask", .type = BLOBMSG_TYPE_STRING },
+ 	[ROUTE_GATEWAY] = { .name = "gateway", .type = BLOBMSG_TYPE_STRING },
+-	[ROUTE_METRIC] = { .name = "metric", .type = BLOBMSG_TYPE_INT64 },
++	[ROUTE_METRIC] = { .name = "metric", .type = BLOBMSG_TYPE_STRING},
+ 	[ROUTE_MTU] = { .name = "mtu", .type = BLOBMSG_TYPE_INT32 },
+ 	[ROUTE_TABLE] = { .name = "table", .type = BLOBMSG_TYPE_STRING },
+ 	[ROUTE_VALID] = { .name = "valid", .type = BLOBMSG_TYPE_INT32 },
+@@ -389,6 +389,7 @@
+ 	struct device_route *route;
+ 	int af = v6 ? AF_INET6 : AF_INET;
+ 	bool no_device = false;
++	char *tmp = NULL;
+ 
+ 	blobmsg_parse(route_attr, __ROUTE_MAX, tb, blobmsg_data(attr), blobmsg_data_len(attr));
+ 
+@@ -441,8 +442,8 @@
+ 		}
+ 	}
+ 
+-	if ((cur = tb[ROUTE_METRIC]) != NULL) {
+-		route->metric = blobmsg_get_u64(cur);
++	if ((cur = tb[ROUTE_METRIC]) != NULL && (tmp = blobmsg_get_string(cur))) {
++		route->metric = strtoul(tmp, NULL, 0);
+ 		route->flags |= DEVROUTE_METRIC;
+ 	}
+
+--- a/interface.c
++++ b/interface.c
+@@ -73,7 +73,7 @@
+ 	[IFACE_ATTR_MODEM] = { .name = "modem", .type = BLOBMSG_TYPE_STRING },
+ 	[IFACE_ATTR_DEFAULTROUTE] = { .name = "defaultroute", .type = BLOBMSG_TYPE_BOOL },
+ 	[IFACE_ATTR_PEERDNS] = { .name = "peerdns", .type = BLOBMSG_TYPE_BOOL },
+-	[IFACE_ATTR_METRIC] = { .name = "metric", .type = BLOBMSG_TYPE_INT32 },
++	[IFACE_ATTR_METRIC] = { .name = "metric", .type = BLOBMSG_TYPE_STRING },
+ 	[IFACE_ATTR_DNS] = { .name = "dns", .type = BLOBMSG_TYPE_ARRAY },
+ 	[IFACE_ATTR_DNS_SEARCH] = { .name = "dns_search", .type = BLOBMSG_TYPE_ARRAY },
+ 	[IFACE_ATTR_DNS_METRIC] = { .name = "dns_metric", .type = BLOBMSG_TYPE_INT32 },
+@@ -821,7 +821,7 @@
+ 	struct blob_attr *tb[IFACE_ATTR_MAX];
+ 	struct blob_attr *cur;
+ 	const char *proto_name = NULL;
+-	char *iface_name;
++	char *iface_name, *tmp = NULL;
+ 	bool force_link = false;
+ 
+ 	iface = calloc_a(sizeof(*iface), &iface_name, strlen(name) + 1);
+@@ -874,8 +874,9 @@
+ 	if ((cur = tb[IFACE_ATTR_DNS_METRIC]))
+ 		iface->dns_metric = blobmsg_get_u32(cur);
+ 
+-	if ((cur = tb[IFACE_ATTR_METRIC]))
+-		iface->metric = blobmsg_get_u32(cur);
++	if ((cur = tb[IFACE_ATTR_METRIC]) && (tmp = blobmsg_get_string(cur))) {
++		iface->metric = strtoul(tmp, NULL, 0);
++	}
+ 
+ 	if ((cur = tb[IFACE_ATTR_IP6ASSIGN]))
+ 		iface->assignment_length = blobmsg_get_u32(cur);
+
+--- a/scripts/netifd-proto.sh
++++ b/scripts/netifd-proto.sh
+@@ -23,13 +23,13 @@
+ proto_config_add_defaults() {
+ 	proto_config_add_boolean "defaultroute"
+ 	proto_config_add_boolean "peerdns"
+-	proto_config_add_int "metric"
++	proto_config_add_string "metric"
+ }
+ 
+ proto_add_dynamic_defaults() {
+ 	[ -n "$defaultroute" ] && json_add_boolean defaultroute "$defaultroute"
+ 	[ -n "$peerdns" ] && json_add_boolean peerdns "$peerdns"
+-	[ -n "$metric" ] && json_add_int metric "$metric"
++	[ -n "$metric" ] && json_add_string metric "$metric"
+ }
+ 
+ _proto_do_teardown() {
+@@ -295,7 +295,7 @@
+ 	json_add_string target "$target"
+ 	json_add_string netmask "$mask"
+ 	[ -n "$gw" ] && json_add_string gateway "$gw"
+-	[ -n "$metric" ] && json_add_int metric "$metric"
++	[ -n "$metric" ] && json_add_string metric "$metric"
+ 	[ -n "$valid" ] && json_add_int valid "$valid"
+ 	[ -n "$source" ] && json_add_string source "$source"
+ 	[ -n "$table" ] && json_add_string table "$table"

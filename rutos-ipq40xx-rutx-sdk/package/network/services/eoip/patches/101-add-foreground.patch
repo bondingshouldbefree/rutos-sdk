@@ -1,0 +1,29 @@
+Index: eoip-0.5/eoip.c
+===================================================================
+--- eoip-0.5.orig/eoip.c
++++ eoip-0.5/eoip.c
+@@ -425,7 +425,8 @@ int main(int argc, char **argv)
+     threads = malloc(sizeof(pthread_t)*(numtunnels+1));
+ 
+     /* Fork after creating tunnels, useful for scripts */
+-    ret = daemon(1, 1);
++    if (!getenv("NO_DAEMON"))
++    	ret = daemon(1, 1);
+ 
+     if (asprintf(&pidfile,"/var/run/eoip-%s",basename(configname)) == -1)
+ 	exit(1);
+Index: eoip-0.5/vip.c
+===================================================================
+--- eoip-0.5.orig/vip.c
++++ eoip-0.5/vip.c
+@@ -717,8 +717,8 @@ int main(int argc,char **argv)
+     threads = malloc(sizeof(pthread_t)*(numtunnels+1));
+ 
+     /* Fork after creating tunnels, useful for scripts */
+-    ret = daemon(1,1);
+-
++    if (!getenv("NO_DAEMON"))
++    	ret = daemon(1,1);
+ 
+     pthread_attr_init(&attr);
+     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);

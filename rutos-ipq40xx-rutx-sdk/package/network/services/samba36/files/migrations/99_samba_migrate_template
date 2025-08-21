@@ -1,0 +1,15 @@
+#!/bin/sh
+
+config_file="/etc/samba/smb.conf.template"
+
+add_if_missing() {
+	grep -q "$1" "$config_file" || echo -e "\t$1 = $2" >>"$config_file"
+}
+
+sed -i 's/force user = root/force user = samba/' "$config_file"
+
+add_if_missing 'lock directory' '/var/run/samba'
+add_if_missing 'pid directory' '/var/run/samba'
+add_if_missing 'private dir' '/var/run/samba'
+
+exit 0

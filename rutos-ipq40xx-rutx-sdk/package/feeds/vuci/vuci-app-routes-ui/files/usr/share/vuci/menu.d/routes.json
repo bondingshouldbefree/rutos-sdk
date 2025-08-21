@@ -1,0 +1,29 @@
+{
+  "network/routes": {
+    "title": "Routing",
+    "index": 80
+  },
+  "network/routes/static_routes": {
+    "title": "Static Routes",
+    "index": 10,
+    "view": "network/StaticRoutes",
+    "acls": ["network/routes/static_routes"],
+    "main_page": true
+  },
+  "network/routes/advanced_routing": {
+    "title": "Policy Based Routing",
+    "index": 20,
+    "view": "network/AdvancedRoutes",
+    "acls": ["network/routes/advanced_routing"]
+  },
+  "status/routes": {
+    "title": "Routes",
+    "index": 35
+  },
+  "status/routes/general": {
+    "title": "Static",
+    "index": 10,
+    "view": "status/GeneralRoutes",
+    "acls": ["status/routes/general"]
+  }
+}

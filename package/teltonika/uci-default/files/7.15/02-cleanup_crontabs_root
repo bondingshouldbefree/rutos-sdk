@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# "/#746c74/d" RUT FOTA firmware check
+sed -i -e "/#746c74/d" /etc/crontabs/root
+exit 0

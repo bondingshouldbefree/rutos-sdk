@@ -1,0 +1,52 @@
+#!/bin/sh
+. /lib/functions.sh
+
+get_ifname() {
+	ucode -e '
+		let nwid = 0x'"$1"';
+		let nwid40 = (nwid ^ (nwid >> 24));
+		let tmp2 = [
+			(nwid40 >> 32) & 0xff,
+			(nwid40 >> 24) & 0xff,
+			(nwid40 >> 16) & 0xff,
+			(nwid40 >> 8) & 0xff,
+			nwid40 & 0xff
+		];
+		let base32_chars = "abcdefghijklmnopqrstuvwxyz234567";
+
+		function base32_5_to_8(bytes) {
+			let value = (bytes[0] << 32) | (bytes[1] << 24) | (bytes[2] << 16) | (bytes[3] << 8) | bytes[4];
+			let result = "";
+
+			for (let i = 0; i < 8; i++) {
+				let shift = 35 - (i * 5);
+				let index = (value >> shift) & 31;
+				result += substr(base32_chars, index, 1);
+			}
+			return result;
+		}
+
+		let tmp3 = "zt" + base32_5_to_8(tmp2);
+		print(tmp3 + "\n");
+	'
+}
+
+add_device_name() {
+	local section="$1"
+	local network_id
+	local device_name
+	config_get "network_id" "$section" "network_id"
+	config_get "device_name" "$section" "device_name"
+	[ -n "$device_name" ] || [ -z "$network_id" ] && return 0
+	device_name="$(get_ifname "${network_id}")"
+	uci_set "zerotier" "$section" "device_name" "$device_name"
+}
+iterate_instance() {
+	local section="$1"
+	config_foreach "add_device_name" "network_${section}"
+	}
+
+config_load zerotier
+config_foreach "iterate_instance" "instance"
+uci commit zerotier
+exit 0

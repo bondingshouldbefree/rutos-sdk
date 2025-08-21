@@ -1,0 +1,14 @@
+{
+	"user": "azure",
+	"publish": [ "azure.*" ],
+	"access": {
+		"api": {
+			"methods": [
+				"get",
+				"post",
+				"put",
+				"delete"
+			]
+		}
+	}
+}

@@ -1,0 +1,9 @@
+[ "$(uci get "network.$INTERFACE.proto" | head -c 4)" != "l2tp" ] && exit 0
+[ "$ACTION" = "ifup-failed" ] && {
+	fail_count="0"
+	[ -f "/var/run/xl2tpd/$INTERFACE.failcount" ] && fail_count="$(cat "/var/run/xl2tpd/$INTERFACE.failcount")"
+	echo "$((fail_count + 1))" > "/var/run/xl2tpd/$INTERFACE.failcount"
+	exit 0
+}
+echo "0" > "/var/run/xl2tpd/$INTERFACE.failcount"
+exit 0

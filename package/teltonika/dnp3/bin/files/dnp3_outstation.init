@@ -1,0 +1,44 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=99
+STOP=15
+
+CONFIG="dnp3_outstation"
+SERIAL_ENABLED="0"
+APP=/usr/sbin/dnp3_outstation
+
+if [ ! -x "$APP" ]; then
+	APP="/usr/local$APP"
+fi
+
+check_if_serial_enabled() {
+	config_get ENABLED $1 enabled "0"
+	[ "$ENABLED" == "0" ] && return
+	SERIAL_ENABLED=1
+}
+
+start_service() {
+	config_load "$CONFIG"
+
+	config_foreach check_if_serial_enabled "dnp3_serial_outstation"
+	config_get enabled "dnp3_outstation" "enabled" "0"
+	[ "$SERIAL_ENABLED" = "0" ] && [ "$enabled" = "0" ] && return
+
+	procd_open_instance
+	procd_set_param command "$APP"
+	procd_set_param file /etc/config/dnp3_outstation
+	procd_set_param respawn ${respawn_threshold:-0} ${respawn_timeout:-6} ${respawn_retry:-0}
+	procd_set_param user dnp3_outstation
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger "dnp3_outstation"
+	procd_add_reload_trigger "system"
+}
+
+reload_service() {
+	stop
+	start
+}

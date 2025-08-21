@@ -1,0 +1,71 @@
+{
+	"services/dnp3": {
+		"title": "DNP3",
+		"index": 130
+	},
+		"services/dnp3/tcp_client": {
+			"title": "DNP3 TCP Client",
+			"index": 10,
+			"view": "services/DNP3TcpClient",
+			"acls": [ "services/dnp3/tcp_client" ],
+			"main_page": true
+		},
+		"services/dnp3/serial_client": {
+			"title": "DNP3 Serial Client",
+			"index": 20,
+			"view": "services/DNP3SerialClient",
+			"acls": [ "services/dnp3/serial_client" ],
+			"depends": {
+				"board": {
+					"anyOf": ["has_usb", "has_rs232", "has_rs485", "has_console"]
+				}
+			}
+		},
+		"services/dnp3/dnp_outstation": {
+			"title": "DNP3 Outstation",
+			"index": 30
+		},
+		"services/dnp3/dnp_outstation/general": {
+			"title": "General",
+			"index": 1,
+			"view": "services/DNP3Outstation",
+			"acls": [ "services/dnp3/dnp_outstation/general" ]
+		},
+		"services/dnp3/dnp_outstation/data_source": {
+			"title": "Data Sources",
+			"index": 2,
+			"view": "services/DNP3OutstationDataSource",
+			"acls": [ "services/dnp3/dnp_outstation/data_source" ],
+			"depends": {
+				"packages": {
+					"anyOf": ["modbus_client", "mbus_client"]
+				}
+			}
+		},
+		"services/dnp3/dnp3_serial_outstation": {
+			"title": "DNP3 Serial Outstation",
+			"index": 40,
+			"depends": {
+				"board": {
+					"anyOf": ["has_usb", "has_rs232", "has_rs485", "has_console"]
+				}
+			}
+		},
+		"services/dnp3/dnp3_serial_outstation/general": {
+			"title": "General",
+			"index": 1,
+			"view": "services/DNP3SerialOutstation",
+			"acls": [ "services/dnp3/dnp_serial_outstation/general" ]
+		},
+		"services/dnp3/dnp3_serial_outstation/data_source": {
+			"title": "Data Sources",
+			"index": 2,
+			"view": "services/DNP3SerialOutstationDataSource",
+			"acls": [ "services/dnp3/dnp_serial_outstation/data_source" ],
+			"depends": {
+				"packages": {
+					"anyOf": ["modbus_client"]
+				}
+			}
+		}
+}

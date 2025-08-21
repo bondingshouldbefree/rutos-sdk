@@ -1,0 +1,291 @@
+#!/bin/sh
+
+PERMTAB="/etc/permtab"
+PERMTABDIR="/etc/permtab.d"
+
+# don't allow recursive operations
+FORBIDDEN_PATHS="/ /etc /usr /usr/local /proc /sys /dev"
+
+umask 022
+
+show_help() {
+	echo "Usage: perm [options]"
+	echo "Options:"
+	echo "  <path>         Apply permissions to specific path directly"
+	echo "  -a             Apply all permissions in $PERMTAB and $PERMTABDIR/*"
+	echo "  -r <path>      Apply permissions to specified path and all entries under it"
+	echo "  -l             List all permission entries"
+	echo "  -v             Verbose mode"
+	echo "  -h             Show this help message"
+	exit 0
+}
+
+log() {
+	printf "%b\n" "$*"
+}
+
+inf() {
+	[ $VERBOSE -eq 1 ] && log "$@"
+}
+
+warn() {
+	log "Warning: $*"
+}
+
+err() {
+	log "Error: $*"
+}
+
+is_protected_path() {
+	local path="$1"
+	local options="$2"
+	local is_recursive=0
+
+	path="${path%/}"
+
+	local resolved_path=$(cd "$path" 2>/dev/null && pwd || echo "$path")
+	[ -z "$resolved_path" ] && resolved_path="$path"
+
+	case "$options" in
+		*r*) is_recursive=1 ;;
+	esac
+
+	case " $FORBIDDEN_PATHS " in
+		*" $resolved_path "*)
+			return 0
+			;;
+	esac
+
+	[ $is_recursive -eq 0 ] && return 1
+
+	local depth=0
+	local temp="$resolved_path"
+	while [ "$temp" != "/" ] && [ -n "$temp" ]; do
+		temp="${temp%/*}"
+		depth=$((depth + 1))
+	done
+
+	# block recursive operations on / or top-level directories (depth 0 or 1)
+	[ "$depth" -le 1 ] && return 0
+
+	return 1
+}
+
+apply_permission() {
+	local path="$1"
+	local ownership="$2"
+	local perms="$3"
+	local options="$4"
+
+	local recursive=""
+	[ "${options#*r}" != "$options" ] && recursive="-R"
+
+	[ "${options#*cf}" != "$options" ] && [ ! -e "$path" ] && {
+		{
+			mkdir -p "$(dirname "$path")" && touch "$path"
+		} || err "Failed to create file: $path"
+	}
+
+	[ "${options#*cd}" != "$options" ] && [ ! -e "$path" ] && {
+		mkdir -p "$path" || err "Failed to create directory: $path"
+	}
+
+	[ -e "$path" ] || {
+		warn "Path does not exist: $path"
+		return 1
+	}
+
+	[ "$ownership" != "-" ] && {
+		local user="${ownership%%:*}"
+		local group="${ownership##*:}"
+
+		[ "$user:$group" != "$ownership" ] && {
+			warn "Invalid ownership format: $ownership"
+		} || {
+			inf "Setting ownership of $path to $ownership"
+			chown $recursive "$ownership" "$path" 2>/dev/null || \
+				err "Failed to set ownership for $path"
+		}
+	}
+
+	[ "$perms" = "-" ] && return 0
+
+	case "$perms" in
+		[0-7][0-7][0-7]|[0-7][0-7][0-7][0-7])
+			inf "Setting permissions of $path to $perms"
+			chmod $recursive "$perms" "$path" 2>/dev/null || \
+				err "Failed to set permissions for $path"
+			;;
+		*)
+			err "Invalid permission format '$perms' (should be octal like 755)"
+			return 1
+			;;
+	esac
+
+	return 0
+}
+
+process_permtab_file() {
+	local file="$1"
+	local callback="$2"
+	local path ownership perms options line
+
+	[ -f "$file" ] || return 0
+
+	while IFS= read -r line; do
+		# skip comments and empty lines
+		[ -z "$line" ] && continue
+		[ "${line#\#}" != "$line" ] && continue
+
+		# parse the following format:
+		# <path> <owner:group> <permissions> <options>
+		set -- $line
+		path="$1"
+		ownership="$2"
+		perms="$3"
+		options="$4"
+
+		"$callback" "$path" "$ownership" "$perms" "$options"
+	done < "$file"
+	return 0
+}
+
+apply_all() {
+	local target_path="$1"
+	local recursive="$2"
+	local count=0
+	local success=0
+	local found=0
+
+	apply_cb() {
+		local path="$1"
+		local ownership="$2"
+		local perms="$3"
+		local options="$4"
+
+		[ -n "$target_path" ] && {
+			# not our selected path and not resursive
+			[ "$recursive" != "1" ] && [ "$path" != "$target_path" ] && return 0
+
+			if [ "$recursive" = "1" ]; then
+				case "$path" in
+					${target_path}*|${target_path%/})
+						found=1
+						inf "Applying permissions to $path (recursive match)"
+						;;
+					*)
+						return 0
+						;;
+				esac
+			else
+				[ "$path" = "$target_path" ] && found=1
+			fi
+		}
+
+		count=$((count + 1))
+
+		case "$path" in
+			*\**)
+				err "Wildcards not allowed in path: $path"
+				return 1
+				;;
+		esac
+
+		if is_protected_path "$path" "$options"; then
+			err "Forbidden path in permtab: $path"
+			return 1
+		fi
+
+		apply_permission "$path" "$ownership" "$perms" "$options" && \
+			success=$((success + 1))
+	}
+
+	process_permtab_file "$PERMTAB" "apply_cb"
+
+	[ -d "$PERMTABDIR" ] && {
+		for file in "$PERMTABDIR"/*; do
+			[ -f "$file" ] && process_permtab_file "$file" "apply_cb"
+		done
+	}
+
+	[ -n "$target_path" ] && {
+		[ "$found" -eq 0 ] && {
+			if [ "$recursive" = "1" ]; then
+				warn "No entries found for path: $target_path or subdirectories"
+			else
+				warn "No entry found for path: $target_path"
+			fi
+
+			return 0
+		}
+
+		[ "$recursive" = "1" ] || return 0
+	}
+
+	inf "\nApplied $success/$count permission entries"
+	return 0
+}
+
+list_permissions() {
+	local file
+
+	list_cb() {
+		printf "%-24s  %-30s  %-6s  %-7s\n" "$1" "$2" "$3" "$4"
+	}
+
+	echo "Path                      Owner:Group                     Perms   Options"
+	echo "------------------------  ------------------------------  ------  -------"
+
+	[ -f "$PERMTAB" ] && process_permtab_file "$PERMTAB" "list_cb"
+
+	[ -d "$PERMTABDIR" ] && {
+		for file in "$PERMTABDIR"/*; do
+			[ -f "$file" ] && process_permtab_file "$file" "list_cb"
+		done
+	}
+}
+
+[ "$(id -u)" -ne 0 ] && {
+	err "This script must be run as root"
+	exit 1
+}
+
+DO_ACTION=""
+DO_ARGS=""
+RECURSIVE=0
+VERBOSE=0
+
+while getopts "ar:lvh" opt; do
+	case $opt in
+		a)
+			DO_ACTION="apply_all"
+			;;
+		r)
+			DO_ACTION="apply_all"
+			DO_ARGS="$OPTARG"
+			RECURSIVE=1
+			;;
+		l)
+			DO_ACTION="list_permissions"
+			;;
+		v)
+			VERBOSE=1
+			;;
+		h|*)
+			show_help
+			;;
+	esac
+done
+
+shift $((OPTIND-1))
+
+if [ $# -ge 1 ]; then
+	DO_ACTION="apply_all"
+	DO_ARGS="$1"
+fi
+
+if [ -z "$DO_ACTION" ]; then
+	show_help
+fi
+
+"$DO_ACTION" "$DO_ARGS" "$RECURSIVE"

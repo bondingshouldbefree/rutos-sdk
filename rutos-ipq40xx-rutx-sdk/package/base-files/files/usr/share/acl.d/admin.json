@@ -1,0 +1,38 @@
+{
+	"user": "admin",
+	"access": {
+		"gsm.*": {
+			"methods": [ "*" ]
+		},
+		"mctl": {
+			"methods": [ "*" ]
+		},
+		"service": {
+			"methods": [ "set", "list", "delete", "signal" ]
+		},
+		"log": {
+			"methods": [ "write_ext" ]
+		},
+		"system": {
+			"methods": [ "backup", "sysupgrade" ]
+		},
+		"rpc-sys-ext": {
+			"methods": [ "troubleshoot" ]
+		},
+		"rpc-format": {
+			"methods": [ "format", "sme" ]
+		},
+		"event_juggler": {
+			"methods": [ "*" ]
+		},
+		"datasender": {
+			"methods": [ "*" ]
+		},
+		"rms": {
+			"methods": [ "get_status" ]
+		},
+		"azure.*": {
+			"methods": [ "get_connection_status" ]
+		}
+	}
+}

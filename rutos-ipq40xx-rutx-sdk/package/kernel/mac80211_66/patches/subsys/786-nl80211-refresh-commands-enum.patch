@@ -1,0 +1,10 @@
+--- a/include/uapi/linux/nl80211.h
++++ b/include/uapi/linux/nl80211.h
+@@ -1586,6 +1586,7 @@ enum nl80211_commands {
+ 
+ 	NL80211_CMD_SET_TID_TO_LINK_MAPPING,
+ 
++	NL80211_CMD_UNREGISTER_FRAME,
+ 	/* add new commands above here */
+ 
+ 	/* used to define NL80211_CMD_MAX below */

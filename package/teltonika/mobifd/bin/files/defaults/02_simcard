@@ -1,0 +1,50 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+# shellcheck disable=SC2317
+set_pin() {
+	local sim="$1"
+	local sim_pos=0
+	local modem position pincode num pin modem_num mnf_cfg mnf_modem
+
+	config_get modem "$sim" "modem"
+	config_get position "$sim" "position"
+	config_get pincode "$sim" "pincode"
+
+	modem_num="$(jsonfilter -i "/etc/board.json" -e "@.modems[@.id=\"$modem\"].num" 2>/dev/null)"
+	[ -z "$modem_num" ] && return
+
+	for num in $(seq 1 4); do
+		mnf_cfg="$(/sbin/mnf_info -C "$num" 2>/dev/null)"
+		[ -z "$mnf_cfg" ] && break
+
+		mnf_modem=${mnf_cfg:1:1}
+		[ $mnf_modem -eq 0 ] && continue # Skip empty
+
+		[ $mnf_modem -eq $modem_num ] && sim_pos=$((sim_pos + 1)) && [ $sim_pos -eq $position ] && {
+			[ -z "$pincode" ] && {
+				pin=$(/sbin/mnf_info -S "$num" 2>/dev/null)
+				[ "$pin" = "N/A" ] && break
+				[ -n "$pin" ] && uci_set "simcard" "$sim" "pincode" "$pin"
+			} || /sbin/mnf_info -P "$num" -p "$pincode" 2>/dev/null
+			break
+		}
+	done
+}
+
+# shellcheck disable=SC2317
+set_volte() {
+	local sim="$1"
+	local volte
+
+	config_get volte "$sim" "volte"
+	[ -z "$volte" ] && uci_set "simcard" "$sim" "volte" "auto"
+}
+
+config_load "simcard"
+config_foreach set_pin "sim"
+config_foreach set_volte "sim"
+uci_commit "simcard"
+
+exit 0

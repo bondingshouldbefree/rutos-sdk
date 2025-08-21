@@ -1,0 +1,12 @@
+{
+	"system/maintenance": {
+        "title": "Maintenance",
+        "index": 20
+    },
+	"system/maintenance/cli": {
+		"title": "CLI",
+		"index": 70,
+		"view": "services/Cli",
+		"acls": [ "system/maintenance/cli" ]
+	}
+}

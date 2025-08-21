@@ -1,0 +1,23 @@
+{
+  "user": "rut_fota",
+  "access": {
+    "rut_fota": {
+      "methods": ["*"]
+    },
+    "log": {
+      "methods": ["write_ext"]
+    },
+    "system": {
+      "methods": ["backup", "sysupgrade"]
+    },
+    "gsm": {
+      "methods": ["info"]
+    },
+    "gsm.modem*": {
+      "methods": ["info"]
+    },
+    "uci": {
+      "methods": ["get"]
+    }
+  }
+}

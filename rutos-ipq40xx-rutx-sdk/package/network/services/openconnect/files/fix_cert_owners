@@ -1,0 +1,28 @@
+#!/bin/sh
+. /lib/functions.sh
+
+update_certs() {
+	local if="$1"
+	local proto user_cert user_key ca_cert
+	config_get proto "$if" "proto"
+	[ "$proto" != "openconnect" ] && return 0
+	config_get user_cert "$if" user_cert
+	config_get user_key "$if" user_key
+	config_get ca_cert "$if" ca_cert
+	[ -f "$user_cert" -a "$(dirname "$user_cert")" = "/etc/vuci-uploads" ] && {
+		chmod 660 "$user_cert"
+		chown openconnect:certificates "$user_cert"
+	}
+	[ -f "$user_key" -a "$(dirname "$user_key")" = "/etc/vuci-uploads" ] && {
+		chmod 660 "$user_key"
+		chown openconnect:certificates "$user_key"
+	}
+	[ -f "$ca_cert" -a "$(dirname "$ca_cert")" = "/etc/vuci-uploads" ] && {
+		chmod 660 "$ca_cert"
+		chown openconnect:certificates "$ca_cert"
+	}
+}
+
+config_load network
+config_foreach update_certs interface
+exit 0

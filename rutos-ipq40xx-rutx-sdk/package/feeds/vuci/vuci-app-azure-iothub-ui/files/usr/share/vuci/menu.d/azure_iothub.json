@@ -1,0 +1,12 @@
+{
+  "services/cloud_solutions": {
+    "title": "Cloud Solutions",
+    "index": 10
+  },
+  "services/cloud_solutions/azure_iothub": {
+    "title": "Azure IoT Hub",
+    "index": 30,
+    "view": "services/AzureIotHub",
+    "acls": ["services/cloud_solutions/azure_iothub"]
+  }
+}

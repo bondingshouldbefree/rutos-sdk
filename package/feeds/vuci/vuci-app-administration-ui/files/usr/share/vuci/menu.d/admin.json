@@ -1,0 +1,12 @@
+{
+    "system/admin": {
+        "title": "Administration",
+        "index": 10
+    },
+    "system/admin/admin": {
+        "title": "General",
+        "acls": ["system/admin/admin"],
+        "view": "system/Admin",
+        "index": 10
+    }
+}

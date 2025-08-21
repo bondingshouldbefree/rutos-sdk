@@ -1,0 +1,1 @@
+{"services/modbus/tcp_over_serial":{"description":"Modbus TCP over Serial acls","read":{"api":{"/modbus/tcp_over_serial/*":["*"],"/serial/*":["*"],"/firewall/zones/*":["*"]}},"write":{"api":["/modbus/tcp_over_serial/*"]}}}

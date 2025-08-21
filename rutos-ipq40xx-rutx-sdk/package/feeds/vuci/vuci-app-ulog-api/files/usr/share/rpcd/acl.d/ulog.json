@@ -1,0 +1,1 @@
+{"services/logging":{"description":"Traffic Logging","read":{"api":{"/ulog/*":["*"]}},"write":{"api":["/ulog/*"]}},"system/maintenance/traffic":{"description":"traffic logs","read":{"api":{"/ulog/*":["*"]}}}}

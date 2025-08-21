@@ -1,0 +1,11 @@
+#!/bin/sh
+
+uci -q get ip_blockd.ip_blockd.enabled > /dev/null && exit 0
+
+[ -z "$(uci -q get ip_blockd.@globals[0].enabled_time_based)" ] && \
+    uci set ip_blockd.@globals[0].enabled_time_based="1"
+
+uci rename ip_blockd.@globals[0]=ip_blockd
+uci commit ip_blockd
+
+exit 0

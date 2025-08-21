@@ -1,0 +1,13 @@
+--- a/vtysh/vtysh_main.c
++++ b/vtysh/vtysh_main.c
+@@ -615,7 +615,9 @@ int main(int argc, char **argv, char **e
+ 	} else if (histfile) {
+ 		strlcpy(history_file, histfile, sizeof(history_file));
+ 	} else {
+-		homedir = vtysh_get_home();
++		// homedir = vtysh_get_home();
++		// as /root is becoming readonly, changed default history location to tmp
++		homedir = "/tmp";
+ 		if (homedir)
+ 			snprintf(history_file, sizeof(history_file),
+ 				 "%s/.history_frr", homedir);

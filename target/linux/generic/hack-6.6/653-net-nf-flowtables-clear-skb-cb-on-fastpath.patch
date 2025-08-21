@@ -1,0 +1,51 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed Jan 29 10:37:36 2025 +0200
+Subject: net: netfilter: flowtables: reset skb->cb on fastpath
+
+Previously, nf_flow_offload_{ip,ipv6}_hook functions did not reset skb->cb area,
+causing potential garbage {inet,inet6}_skb_parm struct to be passed to output
+interfaces. In one case, this causes an infinite defrag loop in ip_do_fragment
+when using flowtables on L2TP virtual interfaces, due to bad frag_max_size value.
+
+Make sure nf_flow_offload_{ip,ipv6}_hook always sets skc->cb state to be more
+consistent with the ip slow path.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ net/netfilter/nf_flow_table_ip.c |   14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -436,11 +436,12 @@ nf_flow_offload_ip_hook(void *priv, stru
+ 	else if (ret == 0)
+ 		return NF_ACCEPT;
+ 
++	memset(skb->cb, 0, sizeof(struct inet_skb_parm));
++	IPCB(skb)->iif = skb->dev->ifindex;
++	IPCB(skb)->flags = IPSKB_FORWARDED;
++
+ 	if (unlikely(tuplehash->tuple.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
+ 		rt = (struct rtable *)tuplehash->tuple.dst_cache;
+-		memset(skb->cb, 0, sizeof(struct inet_skb_parm));
+-		IPCB(skb)->iif = skb->dev->ifindex;
+-		IPCB(skb)->flags = IPSKB_FORWARDED;
+ 		return nf_flow_xmit_xfrm(skb, state, &rt->dst);
+ 	}
+ 
+@@ -731,11 +732,12 @@ nf_flow_offload_ipv6_hook(void *priv, st
+ 	else if (ret == 0)
+ 		return NF_ACCEPT;
+ 
++	memset(skb->cb, 0, sizeof(struct inet6_skb_parm));
++	IP6CB(skb)->iif = skb->dev->ifindex;
++	IP6CB(skb)->flags = IP6SKB_FORWARDED;
++
+ 	if (unlikely(tuplehash->tuple.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
+ 		rt = dst_rt6_info(tuplehash->tuple.dst_cache);
+-		memset(skb->cb, 0, sizeof(struct inet6_skb_parm));
+-		IP6CB(skb)->iif = skb->dev->ifindex;
+-		IP6CB(skb)->flags = IP6SKB_FORWARDED;
+ 		return nf_flow_xmit_xfrm(skb, state, &rt->dst);
+ 	}
+ 

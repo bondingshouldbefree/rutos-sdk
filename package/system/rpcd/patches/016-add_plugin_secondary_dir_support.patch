@@ -1,0 +1,115 @@
+Index: rpcd-2021-03-11-ccb75178/plugin.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/plugin.c
++++ rpcd-2021-03-11-ccb75178/plugin.c
+@@ -22,6 +22,7 @@
+ #include <libubox/ustream.h>
+ #define RPC_FILE_MAX_SIZE		(4096 * 64)
+ 
++
+ static struct blob_buf buf;
+ static bool child_process = false;
+ 
+@@ -281,12 +282,20 @@ rpc_plugin_call(struct ubus_context *ctx
+ 		goto fail;
+ 
+ 	plugin = c->path + sprintf(c->path, "%s/", RPC_PLUGIN_DIRECTORY);
+-
+ 	if (!rpc_plugin_lookup_plugin(ctx, obj, plugin))
+ 	{
+ 		rv = UBUS_STATUS_NOT_FOUND;
+ 		goto fail;
+ 	}
++	if (access(c->path, F_OK) == -1)
++	{
++		plugin = c->path + sprintf(c->path, "/usr/local%s/", RPC_PLUGIN_DIRECTORY);
++		if (!rpc_plugin_lookup_plugin(ctx, obj, plugin))
++		{
++			rv = UBUS_STATUS_NOT_FOUND;
++			goto fail;
++		}
++	}
+ 
+ 	pw = getpwnam(plugin);
+ 
+@@ -821,61 +830,43 @@ rpc_plugin_load_library(struct ubus_cont
+ 	return p->init(&ops, ctx);
+ }
+ 
+-int rpc_plugin_api_init(struct ubus_context *ctx)
++int rpc_plugin_register_exec(struct ubus_context *ctx, const char *path);
++int rpc_plugin_load_library(struct ubus_context *ctx, const char *path);
++int rpc_plugin_register_library(struct ubus_context *ctx, const char *path);
++int process_directory(struct ubus_context *ctx, const char *directory, int (*process_file)(struct ubus_context *, const char *));
++int process_directory(struct ubus_context *ctx, const char *directory, int (*process_file)(struct ubus_context *, const char *))
+ {
+ 	DIR *d;
+-	int rv = 0;
+ 	struct stat s;
+ 	struct dirent *e;
+ 	char path[PATH_MAX];
++	int rv = 0;
+ 
+-	if ((d = opendir(RPC_PLUGIN_DIRECTORY)) != NULL)
++	if ((d = opendir(directory)) != NULL)
+ 	{
+ 		while ((e = readdir(d)) != NULL)
+ 		{
+-			snprintf(path, sizeof(path) - 1,
+-			         RPC_PLUGIN_DIRECTORY "/%s", e->d_name);
++			snprintf(path, sizeof(path) - 1, "%s/%s", directory, e->d_name);
+ 
+ 			if (stat(path, &s) || !S_ISREG(s.st_mode) || !(s.st_mode & S_IXUSR))
+ 				continue;
+ 
+-			rv |= rpc_plugin_register_exec(ctx, path);
++			rv |= process_file(ctx, path);
+ 		}
+ 
+ 		closedir(d);
+ 	}
++	return rv;
++}
++int rpc_plugin_api_init(struct ubus_context *ctx)
++{
++	int rv = 0;
+ 
+-	if ((d = opendir(RPC_SHARED_DIRECTORY)) != NULL)
+-	{
+-		while ((e = readdir(d)) != NULL)
+-		{
+-			snprintf(path, sizeof(path) - 1,
+-			         RPC_SHARED_DIRECTORY "/%s", e->d_name);
+-
+-			if (stat(path, &s) || !S_ISREG(s.st_mode))
+-				continue;
+-
+-			rv |= rpc_plugin_load_library(ctx, path);
+-		}
+-
+-		closedir(d);
+-	}
+-
+-	if ((d = opendir(RPC_LIBRARY_DIRECTORY)) != NULL)
+-	{
+-		while ((e = readdir(d)) != NULL)
+-		{
+-			snprintf(path, sizeof(path) - 1,
+-			         RPC_LIBRARY_DIRECTORY "/%s", e->d_name);
+-
+-			if (stat(path, &s) || !S_ISREG(s.st_mode))
+-				continue;
+-
+-			rv |= rpc_plugin_register_library(ctx, path);
+-		}
+-
+-		closedir(d);
+-	}
++	rv |= process_directory(ctx, RPC_PLUGIN_DIRECTORY, rpc_plugin_register_exec);
++	rv |= process_directory(ctx, "/usr/local" RPC_PLUGIN_DIRECTORY, rpc_plugin_register_exec);
++	rv |= process_directory(ctx, RPC_SHARED_DIRECTORY, rpc_plugin_load_library);
++	rv |= process_directory(ctx, RPC_LIBRARY_DIRECTORY, rpc_plugin_register_library);
++	rv |= process_directory(ctx, "/usr/local" RPC_LIBRARY_DIRECTORY, rpc_plugin_register_library);
+ 
+ 	return rv;
+ }

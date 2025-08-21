@@ -1,0 +1,166 @@
+#!/usr/bin/lua
+local nixio = require "nixio"
+local util = require "vuci.util"
+local i18n = require "luci.i18n"
+local util_tlt = require "vuci.util_tlt"
+local tpl = require "luci.template"
+local uci = require "uci".cursor()
+local fs = require "nixio.fs"
+local conf = uci:get("landingpage", "general", "theme") or "default"
+local auth_proto = uci:get("landingpage", "general", "auth_proto") or "chap"
+local uamsecret = uci:get("chilli", "@chilli[0]", "uamsecret") or ""
+local theme = "default"
+
+if fs.access("/etc/chilli/hotspotlogin/themes/"..conf) then
+    theme = conf
+end
+
+local function urldecode(s)
+    s = s:gsub('+', ' '):gsub('%%(%x%x)', function(h)
+        return string.char(tonumber(h, 16))
+    end)
+    return s
+end
+
+local function no_action(x)
+    return x
+end
+
+local function parseQuery(s, decode)
+    local action = decode and urldecode or no_action
+    local ans = {}
+    for k, v in s:gmatch('([^&=?]-)=([^&=?]+)') do
+        ans[k] = action(v)
+    end
+    return ans
+end
+
+local function findImg(name)
+	local theme = theme or "default"
+	local upldir = "/etc/chilli/hotspotlogin/themes/%s/img/" % theme
+	local files = util_tlt.find(upldir, name .. ".*")
+	if #files > 0 and fs.access(files[1]) then
+		return "/themes/" .. theme .. "/img/" .. fs.basename(files[1])
+	end
+	return "-"
+end
+
+local function translate(key)
+	return key
+end
+
+local function translatef(key, ...)
+	return tostring(translate(key)):format(...)
+end
+
+local URL = os.getenv('REQUEST_URI'):match('^(.+)%?') or os.getenv('REQUEST_URI')
+local PAGE = URL:match('/cgi%-bin/hotspot/(.+)')
+
+local queryString = os.getenv('QUERY_STRING')
+local query = parseQuery(queryString, true)
+
+local CGI_PREFIX = '/cgi-bin'
+local ROOT = '/etc/chilli/hotspotlogin'
+local url = os.getenv('REQUEST_URI')
+
+tpl.context.viewns = setmetatable({
+    write       = io.write,
+    include     = function(name)
+        tpl.Template(ROOT .. CGI_PREFIX .. "/themes/%s/%s" % {theme, name}):render(getfenv(2))
+    end,
+    translate   = i18n.translate;
+    translatef  = i18n.translatef;
+    export      = function(k, v) if tpl.context.viewns[k] == nil then tpl.context.viewns[k] = v end end,
+    striptags   = util.striptags,
+    pcdata      = util.pcdata,
+    media       = "/themes/%s" % theme,
+    theme       = theme,
+    spinner	   = findImg("spinner"),
+    background  = findImg("background"),
+    favicon	   = findImg("favicon"),
+    logo		   = findImg("logo"),
+    -- resource    = conf.general.resourcebase or "/resources";
+    -- ifattr      = function(...) return _ifattr(...) end;
+    -- attr        = function(...) return _ifattr(true, ...) end;
+    url         = function (addr) return '/cgi-bin/hotspot/' .. addr end
+ }, {__index=function(tbl, key)
+        return rawget(tbl, key) or _G[key]
+end})
+
+local params = parseQuery(queryString, false)
+params.query = queryString
+params.auth_proto = (auth_proto == 'pap' or auth_proto == 'chap') and auth_proto or 'chap'
+params.uamsecret = uamsecret
+
+
+local prefix = ROOT .. CGI_PREFIX .. '/themes/' .. theme
+
+------------- ROUTER ------------------
+local pages = {
+    userpass = function ()
+        return '/login'
+    end,
+
+    ['userpass/signup'] = function () 
+        return '/signup'
+    end,
+
+    tos = function ()
+        return '/tos'
+    end,
+
+    macauth = function ()
+        return '/login_mac'
+    end,
+
+    ssoauth = function ()
+        return '/login_sso'
+    end,
+
+    smsauth = function ()
+        if (query.otpstate and query.otpstate == "active") or (query.force and query.force == "login") then
+            return '/otp_login'
+        elseif query.force and query.force == "signup" then
+            return '/otp_signup'
+		end
+
+        if query.res == "notyet" or query.res == "smssignup_fail" then
+            return '/otp_signup'
+		elseif query.res == "smssuccess" or query.res == "failed" or query.res == "logoff" then
+            return '/otp_login'
+        elseif query.res == "success" or query.res == "already" then
+            return '/success'
+		end
+    end,
+
+    ['smsauth/signup'] = function ()
+        return '/otp_signup'
+    end,
+}
+
+if PAGE and PAGE:match("^.*%.js$") then
+	print("Content-Type: text/javascript; charset=utf-8")
+	print("")
+	if PAGE == "HotspotLogin.js" then
+		print("const auth_proto = '" .. params.auth_proto .. "'")
+		print("const uamsecret = '" .. params.uamsecret .. "'")
+	end
+	local file_content = fs.readfile("/etc/chilli/hotspotlogin/" .. PAGE)
+	print(file_content)
+	return
+end
+
+local fileName
+if PAGE == 'tos' then
+    fileName = prefix .. (pages[PAGE] and pages[PAGE]() or '/access_denied')
+elseif not query.res or not query.uamip or not query.uamport then
+    fileName = prefix .. '/access_denied'
+elseif query.res == 'success' or query.res == 'already' then
+    fileName = prefix .. '/success'
+else
+    fileName = prefix .. (pages[PAGE] and pages[PAGE]() or '/access_denied')
+end
+
+print('Content-Type: text/html; charset=utf-8')
+print('')
+tpl.render(fileName, params)

@@ -1,0 +1,12 @@
+{
+	"services/modbus": {
+		"title": "Modbus",
+		"index": 120
+	},
+		"services/modbus/modbus_client": {
+			"title": "Modbus TCP Client",
+			"index": 20,
+			"view": "services/ModbusTCP",
+			"acls": [ "services/modbus/modbus_client" ]
+		}
+}

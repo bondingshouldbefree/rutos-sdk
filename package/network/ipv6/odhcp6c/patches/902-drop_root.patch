@@ -1,0 +1,125 @@
+Index: odhcp6c-2021-01-09-53f07e90/src/odhcp6c.c
+===================================================================
+--- odhcp6c-2021-01-09-53f07e90.orig/src/odhcp6c.c
++++ odhcp6c-2021-01-09-53f07e90/src/odhcp6c.c
+@@ -63,7 +63,7 @@ static volatile bool signal_term = false
+ static int urandom_fd = -1, allow_slaac_only = 0;
+ static bool bound = false, release = true, ra = false;
+ static time_t last_update = 0;
+-static char *ifname = NULL;
++const char *ifname = NULL;
+ 
+ static unsigned int script_sync_delay = 10;
+ static unsigned int script_accu_delay = 1;
+@@ -170,7 +170,7 @@ int main(_unused int argc, char* const a
+ 	const char *pidfile = NULL;
+ 	const char *script = "/usr/sbin/odhcp6c-update";
+ 	ssize_t l;
+-	uint8_t buf[134], *o_data;
++	uint8_t buf[142], *o_data;
+ 	char *optpos;
+ 	uint16_t opttype;
+ 	enum odhcp6c_ia_mode ia_na_mode = IA_MODE_TRY;
+@@ -428,7 +428,7 @@ int main(_unused int argc, char* const a
+ 		}
+ 
+ 		if (!pidfile) {
+-			snprintf((char*)buf, sizeof(buf), "/var/run/odhcp6c.%s.pid", ifname);
++			snprintf((char*)buf, sizeof(buf), "/var/run/odhcp6c/odhcp6c.%s.pid", ifname);
+ 			pidfile = (char*)buf;
+ 		}
+ 
+Index: odhcp6c-2021-01-09-53f07e90/src/script.c
+===================================================================
+--- odhcp6c-2021-01-09-53f07e90.orig/src/script.c
++++ odhcp6c-2021-01-09-53f07e90/src/script.c
+@@ -25,6 +25,7 @@
+ #include <arpa/inet.h>
+ #include <sys/wait.h>
+ #include <netinet/in.h>
++#include <limits.h>
+ 
+ #include "odhcp6c.h"
+ 
+@@ -44,6 +45,50 @@ static char action[16] = "";
+ static char *argv[4] = {NULL, NULL, action, NULL};
+ static volatile pid_t running = 0;
+ static time_t started;
++extern const char *ifname;
++
++static int read_int_from_file(const char *path) {
++	FILE *f = fopen(path, "r");
++	if (!f)
++		return -1;
++
++	int value;
++	if (fscanf(f, "%d", &value) != 1) {
++		fclose(f);
++		return -1;
++	}
++	fclose(f);
++	return value;
++}
++
++static int write_int_to_file(const char *path, int value) {
++	FILE *f = fopen(path, "w");
++	if (!f)
++		return -1;
++
++	if (fprintf(f, "%d", value) < 0) {
++		fclose(f);
++		return -1;
++	}
++	fclose(f);
++	return 0;
++}
++
++static void write_sysctl_value(const char *ifname, int value, int min, const char *fmt_path, bool compare) {
++	if (!ifname || value < min)
++		return;
++
++	char path[PATH_MAX];
++	snprintf(path, sizeof(path), fmt_path, ifname);
++
++	if (compare) {
++		int current = read_int_from_file(path);
++		if (current == -1 || value <= current)
++			return;
++	}
++
++	write_int_to_file(path, value);
++}
+ 
+ static void script_sighandle(int signal)
+ {
+@@ -249,15 +294,6 @@ static void search_to_env(const char *na
+ 	putenv(buf);
+ }
+ 
+-static void int_to_env(const char *name, int value)
+-{
+-	size_t len = 13 + strlen(name);
+-	char *buf = realloc(NULL, len);
+-
+-	snprintf(buf, len, "%s=%d", name, value);
+-	putenv(buf);
+-}
+-
+ static void s46_to_env_portparams(const uint8_t *data, size_t len, FILE *fp)
+ {
+ 	uint8_t *odata;
+@@ -478,10 +514,10 @@ void script_call(const char *status, int
+ 		entry_to_env("RA_DNS", ra_dns, ra_dns_len, ENTRY_HOST);
+ 		search_to_env("RA_DOMAINS", ra_search, ra_search_len);
+ 
+-		int_to_env("RA_HOPLIMIT", ra_get_hoplimit());
+-		int_to_env("RA_MTU", ra_get_mtu());
+-		int_to_env("RA_REACHABLE", ra_get_reachable());
+-		int_to_env("RA_RETRANSMIT", ra_get_retransmit());
++		write_sysctl_value(ifname, ra_get_hoplimit(), 1, "/proc/sys/net/ipv6/conf/%s/hop_limit", true);
++		write_sysctl_value(ifname, ra_get_mtu(), 1280, "/proc/sys/net/ipv6/conf/%s/mtu", false);
++		write_sysctl_value(ifname, ra_get_reachable(), 1, "/proc/sys/net/ipv6/neigh/%s/base_reachable_time_ms", false);
++		write_sysctl_value(ifname, ra_get_retransmit(), 1, "/proc/sys/net/ipv6/neigh/%s/retrans_time_ms", false);
+ 
+ 		char *buf = malloc(10 + passthru_len * 2);
+ 		strncpy(buf, "PASSTHRU=", 10);

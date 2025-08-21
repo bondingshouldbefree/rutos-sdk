@@ -1,0 +1,25 @@
+--- a/drivers/mtd/spi-nor/xtx.c
++++ b/drivers/mtd/spi-nor/xtx.c
+@@ -8,6 +8,12 @@ static const struct flash_info xtx_parts
+ 	{ "xt25f128b", INFO(0x0B4018, 0, 64 * 1024, 256)
+ 		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
+ 			      SPI_NOR_QUAD_READ) },
++	{ "xt25f256b", INFO(0x0B4019, 0, 64 * 1024, 512)
++		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
++			      SPI_NOR_QUAD_READ) },
++	{ "xt25w512b", INFO(0x0b651A, 0, 64 * 1024, 1024)
++		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
++			      SPI_NOR_QUAD_READ) },
+ };
+ 
+ const struct spi_nor_manufacturer spi_nor_xtx = {
+--- a/drivers/mtd/spi-nor/sfdp.c
++++ b/drivers/mtd/spi-nor/sfdp.c
+@@ -1115,6 +1115,7 @@ static int spi_nor_parse_4bait(struct sp
+ 	 * Spansion memory. However this quirk is no longer needed with new
+ 	 * SFDP compliant memories.
+ 	 */
++	dev_info(nor->dev, "SFDP JESD216 detected. NOR 4B opcodes set up.\n");
+ 	params->addr_nbytes = 4;
+ 	nor->flags |= SNOR_F_4B_OPCODES | SNOR_F_HAS_4BAIT;
+ 

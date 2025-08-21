@@ -1,0 +1,20 @@
+{
+  "user": "chilli",
+  "access": {
+    "ip_block": {
+      "methods": ["push_mac", "unblock_mac"]
+    },
+    "network.wireless": {
+      "methods": ["status"]
+    },
+    "gsm.modem*": {
+      "methods": ["info", "send_sms"]
+    },
+    "gsm": {
+      "methods": ["info"]
+    }
+  },
+  "publish": ["chilli"],
+  "send": ["chilli.*"],
+  "subscribe": ["hostapd.*"]
+}

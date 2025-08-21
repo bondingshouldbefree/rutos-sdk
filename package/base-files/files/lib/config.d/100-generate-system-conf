@@ -1,0 +1,66 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+generate_system_conf() {
+	local param devicename version temp
+
+	local cfg_version="$(uci_get system @system[0] device_fw_version)"
+	local cfg_devicecode="$(uci_get system @system[0] device_code)"
+	local cfg_devicename="$(uci_get system @system[0] devicename)"
+	local cfg_hostname="$(uci_get system @system[0] hostname)"
+
+	[ -z "$cfg_devicecode" ] && [ -z "$cfg_devicename" ] && [ -z "$cfg_hostname" ] && \
+		touch /log/reboot
+
+	[ -z "$cfg_version" ] && {
+		version=$(cat /etc/version)
+		[ -n "$version" ] && uci_set "system" "@system[0]" "device_fw_version" "$version"
+	}
+
+	param=$(/sbin/mnf_info "--name")
+	[ -n "$param" ] && [ "${#param}" = 12 ] && uci_set "system" "@system[0]" "device_code" "$param"
+
+	devicename="${param:0:6}"
+	[ -n "$devicename" ] && [ "${#devicename}" = 6 ] && [ -z "$cfg_devicename" ] && \
+		uci_set "system" "@system[0]" "devicename" "$devicename"
+
+	[ -n "$devicename" ] && [ "${#devicename}" = 6 ] && [ -z "$cfg_hostname" ] && \
+		uci_set "system" "@system[0]" "hostname" "$devicename"
+
+	if json_is_a system object; then
+		json_select system
+
+		local compat_version
+		json_get_var compat_version compat_version
+		uci -q set "system.@system[-1].compat_version=${compat_version:-1.0}"
+		json_select ..
+	fi
+
+	json_get_keys keys checks
+	for key in $keys; do
+		json_select checks
+		json_select "$key"
+
+		json_get_var node_name name
+		json_get_var node_path path
+		json_get_var node_action action
+		[ -z "$(uci_get system $node_name)" ] && {
+			uci -q batch <<-EOF
+				set system.$node_name=$node_name
+				set system.$node_name.name=$node_name
+				set system.$node_name.path='$node_path'
+				set system.$node_name.action=$node_action
+			EOF
+			[ "$node_action" = "reboot" ] && {
+				uci set system.$node_name.counter='0'
+				uci set system.$node_name.max='3'
+				uci_commit system
+			}
+		}
+		json_select ..
+		json_select ..
+	done
+}
+
+conf_register_hook generate_system_conf

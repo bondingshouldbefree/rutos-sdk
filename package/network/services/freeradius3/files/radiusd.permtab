@@ -1,0 +1,4 @@
+/etc/freeradius3                    radiusd:radiusd     770     r
+/var/run/radiusd/log                radiusd:radiusd     770     cd
+/var/run/radiusd/radacct            radiusd:radiusd     770     cd
+/tmp/radiusd                        radiusd:radiusd     770     cd

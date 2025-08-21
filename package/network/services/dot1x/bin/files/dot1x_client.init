@@ -1,0 +1,50 @@
+#!/bin/sh /etc/rc.common
+START=90
+STOP=10
+USE_PROCD=1
+
+PROG="/usr/bin/dot1x_client"
+[ -x "$PROG" ] || PROG="/usr/local$PROG"
+
+active=false
+
+check_enabled() {
+	config_get enabled "$1" "enabled"
+	config_get role "$1" "role"
+	[ "$enabled" = "1" ] && [ "$role" = "client" ] && active=true
+}
+
+kill_app() {
+	ubus list | grep dot1x_client && {
+		ubus call dot1x_client kill_clients
+		procd_send_signal dot1x_client
+	}
+}
+
+start_service() {
+	config_load 'dot1x'
+	config_foreach check_enabled 'port'
+	$active || {
+		kill_app
+		return
+	}
+	procd_open_instance
+	procd_set_param user dot1x_client
+	procd_set_param stdout 1
+	procd_set_param command $PROG
+	procd_close_instance
+}
+
+stop_service() {
+	kill_app
+}
+
+reload_service() {
+	ubus list | grep dot1x_client && ubus call dot1x_client reload
+	start
+}
+
+service_triggers()
+{
+	procd_add_reload_trigger "dot1x" "network"
+}

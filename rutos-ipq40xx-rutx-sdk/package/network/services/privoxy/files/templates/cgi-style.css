@@ -1,0 +1,37 @@
+##############################################################################
+#
+# File        :  $Source: /cvsroot/ijbswa/current/templates/cgi-style.css,v $
+#
+# Purpose     :  Style sheet for the web-based config interface.
+#
+# Copyright   :  Written by and Copyright (C) 2001 the SourceForge
+#                Privoxy team. http://www.privoxy.org/
+#
+#                Original Author: Copyright (C) 2001 Jonathan Foster
+#                http://www.jon-foster.co.uk/
+#
+#                This program is free software; you can redistribute it
+#                and/or modify it under the terms of the GNU General
+#                Public License as published by the Free Software
+#                Foundation; either version 2 of the License, or (at
+#                your option) any later version.
+#
+#                This program is distributed in the hope that it will
+#                be useful, but WITHOUT ANY WARRANTY; without even the
+#                implied warranty of MERCHANTABILITY or FITNESS FOR A
+#                PARTICULAR PURPOSE.  See the GNU General Public
+#                License for more details.
+#
+#                The GNU General Public License should be included with
+#                this file.  If not, you can view it at
+#                http://www.gnu.org/copyleft/gpl.html
+#                or write to the Free Software Foundation, Inc., 59
+#                Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+##############################################################################
+/*
+ * CSS for Privoxy CGI and script output
+ *
+ * $Id: cgi-style.css,v 1.14 2011/09/04 11:09:40 fabiankeil Exp $
+ */
+h1,h2,h3{margin:0}td.box,td.info,td.title,td.warning,td.wrapbox{border:1px solid #000}a:active,a:link,a:visited{text-decoration:none}body,td,th{font-family:arial,helvetica,helv,sans-serif}body{background-color:#fff;color:#000}h1{font-size:140%}h2{font-size:120%}h3{font-size:110%}p,pre{margin-left:15px}dl,li{margin:2px 15px}a:link{color:#00d}a:visited{color:#309}a:active{color:#33f}td.title{background-color:#ddd}td.box{background-color:#eee}td.info{background-color:#ccf}td.warning{background-color:#fdd}td.wrapbox{padding:5px}td.container{padding:0}div.box,div.info,div.title,div.warning{padding:20px;border:1px solid #000;margin:20px}td.status{border:1px solid #000;background-color:red;color:#fff;font-size:300%;font-weight:bolder}div.title,th{background-color:#ddd}dt,p.important{font-weight:700}div.box{background-color:#eee}div.info{background-color:#ccf}div.warning{background-color:#fdd}div.wrapbox{border:1px solid #000;margin:20px;padding:5px}table.transparent{border-style:none}p.small{font-size:10px;margin:0}p.important{border:1px solid #000;background-color:#fdd;padding:2px}a.cmd:hover,p.whiteframed,td.buttons a:hover,td.indentbuttons a:hover{background-color:#eee}p.whiteframed{margin:5px;padding:5px;border:1px solid #000;text-align:center}td.buttons{padding:2px}a.cmd,td.buttons a,td.indentbuttons a{white-space:nowrap;width:auto;padding:2px;background-color:#ddd;color:#000;text-decoration:none;border-top:1px solid #fff;border-left:1px solid #fff;border-bottom:1px solid #000;border-right:1px solid #000}a.cmd:active,td.buttons a:active,td.indentbuttons a:active{border-top:1px solid #000;border-left:1px solid #000;border-bottom:1px solid #fff;border-right:1px solid #fff}em.warning,strong.warning{color:red}.box table{margin-top:1em}input.pattern,input.url{width:95%}

@@ -1,0 +1,25 @@
+From e94b341e9fe98b92e8566a53c8b0c51b9fb94a73 Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Thu, 20 Jun 2024 09:53:40 +0300
+Subject: [PATCH 1/1] fix applications including gelf.h not compiling
+
+---
+ libelf/gelf.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libelf/gelf.h b/libelf/gelf.h
+index 1847021..2c545c5 100644
+--- a/libelf/gelf.h
++++ b/libelf/gelf.h
+@@ -83,7 +83,7 @@ typedef Elf64_Rel GElf_Rel;
+ typedef Elf64_Rela GElf_Rela;
+ 
+ /* Relative relocation entry (in section of type SHT_RELR).  */
+-typedef Elf64_Relr GElf_Relr;
++// typedef Elf64_Relr GElf_Relr;
+ 
+ /* Program segment header.  */
+ typedef Elf64_Phdr GElf_Phdr;
+-- 
+2.45.2
+

@@ -1,0 +1,73 @@
+<html>
+    <%include("header")%>
+    <body>
+        <div class="main-body">
+            <div class="theme-picture">
+                <div class="picture-text"><div class="picture-title"><%:Hotspot%></div></div>
+            </div>
+            <div class="login-panel">
+                <div class="content">
+                    <div class="logo">
+                        <img src="<%=logo%>" alt="logo">
+                    </div>
+                    <nav class="links">
+                        <a href="<%=url("userpass").."?"..query%>" class="nav-link"><%:Login%></a>/<a href="" class="nav-link active"><%:Register%></a>
+                    </nav>
+
+                    <div class="msg">
+                        <div class="msg-title"><%:Welcome To RutOS!%></div>
+                        <div class="msg-content"><%:Thank you for using Teltonika RutOS hotspot services!%></div>
+                    </div>
+                    
+                        <div class="login-error">
+                            <% if reason then %>
+                                <% if reason == "already" then %>
+                                    <%:You already registered and user has not expired yet.%>
+                                <%elseif reason == "denied" then%>
+                                    <%:Signup method is not allowed%>
+                                <%elseif reason == "form" then%>
+                                    <%:Please fill in all required fields.%>
+                                <% end %>
+                            <% elseif res == "signup_fail" then%>
+                                <%:Something went wrong! Please try again.%>
+                            <% end %>
+                        </div>
+                    <div id="pw_msg" class="hidden login-error">
+                        <%:Passwords do not match!%>
+                    </div>
+                    <div class="form-container">
+                        <form action="javascript:void(0);" class="form">
+                            <input type="hidden" name="challenge" value="<%=challenge%>">
+                            <input type="hidden" name="uamip" value="<%=uamip%>">
+                            <input type="hidden" name="uamport" value="<%=uamport%>">
+                            <input type="hidden" name="userurl" value="<%=userurl%>">
+                            <input type="hidden" name="challenge" value="<%=challenge%>">
+                            <input type="hidden" name="signup" value="<%=signup%>">
+                            <div class="form-item">
+                                <label for="" class="form-label"><%:Email%>*</label>
+                                <input name="email" type="email" class="form-input" placeholder="example@mail.com" required
+                                    <%=(email and email ~= "") and ('value="%s"' % email) or ''%>>
+                            </div>
+                            <div class="form-item">
+                                <label for="" class="form-label"><%:Phone number%>*</label>
+                                <input name="phone" type="tel" pattern="^[0-9\*+#]+$" class="form-input" placeholder="+37000000000" required
+                                    <%=(phone and phone ~= "") and ('value="%s"' % phone) or ''%>>
+                            </div>
+                            <div class="form-item">
+                                <label for="" class="form-label"><%:Password%>*</label>
+                                <input name="password" type="password" class="form-input" placeholder="********" required
+                                    <%=(password and password ~= "") and ('value="%s"' % password) or ''%>>
+                            </div>
+                            <div class="form-item">
+                                <label for="" class="form-label"><%:Confirm password%>*</label>
+                                <input name="confirm_password" type="password" class="form-input" placeholder="********" required
+                                    <%=(confirm_password and confirm_password ~= "") and ('value="%s"' % confirm_password) or ''%>>
+                            </div>
+                            <button class="form-btn" name="register" type="submit"><%:Register%></button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

@@ -1,0 +1,3 @@
+/etc/config/certificates              certificates:certificates       660       -
+/etc/certificates                     certificates:certificates       660       -       r
+/etc/certificates                     -       770       -

@@ -1,0 +1,42 @@
+From 67cd1232389fa407575b1e130b6b5668b18b0e7f Mon Sep 17 00:00:00 2001
+From: Jo-Philipp Wich <jo@mein.io>
+Date: Mon, 23 Sep 2024 16:24:06 +0200
+Subject: [PATCH] fs: fix potential memory leak on i/o errors in .read()
+
+Make sure to free the line buffer pointer when aborting a
+`getline()` / `getdelim()` based read operation on i/o errors.
+
+As an example, this issue could be triggered by receiving a broken
+pipe error while attempting to read a line from stdin.
+
+Signed-off-by: Jo-Philipp Wich <jo@mein.io>
+---
+ lib/fs.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+--- a/lib/fs.c
++++ b/lib/fs.c
+@@ -78,8 +78,10 @@ uc_fs_read_common(uc_vm_t *vm, size_t na
+ 		if (llen == 4 && !strcmp(lstr, "line")) {
+ 			llen = getline(&p, &rlen, *fp);
+ 
+-			if (llen == -1)
++			if (llen == -1) {
++				free(p);
+ 				err_return(errno);
++			}
+ 
+ 			len = (size_t)llen;
+ 		}
+@@ -106,8 +108,10 @@ uc_fs_read_common(uc_vm_t *vm, size_t na
+ 		else if (llen == 1) {
+ 			llen = getdelim(&p, &rlen, *lstr, *fp);
+ 
+-			if (llen == -1)
++			if (llen == -1) {
++				free(p);
+ 				err_return(errno);
++			}
+ 
+ 			len = (size_t)llen;
+ 		}

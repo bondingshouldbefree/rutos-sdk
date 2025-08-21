@@ -1,0 +1,16 @@
+include $(TOPDIR)/rules.mk
+
+APP_TITLE:=VuCI UI Support for Printer server application
+
+APP_TLT_NAME:=Printer Server
+APP_ROUTER:=$(TLT_PLATFORM_NAME)
+APP_APP_NAME:=p910nd
+APP_HW_INFO:=usb
+
+include ../app.mk
+
+define Package/vuci-app-p910nd-ui/description
+	p910nd is a small daemon that copies any data received on the port it is listening on to the corresponding printer port. It is primarily intended for diskless Linux hosts running as printer drivers but there is no reason why it could not be used on diskful hosts. Port 9100 is copied to /dev/lp0, 9101 to /dev/lp1 and 9102 to /dev/lp2. The default is port 9100 to /dev/lp0.
+endef
+
+# call BuildPackage - OpenWrt buildroot signature

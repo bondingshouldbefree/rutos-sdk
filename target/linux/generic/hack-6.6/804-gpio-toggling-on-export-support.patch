@@ -1,0 +1,51 @@
+---
+ drivers/gpio/gpiolib-of.c |   16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+--- a/drivers/gpio/gpiolib-of.c
++++ b/drivers/gpio/gpiolib-of.c
+@@ -23,6 +23,7 @@
+ #include <linux/gpio/machine.h>
+ #include <linux/init.h>
+ #include <linux/platform_device.h>
++#include <linux/delay.h>
+ 
+ #include "gpiolib.h"
+ #include "gpiolib-of.h"
+@@ -1171,6 +1172,7 @@ static int of_gpio_export_probe(struct p
+ 			struct gpio_desc *desc;
+ 			unsigned flags = 0;
+ 			enum of_gpio_flags of_flags;
++			int def_out_val = -1;
+ 
+ 			desc = of_get_named_gpiod_flags(cnp, "gpios", i, &of_flags);
+ 			if (IS_ERR(desc))
+@@ -1180,16 +1182,26 @@ static int of_gpio_export_probe(struct p
+ 			if (of_flags & OF_GPIO_ACTIVE_LOW)
+ 				flags |= GPIOF_ACTIVE_LOW;
+ 
+-			if (!of_property_read_u32(cnp, "gpio-export,output", &val))
++			if (!of_property_read_u32(cnp, "gpio-export,output", &val)) {
+ 				flags |= val ? GPIOF_OUT_INIT_HIGH : GPIOF_OUT_INIT_LOW;
+-			else
++				def_out_val = !!val;
++			} else {
+ 				flags |= GPIOF_IN;
++			}
+ 
+ 			if (devm_gpio_request_one(&pdev->dev, gpio, flags, name ? name : of_node_full_name(np)))
+ 				continue;
+ 
+ 			dmc = of_property_read_bool(cnp, "gpio-export,direction_may_change");
+ 			gpio_export_with_name(gpio_to_desc(gpio), dmc, name);
++
++			if (def_out_val >= 0 && !of_property_read_u32(cnp, "gpio-export,toggle", &val)) {
++				dev_dbg(&pdev->dev, "Toggling gpio(%d) %s, with %d us waiting time\n", gpio, name, val);
++				gpiod_set_value_cansleep(gpio_to_desc(gpio), !def_out_val);
++				msleep(val);
++				gpiod_set_value_cansleep(gpio_to_desc(gpio), def_out_val);
++			}
++
+ 			nb++;
+ 		}
+ 	}

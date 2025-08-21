@@ -1,0 +1,47 @@
+--- a/src/libcharon/plugins/vici/vici_dispatcher.c
++++ b/src/libcharon/plugins/vici/vici_dispatcher.c
+@@ -170,7 +170,7 @@ static void register_event(private_vici_
+ 
+ 	if (event)
+ 	{
+-		DBG2(DBG_CFG, "vici client %u registered for: %s", id, name);
++		DBG3(DBG_CFG, "vici client %u registered for: %s", id, name);
+ 		send_op(this, id, VICI_EVENT_CONFIRM, NULL, NULL);
+ 	}
+ 	else
+@@ -218,7 +218,7 @@ static void unregister_event(private_vic
+ 	}
+ 	this->mutex->unlock(this->mutex);
+ 
+-	DBG2(DBG_CFG, "vici client %u unregistered for: %s", id, name);
++	DBG3(DBG_CFG, "vici client %u unregistered for: %s", id, name);
+ 
+ 	if (found)
+ 	{
+@@ -282,7 +282,7 @@ void process_request(private_vici_dispat
+ 			.cmd = cmd,
+ 		);
+ 
+-		DBG2(DBG_CFG, "vici client %u requests: %s", id, name);
++		DBG3(DBG_CFG, "vici client %u requests: %s", id, name);
+ 
+ 		thread_cleanup_push(release_command, release);
+ 
+@@ -371,7 +371,7 @@ CALLBACK(inbound, void,
+ CALLBACK(connect_, void,
+ 	private_vici_dispatcher_t *this, u_int id)
+ {
+-	DBG2(DBG_CFG, "vici client %u connected", id);
++	DBG3(DBG_CFG, "vici client %u connected", id);
+ }
+ 
+ CALLBACK(disconnect, void,
+@@ -403,7 +403,7 @@ CALLBACK(disconnect, void,
+ 	events->destroy(events);
+ 	this->mutex->unlock(this->mutex);
+ 
+-	DBG2(DBG_CFG, "vici client %u disconnected", id);
++	DBG3(DBG_CFG, "vici client %u disconnected", id);
+ }
+ 
+ METHOD(vici_dispatcher_t, manage_command, void,

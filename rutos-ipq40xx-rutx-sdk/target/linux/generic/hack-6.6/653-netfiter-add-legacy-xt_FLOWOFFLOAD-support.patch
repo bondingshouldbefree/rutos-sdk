@@ -1,0 +1,65 @@
+--- a/net/netfilter/Kconfig
++++ b/net/netfilter/Kconfig
+@@ -1033,6 +1033,14 @@ config NETFILTER_XT_TARGET_FLOWOFFLOAD
+ 	  module to speed up processing of packets by bypassing the usual
+ 	  netfilter chains
+ 
++config NETFILTER_XT_LEGACY_OFFLOAD_FORWARD_PATH
++	bool "XT_LEGACY_OFFLOAD legacy flow offload forwarding path"
++	depends on NETFILTER_XT_TARGET_FLOWOFFLOAD
++	default n
++	help
++	  This option enables legacy flow offload path and doesn't skip
++	  bridge
++
+ config NETFILTER_XT_TARGET_RATEEST
+ 	tristate '"RATEEST" target support'
+ 	depends on NETFILTER_ADVANCED
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -271,7 +271,7 @@ static void nf_default_forward_path(stru
+ 	route->tuple[dir].dst		= dst_cache;
+ 	route->tuple[dir].xmit_type	= nf_xmit_type(dst_cache);
+ }
+-
++#ifndef CONFIG_NETFILTER_XT_LEGACY_OFFLOAD_FORWARD_PATH
+ static bool nf_is_valid_ether_device(const struct net_device *dev)
+ {
+ 	if (!dev || (dev->flags & IFF_LOOPBACK) || dev->type != ARPHRD_ETHER ||
+@@ -427,7 +427,7 @@ static int nf_dev_forward_path(struct nf
+ 
+ 	return 0;
+ }
+-
++#endif
+ static int
+ xt_flowoffload_route(struct sk_buff *skb, const struct nf_conn *ct,
+ 		     const struct xt_action_param *par,
+@@ -437,7 +437,9 @@ xt_flowoffload_route(struct sk_buff *skb
+ 	struct dst_entry *this_dst = skb_dst(skb);
+ 	struct dst_entry *other_dst = NULL;
+ 	struct flowi fl;
++#ifndef CONFIG_NETFILTER_XT_LEGACY_OFFLOAD_FORWARD_PATH
+ 	int ret;
++#endif
+ 
+ 	memset(&fl, 0, sizeof(fl));
+ 	switch (xt_family(par)) {
+@@ -463,7 +465,7 @@ xt_flowoffload_route(struct sk_buff *skb
+ 
+ 	nf_default_forward_path(route, this_dst, dir, devs);
+ 	nf_default_forward_path(route, other_dst, !dir, devs);
+-
++#ifndef CONFIG_NETFILTER_XT_LEGACY_OFFLOAD_FORWARD_PATH
+ 	if (route->tuple[dir].xmit_type	== FLOW_OFFLOAD_XMIT_NEIGH &&
+ 	    route->tuple[!dir].xmit_type == FLOW_OFFLOAD_XMIT_NEIGH) {
+ 		ret = nf_dev_forward_path(route, ct, dir, devs);
+@@ -474,7 +476,7 @@ xt_flowoffload_route(struct sk_buff *skb
+ 		if (ret)
+ 			return ret;
+ 	}
+-
++#endif
+ 	return 0;
+ }
+ 

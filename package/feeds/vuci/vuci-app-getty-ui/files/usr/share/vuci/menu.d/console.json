@@ -1,0 +1,23 @@
+
+{
+	"services/serial_utilities": {
+		"title": "Serial Utilities",
+		"index": 40,
+		"depends": {
+			"board": {
+				"anyOf": ["has_mbus", "has_usb", "has_rs232", "has_rs485", "has_console"]
+			}
+		}
+	},
+	"services/serial_utilities/console": {
+		"title": "Console",
+		"index": 20,
+		"view": "services/Console",
+		"acls": [ "services/serial_utilities/console" ],
+		"depends": {
+			"board": {
+				"notAnyOf": ["has_mbus"]
+			}
+		}
+	}
+}

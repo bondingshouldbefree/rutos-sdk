@@ -1,0 +1,29 @@
+#!/bin/sh
+
+. /lib/config/uci.sh
+. /lib/functions/serial.sh
+
+CONFIG="rs_console"
+PROG="/sbin/getty"
+
+section="$1"
+
+DEVICE=$(uci_get "$CONFIG" "$section" device)
+
+# Check if serial device exists,
+# It is normal for USB serial adapter to sometimes not exist, i.e. when it is disconnected
+if [ ! -L "$DEVICE" ]; then
+	# Return this specific error code because this is also what getty returns when you disconnect the serial device
+	return 129
+fi
+
+SPEED=$(uci_get $CONFIG "$section" baudrate)
+DBITS=$(uci_get $CONFIG "$section" databits)
+PARITY=$(uci_get $CONFIG "$section" parity)
+SBITS=$(uci_get $CONFIG "$section" stopbits)
+FCTRL=$(uci_get $CONFIG "$section" flowcontrol)
+DUPLEX=$(uci_get $CONFIG "$section" full_duplex_enabled)
+ECHO_ENABLED=$(uci_get $CONFIG "$section" echo_enabled)
+set_tty_options "$DEVICE" "$SPEED" "$DBITS" "$PARITY" "$SBITS" "$FCTRL" "$DUPLEX" "$ECHO_ENABLED"
+
+exec $PROG "$SPEED" "$DEVICE" vt100

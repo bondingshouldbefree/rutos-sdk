@@ -1,0 +1,60 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2021 Teltonika
+
+START=51
+
+USE_PROCD=1
+PROG="/usr/sbin/telnetd"
+[ -x "$PROG" ] || PROG="/usr/local$PROG"
+NAME=telnetd
+PIDCOUNT=0
+WORKDIR="/var/run/telnetd"
+
+service_triggers() {
+	procd_add_reload_trigger "telnetd" "system"
+}
+
+start_instance() {
+	local port="$1"
+	local banner_enabled="$2"
+	local banner_title="$3"
+	local banner_message="$4"
+
+	PIDCOUNT="$(( ${PIDCOUNT} + 1))"
+
+	procd_open_instance
+	procd_set_param command "$PROG" -F -p "$port"
+	procd_set_param user telnetd
+	if [ -n "$banner_enabled" ] && [ "$banner_enabled" -eq 1 ]; then
+		local banner_file="/var/run/telnetd/${NAME}.${PIDCOUNT}.banner"
+		echo -e "*** $banner_title ***" > $banner_file
+		echo -e "\n$banner_message" >> $banner_file
+		procd_append_param command -f "$banner_file"
+		procd_set_param file "/etc/config/system"
+	fi
+	procd_close_instance
+}
+
+start_telnetd() {
+	local enabled port wan_port wan_access
+
+	config_get enabled "$1" enable 0
+	[ "$enabled" -ne 1 ] && return 0
+	config_get port "$1" port 23
+	config_get wan_port "$1" wan_port 23
+	config_get wan_access "$1" _telnetWanAccess 0
+
+	local banner_enabled="$(uci -q get system.banner.enabled)"
+	local banner_title="$(uci -q get system.banner.title)"
+	local banner_message="$(uci -q get system.banner.message)"
+
+	start_instance "$port" "$banner_enabled" "$banner_title" "$banner_message"
+
+	[ "$wan_access" -eq 1 ] && [ -n "$wan_port" ] && [ "$wan_port" != "$port" ] && \
+		start_instance "$wan_port" "$banner_enabled" "$banner_title" "$banner_message"
+}
+
+start_service() {
+	config_load "telnetd"
+	config_foreach start_telnetd "telnetd"
+}

@@ -1,0 +1,21 @@
+This is based on a conjecture that the FOE table seems to be two-way or four-way set associative
+to the flow hash, with 'hash_offset' in the current upstream mtk_ppe version specifying
+the level of associativity.
+
+mtk_ppe driver seems to have been incorrectly handling the case of a hash collision,
+evicting all FOE entries with the same hash (as calculated by `mtk_ppe_hash_entry`),
+even though some of these entries were taking up a different FOE table index
+(confusingly also named `mtk_flow_entry->hash`).
+
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
+@@ -811,6 +811,9 @@ void __mtk_ppe_check_skb(struct mtk_ppe
+ 	memcpy(&foe, hwe, entry_len);
+ 
+ 	hlist_for_each_entry_safe(entry, n, head, list) {
++		if (entry->hash != 0xffff && entry->hash != hash)
++			continue;
++
+ 		if (found ||
+ 		    !mtk_flow_entry_match(ppe->eth, entry, &foe, entry_len)) {
+ 			if (entry->hash != 0xffff)

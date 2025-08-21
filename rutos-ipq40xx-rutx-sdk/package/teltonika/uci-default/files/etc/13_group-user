@@ -1,0 +1,17 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+for file in $(grep -sl Require-User /usr/lib/opkg/info/*.control); do
+	file="${file##*/}"
+	file="${file%.control}"
+	add_group_and_user "$file"
+done
+
+for file in $(grep -sl UserGroups /usr/lib/opkg/info/*.control); do
+	file="${file##*/}"
+	file="${file%.control}"
+	add_user_groups "$file"
+done
+
+exit 0

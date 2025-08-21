@@ -1,0 +1,22 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CONFIG="uhttpd"
+
+migrate_rfc() {
+	local section="$1"
+	local rfc1918_filter
+	config_get rfc1918_filter "$section" "rfc1918_filter"
+	[ -z "$rfc1918_filter" ] && return
+
+	uci_remove "$CONFIG" "$section" "rfc1918_filter"
+	[ "$section" == "hotspot" ] && return
+
+	uci_set "$CONFIG" "$section" "rfc1918_filter_http" "$rfc1918_filter"
+	uci_set "$CONFIG" "$section" "rfc1918_filter_https" "$rfc1918_filter"
+}
+
+config_load "$CONFIG"
+config_foreach migrate_rfc "$CONFIG"
+uci_commit "$CONFIG"

@@ -1,0 +1,36 @@
+--- a/urngd.c
++++ b/urngd.c
+@@ -40,6 +40,8 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <unistd.h>
++#include <pwd.h>
++#include <errno.h>
+ 
+ #include <sys/ioctl.h>
+ #include <linux/random.h>
+@@ -227,6 +229,24 @@ int main(int argc, char **argv)
+ 
+ 	ulog_open(ulog_channels, LOG_DAEMON, "urngd");
+ 
++	uid_t uid = getuid();
++	if (!uid) {
++		/* Allow root */
++		goto good;
++	}
++
++	struct passwd *pw = getpwuid(uid);
++	if (!pw) {
++		ERROR("getpwuid failed: %s\n", strerror(errno));
++		exit(-errno);
++	}
++
++	if (strcmp(pw->pw_name, "rng")) {
++		ERROR("Must run as \"rng\" user or root.\n");
++		exit(-EACCES);
++	}
++
++good:	
+ 	uloop_init();
+ 	if (!urngd_init(&urngd_service)) {
+ 		uloop_done();

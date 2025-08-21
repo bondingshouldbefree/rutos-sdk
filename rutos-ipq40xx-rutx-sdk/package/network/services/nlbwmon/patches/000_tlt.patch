@@ -1,0 +1,1773 @@
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/CMakeLists.txt src/CMakeLists.txt
+--- upstream/CMakeLists.txt	2024-02-21 20:13:50.000000000 +0000
++++ src/CMakeLists.txt	2025-02-17 05:47:02.000000000 +0000
+@@ -31,7 +31,7 @@
+   add_definitions(-DHAVE_ULOOP_INTERVAL)
+ endif()
+ 
+-target_link_libraries(nlbwmon ubox z)
++target_link_libraries(nlbwmon ubox z sqlite3)
+ 
+ set(CMAKE_INSTALL_PREFIX /usr)
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/client.c src/client.c
+--- upstream/client.c	2024-02-21 20:13:50.000000000 +0000
++++ src/client.c	2025-02-17 05:47:02.000000000 +0000
+@@ -58,16 +58,18 @@
+ 	PORT     =  2,
+ 	MAC      =  3,
+ 	IP       =  4,
+-	CONNS    =  5,
+-	RX_BYTES =  6,
+-	RX_PKTS  =  7,
+-	TX_BYTES =  8,
+-	TX_PKTS  =  9,
++	DST_IP   =  5,
++	TS       =  6,
++	CONNS    =  7,
++	RX_BYTES =  8,
++	RX_PKTS  =  9,
++	TX_BYTES =  10,
++	TX_PKTS  =  11,
+ 
+-	HOST     = 10,
+-	LAYER7   = 11,
++	HOST     = 12,
++	LAYER7   = 13,
+ 
+-	MAX      = 12
++	MAX      = 14
+ };
+ 
+ static struct field fields[MAX] = {
+@@ -76,6 +78,8 @@
+ 	[PORT]     = f("port",     dst_port),
+ 	[MAC]      = f("mac",      src_mac),
+ 	[IP]       = f("ip",       src_addr),
++	[DST_IP]   = f("dst_ip",   dst_addr),
++	[TS]       = f("ts",    timestamp),
+ 	[CONNS]    = f("conns",    count),
+ 	[RX_BYTES] = f("rx_bytes", in_bytes),
+ 	[RX_PKTS]  = f("rx_pkts",  in_pkts),
+@@ -98,10 +102,12 @@
+ 	char separator;
+ 	char escape;
+ 	char quote;
++	int num_records;
+ } client_opt = {
+ 	.separator = '\t',
+ 	.escape = '"',
+ 	.quote = '"',
++	.num_records = 100,
+ };
+ 
+ struct command {
+@@ -236,7 +242,24 @@
+ 		return -ENODATA;
+ 	}
+ 
+-	*h = database_mem(cmp_fn, client_opt.group_by);
++	bool host_found = false;
++	int8_t group_by[1 + MAX];
++    memcpy(group_by, client_opt.group_by, (1 + client_opt.group_by[0]) * sizeof(int8_t));
++
++	for (int i = 0; i < group_by[0]; i++) {
++		if (group_by[1 + i] == HOST + 1) {
++			group_by[1 + i] = IP + 1;
++			host_found = true;
++			break;
++		}
++	}
++
++	if (host_found) {
++		group_by[0]++;
++		group_by[group_by[0]] = MAC + 1;
++	}
++
++	*h = database_mem(cmp_fn, group_by);
+ 
+ 	if (!*h) {
+ 		close(ctrl_socket);
+@@ -284,7 +307,7 @@
+ 	columns[CONNS]    = ' ';
+ 	columns[RX_BYTES] = ' ';
+ 	columns[RX_PKTS]  = ' ';
+-	columns[TX_BYTES] = ' ';
++	columns[TX_BYTES]  = ' ';
+ 	columns[TX_PKTS]  = ' ';
+ 
+ 	for (i = 0; i < client_opt.order_by[0]; i++) {
+@@ -307,6 +330,14 @@
+ 			printf("           %c IP  ", columns[IP]);
+ 	}
+ 
++	if (columns[DST_IP]) {
++		printf("  %c DST IP  ", columns[DST_IP]);
++	}
++
++	if (columns[TS]) {
++		printf("  %c TS  ", columns[TS]);
++	}
++
+ 	if (columns[LAYER7]) {
+ 		printf("  %c Layer7  ", columns[LAYER7]);
+ 	}
+@@ -342,6 +373,14 @@
+ 				printf("%15s  ", format_ipaddr(rec->family, &rec->src_addr));
+ 		}
+ 
++		if (columns[DST_IP]) {
++			printf("%15s  ", format_ipaddr(rec->family, &rec->dst_addr));
++		}
++
++		if (columns[TS]) {
++			printf("%"PRIu32"  ", rec->timestamp);
++		}
++
+ 		if (columns[LAYER7]) {
+ 			pr = lookup_protocol(rec->proto, be16toh(rec->dst_port));
+ 			printf("%10s  ", pr ? pr->name : "other");
+@@ -396,7 +435,7 @@
+ 	columns[CONNS]    = 1;
+ 	columns[RX_BYTES] = 1;
+ 	columns[RX_PKTS]  = 1;
+-	columns[TX_BYTES] = 1;
++	columns[TX_BYTES]  = 1;
+ 	columns[TX_PKTS]  = 1;
+ 
+ 	printf("{\"columns\":[");
+@@ -458,6 +497,10 @@
+ 				printf("\"%s\"", format_ipaddr(rec->family, &rec->src_addr));
+ 				break;
+ 
++			case DST_IP:
++				printf("\"%s\"", format_ipaddr(rec->family, &rec->dst_addr));
++				break;
++
+ 			case CONNS:
+ 				printf("%"PRIu64, be64toh(rec->count));
+ 				break;
+@@ -477,6 +520,10 @@
+ 			case TX_PKTS:
+ 				printf("%"PRIu64, be64toh(rec->out_pkts));
+ 				break;
++
++			case TS:
++				printf("%"PRIu32, rec->timestamp);
++				break;
+ 			}
+ 		}
+ 
+@@ -520,7 +567,7 @@
+ 	columns[CONNS]    = 1;
+ 	columns[RX_BYTES] = 1;
+ 	columns[RX_PKTS]  = 1;
+-	columns[TX_BYTES] = 1;
++	columns[TX_BYTES]  = 1;
+ 	columns[TX_PKTS]  = 1;
+ 
+ 	for (i = 0, n = 0; i < MAX; i++) {
+@@ -571,6 +618,10 @@
+ 				print_csv_str(format_ipaddr(rec->family, &rec->src_addr));
+ 				break;
+ 
++			case DST_IP:
++				print_csv_str(format_ipaddr(rec->family, &rec->dst_addr));
++				break;
++
+ 			case CONNS:
+ 				printf("%"PRIu64, be64toh(rec->count));
+ 				break;
+@@ -590,6 +641,10 @@
+ 			case TX_PKTS:
+ 				printf("%"PRIu64, be64toh(rec->out_pkts));
+ 				break;
++
++			case TS:
++				printf("%"PRIu32, rec->timestamp);
++				break;
+ 			}
+ 		}
+ 
+@@ -659,12 +714,43 @@
+ 	return -strtol(reply, NULL, 10);
+ }
+ 
++static int
++handle_generate(void)
++{
++	char reply[128] = { };
++	int ctrl_socket;
++	char req[32];
++
++	snprintf(req, sizeof(req), "generate %d", client_opt.num_records);
++
++	ctrl_socket = usock(USOCK_UNIX, opt.socket, NULL);
++
++	if (!ctrl_socket)
++		return -errno;
++
++	if (send(ctrl_socket, req, strlen(req), 0) != (ssize_t)strlen(req)) {
++		close(ctrl_socket);
++		return -errno;
++	}
++
++	if (recv(ctrl_socket, reply, sizeof(reply)-1, 0) <= 0) {
++		close(ctrl_socket);
++		return -ENODATA;
++	}
++
++	printf("%s\n", reply);
++	close(ctrl_socket);
++
++	return 0;
++}
++
+ static struct command commands[] = {
+ 	{ "show", handle_show },
+ 	{ "json", handle_json },
+ 	{ "csv", handle_csv },
+ 	{ "list", handle_list },
+ 	{ "commit", handle_commit },
++	{ "generate", handle_generate },
+ };
+ 
+ 
+@@ -676,7 +762,7 @@
+ 	unsigned int year, month, day;
+ 	char c, *p;
+ 
+-	while ((optchr = getopt(argc, argv, "c:p:S:g:o:t:s::q::e::n")) > -1) {
++	while ((optchr = getopt(argc, argv, "c:p:S:g:o:t:s::q::e::n:r:")) > -1) {
+ 		switch (optchr) {
+ 		case 'S':
+ 			opt.socket = optarg;
+@@ -748,12 +834,16 @@
+ 			break;
+ 
+ 		case 't':
+-			if (sscanf(optarg, "%4u-%2u-%2u", &year, &month, &day) != 3) {
+-				fprintf(stderr, "Unrecognized date '%s'\n", optarg);
+-				return 1;
+-			}
++			if (*optarg == '0') {
++				client_opt.timestamp = 1;
++			} else {
++				if (sscanf(optarg, "%4u-%2u-%2u", &year, &month, &day) != 3) {
++					fprintf(stderr, "Unrecognized date '%s'\n", optarg);
++					return 1;
++				}
+ 
+-			client_opt.timestamp = year * 10000 + month * 100 + day;
++				client_opt.timestamp = year * 10000 + month * 100 + day;
++			}
+ 			break;
+ 
+ 		case 'n':
+@@ -771,21 +861,32 @@
+ 		case 'e':
+ 			client_opt.escape = optarg ? *optarg : 0;
+ 			break;
++
++		case 'r':
++			client_opt.num_records = atoi(optarg);
++			break;
+ 		}
+ 	}
+ 
+ 	if (!client_opt.group_by[0]) {
+-		client_opt.group_by[0] = 3;
++		client_opt.group_by[0] = 4;
+ 		client_opt.group_by[1] = FAMILY + 1;
+ 		client_opt.group_by[2] = HOST   + 1;
+ 		client_opt.group_by[3] = LAYER7 + 1;
+-
++		client_opt.group_by[4] = TS + 1;
+ 	}
+ 
+ 	if (!client_opt.order_by[0]) {
+-		client_opt.order_by[0] = 2;
+-		client_opt.order_by[1] = -RX_BYTES - 1;
+-		client_opt.order_by[2] = -RX_PKTS  - 1;
++		client_opt.order_by[0] = 0;
++		// Order by TS if it's grouped by it
++		for (i = 0; i < client_opt.group_by[0]; i++) {
++			if (client_opt.group_by[1 + i] == TS + 1) {
++				client_opt.order_by[++client_opt.order_by[0]] = -TS - 1;
++				break;
++			}
++		}
++		client_opt.order_by[++client_opt.order_by[0]] = -RX_BYTES - 1;
++		client_opt.order_by[++client_opt.order_by[0]] = -RX_PKTS  - 1;
+ 	}
+ 
+ 	if (!cmd) {
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/database.c src/database.c
+--- upstream/database.c	2024-02-21 20:13:50.000000000 +0000
++++ src/database.c	2025-02-17 05:47:02.000000000 +0000
+@@ -25,6 +25,7 @@
+ #include <dirent.h>
+ #include <unistd.h>
+ #include <string.h>
++#include <sqlite3.h>
+ 
+ #include <sys/mman.h>
+ #include <sys/stat.h>
+@@ -37,19 +38,19 @@
+ #include "nlbwmon.h"
+ #include "database.h"
+ #include "nfnetlink.h"
++#include "utils.h"
++#include "protocol.h"
+ 
++#define add64(x, y) x = htobe64(be64toh(x) + be64toh(y))
+ 
+ struct dbhandle *gdbh = NULL;
+ 
+-static int
+-database_cmp_index(const void *k1, const void *k2, void *ptr)
++static int database_cmp_index(const void *k1, const void *k2, void *ptr)
+ {
+ 	return memcmp(k1, k2, offsetof(struct record, count));
+ }
+ 
+-
+-static void
+-database_reindex(struct dbhandle *h)
++static void database_reindex(struct dbhandle *h)
+ {
+ 	struct record *ptr;
+ 	int i;
+@@ -57,26 +58,23 @@
+ 	avl_init(&h->index, h->index.comp, h->index.allow_dups, h->index.cmp_ptr);
+ 
+ 	for (i = 0; i < db_entries(h->db); i++) {
+-		ptr = &h->db->records[i];
++		ptr	      = &h->db->records[i];
+ 		ptr->node.key = ptr;
+ 		avl_insert(&h->index, &ptr->node);
+ 	}
+ }
+ 
+-void
+-database_reorder(struct dbhandle *h, avl_tree_comp sort_fn, void *sort_ptr)
++void database_reorder(struct dbhandle *h, avl_tree_comp sort_fn, void *sort_ptr)
+ {
+-	h->index.comp = sort_fn;
++	h->index.comp	 = sort_fn;
+ 	h->index.cmp_ptr = sort_ptr;
+ 	database_reindex(h);
+ }
+ 
+-struct record *
+-database_next(struct dbhandle *h, struct record *cur)
++struct record *database_next(struct dbhandle *h, struct record *cur)
+ {
+ 	struct record *last = avl_last_element(&h->index, last, node);
+-	struct record *next = cur ? avl_next_element(cur, node)
+-	                          : avl_first_element(&h->index, cur, node);
++	struct record *next = cur ? avl_next_element(cur, node) : avl_first_element(&h->index, cur, node);
+ 
+ 	if (next->node.list.prev != &last->node.list)
+ 		return next;
+@@ -84,10 +82,7 @@
+ 	return NULL;
+ }
+ 
+-
+-static struct dbhandle *
+-database_alloc(avl_tree_comp key_fn, void *key_ptr, bool prealloc,
+-               uint32_t limit)
++static struct dbhandle *database_alloc(avl_tree_comp key_fn, void *key_ptr, bool prealloc, uint32_t limit)
+ {
+ 	struct dbhandle *h;
+ 	uint32_t size;
+@@ -101,7 +96,7 @@
+ 		size = limit;
+ 
+ 	len = sizeof(struct database) + size * sizeof(struct record);
+-	h = calloc(1, sizeof(*h));
++	h   = calloc(1, sizeof(*h));
+ 
+ 	if (!h)
+ 		return NULL;
+@@ -115,16 +110,15 @@
+ 
+ 	h->pristine = true;
+ 	h->prealloc = prealloc;
+-	h->limit = limit;
+-	h->size = size;
++	h->limit    = limit;
++	h->size	    = size;
+ 
+ 	avl_init(&h->index, key_fn, false, key_ptr);
+ 
+ 	return h;
+ }
+ 
+-static int
+-database_grow(struct dbhandle *h)
++static int database_grow(struct dbhandle *h)
+ {
+ 	struct database *tmp;
+ 	uint32_t size;
+@@ -154,8 +148,7 @@
+ 	return 0;
+ }
+ 
+-struct dbhandle *
+-database_init(const struct interval *intv, bool prealloc, uint32_t limit)
++struct dbhandle *database_init(const struct interval *intv, bool prealloc, uint32_t limit)
+ {
+ 	struct dbhandle *h;
+ 
+@@ -169,19 +162,18 @@
+ 	if (!h)
+ 		return NULL;
+ 
+-	h->db->magic = htobe32(MAGIC);
++	h->db->magic   = htobe32(MAGIC);
+ 	h->db->entries = 0;
+ 
+ 	if (intv) {
+-		h->db->interval = *intv;
++		h->db->interval	 = *intv;
+ 		h->db->timestamp = htobe32(interval_timestamp(intv, 0));
+ 	}
+ 
+ 	return h;
+ }
+ 
+-struct dbhandle *
+-database_mem(avl_tree_comp key_fn, void *key_ptr)
++struct dbhandle *database_mem(avl_tree_comp key_fn, void *key_ptr)
+ {
+ 	struct dbhandle *h;
+ 
+@@ -195,8 +187,7 @@
+ 	return h;
+ }
+ 
+-int
+-database_insert(struct dbhandle *h, struct record *rec)
++int database_insert(struct dbhandle *h, struct record *rec)
+ {
+ 	int err;
+ 	struct record *ptr;
+@@ -241,10 +232,7 @@
+ 	return 0;
+ }
+ 
+-#define add64(x, y) x = htobe64(be64toh(x) + be64toh(y))
+-
+-int
+-database_update(struct dbhandle *h, struct record *rec)
++int database_update(struct dbhandle *h, struct record *rec)
+ {
+ 	struct record *ptr;
+ 
+@@ -263,8 +251,7 @@
+ 	return -ENOENT;
+ }
+ 
+-static int
+-database_gzclose(gzFile gz)
++static int database_gzclose(gzFile gz)
+ {
+ 	int err;
+ 
+@@ -273,8 +260,7 @@
+ 
+ 	err = gzclose(gz);
+ 
+-	switch (err)
+-	{
++	switch (err) {
+ 	case Z_ERRNO:
+ 		return -errno;
+ 
+@@ -294,14 +280,13 @@
+ 	return -EINVAL;
+ }
+ 
+-static int
+-database_save_gzip(struct dbhandle *h, const char *path, uint32_t timestamp)
++static int database_save_gzip(struct dbhandle *h, const char *path, uint32_t timestamp)
+ {
+ 	struct record *src;
+ 	gzFile gz = NULL;
+ 	int i, fd;
+ 
+-	fd = open(path, O_WRONLY|O_CREAT|O_TRUNC, 0640);
++	fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+ 
+ 	if (fd < 0)
+ 		return -errno;
+@@ -332,8 +317,7 @@
+ 	return -errno;
+ }
+ 
+-static int
+-database_save_mmap(struct dbhandle *h, const char *path, uint32_t timestamp)
++static int database_save_mmap(struct dbhandle *h, const char *path, uint32_t timestamp)
+ {
+ 	struct database *db = MAP_FAILED;
+ 	struct record *src, *dst;
+@@ -341,7 +325,7 @@
+ 	size_t len;
+ 
+ 	len = db_disksize(h->db);
+-	fd = open(path, O_CREAT|O_RDWR, 0640);
++	fd  = open(path, O_CREAT | O_RDWR, 0640);
+ 
+ 	if (fd < 0)
+ 		goto out;
+@@ -374,17 +358,14 @@
+ 	return -errno;
+ }
+ 
+-int
+-database_save(struct dbhandle *h, const char *path, uint32_t timestamp,
+-              bool compress)
++int database_save(struct dbhandle *h, const char *path, uint32_t timestamp, bool compress)
+ {
+ 	uint32_t old_timestamp;
+ 	char file[256];
+ 	struct stat s;
+ 	int err;
+ 
+-	snprintf(file, sizeof(file), "%s/%u.db%s",
+-	         path, timestamp, compress ? ".gz" : "");
++	snprintf(file, sizeof(file), "%s/%u.db%s", path, timestamp, compress ? ".gz" : "");
+ 
+ 	/* If the database is pristine (was not read from disk), there must
+ 	 * not be an existing database file already. If there is a file now
+@@ -399,9 +380,8 @@
+ 	if (h->pristine && timestamp > 0 && stat(file, &s) == 0)
+ 		return -EEXIST;
+ 
+-	old_timestamp = h->db->timestamp;
++	old_timestamp	 = h->db->timestamp;
+ 	h->db->timestamp = htobe32(timestamp);
+-
+ 	if (compress)
+ 		err = database_save_gzip(h, file, timestamp);
+ 	else
+@@ -418,8 +398,7 @@
+ 	return err;
+ }
+ 
+-static int
+-database_restore_gzip(struct dbhandle *h, const char *path, uint32_t timestamp)
++static int database_restore_gzip(struct dbhandle *h, const char *path, uint32_t timestamp)
+ {
+ 	struct database hdr;
+ 	struct record rec;
+@@ -473,9 +452,44 @@
+ 	return database_gzclose(gz);
+ }
+ 
+-static int
+-database_restore_mmap(struct dbhandle *h, const char *path, uint32_t timestamp,
+-                      size_t filesize)
++int generate_random_data(struct dbhandle *h, int num_records)
++{
++	struct record rec;
++	int i;
++
++	// Seed the random number generator
++	srand(time(NULL));
++
++	for (i = 0; i < num_records; i++) {
++		// Generate random data for each field in the record
++		rec.family	= (rand() % 2) ? AF_INET : AF_INET6;
++		rec.src_mac.u64 = ((uint64_t)rand() << 32) | rand();
++		if (rec.family == AF_INET) {
++			rec.src_addr.in.s_addr = rand();
++			rec.dst_addr.in.s_addr = rand();
++		} else {
++			for (int j = 0; j < 4; j++) {
++				rec.src_addr.in6.s6_addr32[j] = rand();
++				rec.dst_addr.in6.s6_addr32[j] = rand();
++			}
++		}
++		rec.proto     = rand() % 35;
++		rec.dst_port  = rand() % 65536;
++		rec.timestamp = 20241206;
++		rec.count     = htobe64(rand() % 1000);
++		rec.out_pkts  = htobe64(rand() % 1000);
++		rec.out_bytes = htobe64(rand() % 1000000);
++		rec.in_pkts   = htobe64(rand() % 1000);
++		rec.in_bytes  = htobe64(rand() % 1000000);
++
++		// Insert the random record into the database
++		database_insert(h, &rec);
++	}
++
++	return db_entries(h->db);
++}
++
++static int database_restore_mmap(struct dbhandle *h, const char *path, uint32_t timestamp, size_t filesize)
+ {
+ 	struct database *db = MAP_FAILED;
+ 	int i, entries, fd = -1;
+@@ -525,7 +539,7 @@
+ 		goto out;
+ 	}
+ 
+-	errno = 0;
++	errno	    = 0;
+ 	h->pristine = false;
+ 
+ 	for (i = 0; i < entries; i++)
+@@ -541,8 +555,7 @@
+ 	return -errno;
+ }
+ 
+-int
+-database_load(struct dbhandle *h, const char *path, uint32_t timestamp)
++int database_load(struct dbhandle *h, const char *path, uint32_t timestamp)
+ {
+ 	char name[256];
+ 	struct stat s;
+@@ -560,67 +573,40 @@
+ 	return -errno;
+ }
+ 
+-int
+-database_cleanup(void)
++int database_cleanup(void)
+ {
+-	uint32_t timestamp, num;
+-	struct dirent *entry;
+-	char *e, path[256];
+-	DIR *d;
+-
+-	if (!opt.db.generations)
+-		return 0;
+-
+-	d = opendir(opt.db.directory);
+-
+-	if (!d)
+-		return -errno;
+-
+-	errno = 0;
+-	timestamp = interval_timestamp(&opt.archive_interval, -opt.db.generations);
+-
+-	while ((entry = readdir(d)) != NULL) {
+-		if (entry->d_type != DT_REG)
+-			continue;
+-
+-		num = strtoul(entry->d_name, &e, 10);
+-
+-		if (e == entry->d_name || *e != '.')
+-			continue;
+-
+-		if (strcmp(e, ".db") != 0 && strcmp(e, ".db.gz") != 0)
+-			continue;
++	if (!gdbh || !gdbh->db) {
++		return -1;
++	}
+ 
+-		if (num < 20000101 || num > timestamp)
+-			continue;
++	uint32_t next_ts = interval_timestamp(&gdbh->db->interval, 0);
+ 
+-		snprintf(path, sizeof(path), "%s/%u%s", opt.db.directory, num, e);
++	/* lazily reset database, don't (re)alloc */
++	gdbh->off	    = 0;
++	gdbh->db->entries   = 0;
++	gdbh->db->timestamp = htobe32(next_ts);
+ 
+-		if (unlink(path))
+-			fprintf(stderr, "Unable to delete %s: %s\n", path, strerror(errno));
+-	}
++	database_reindex(gdbh);
+ 
+-	closedir(d);
++	database_save(gdbh, opt.tempdir, 0, opt.db.compress);
+ 
+ 	return -errno;
+ }
+ 
+-int
+-database_archive(struct dbhandle *h)
++int database_archive(struct dbhandle *h)
+ {
+ 	uint32_t next_ts = interval_timestamp(&h->db->interval, 0);
+ 	uint32_t curr_ts = db_timestamp(h->db);
+ 	int err;
+ 
+ 	if (next_ts > curr_ts) {
+-		err = database_save(h, opt.db.directory, curr_ts, opt.db.compress);
+-
++		err = save_persistent();
+ 		if (err)
+ 			return err;
+ 
+ 		/* lazily reset database, don't (re)alloc */
+-		h->off = 0;
+-		h->db->entries = 0;
++		h->off		 = 0;
++		h->db->entries	 = 0;
+ 		h->db->timestamp = htobe32(next_ts);
+ 
+ 		database_reindex(h);
+@@ -637,9 +623,363 @@
+ 	return 0;
+ }
+ 
+-void
+-database_free(struct dbhandle *h)
++void database_free(struct dbhandle *h)
+ {
+ 	free(h->db);
+ 	free(h);
+ }
++
++static int sqlite_exec(sqlite3 *db, const char *sql)
++{
++	char *errmsg = NULL;
++	int rc	     = sqlite3_exec(db, sql, 0, 0, &errmsg);
++	if (rc != SQLITE_OK) {
++		fprintf(stderr, "SQL error: %s\n", errmsg);
++		sqlite3_free(errmsg);
++	}
++	return rc;
++}
++
++static int sqlite_save(struct dbhandle *h, const char *db_path)
++{
++	uint32_t last_table_ts = 0;
++	sqlite3 *db;
++	int rc = sqlite3_open(db_path, &db);
++	if (rc) {
++		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
++		return rc;
++	}
++
++	sqlite3_exec(db, "PRAGMA journal_mode=DELETE;", 0, 0, 0);
++	sqlite3_busy_timeout(db, DB_TIMEOUT);
++
++	const struct interval *intv = &opt.archive_interval;
++	uint32_t interval_date	    = interval_date_monthly(intv, 0);
++	uint32_t interval_ts	    = interval_timestamp(intv, 0);
++
++	char *create_sql;
++	asprintf(&create_sql,
++		 "CREATE TABLE IF NOT EXISTS records_%u ("
++		 "family INTEGER, src_mac TEXT, src_addr TEXT, proto TEXT, "
++		 "day INTEGER, count INTEGER, "
++		 "out_pkts INTEGER, out_bytes INTEGER, in_pkts INTEGER, in_bytes INTEGER, "
++		 "PRIMARY KEY (src_mac, src_addr, proto, day));",
++		 interval_ts);
++	rc = sqlite_exec(db, create_sql);
++	free(create_sql);
++
++	if (rc != SQLITE_OK) {
++		fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
++		sqlite3_close(db);
++		return rc;
++	}
++
++	rc = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
++	if (rc != SQLITE_OK) {
++		fprintf(stderr, "Failed to begin transaction: %s\n", sqlite3_errmsg(db));
++		sqlite3_close(db);
++		return rc;
++	}
++
++	sqlite3_stmt *stmt = NULL;
++	for (int i = 0; i < db_entries(h->db); i++) {
++		struct record *rec = &h->db->records[i];
++		uint32_t rec_ts	   = rec->timestamp;
++		if (rec_ts >= 1000000000)
++			rec_ts = rec_ts / 100;
++
++		uint32_t table_ts = interval_date > 0 ? ((rec_ts / 100) * 100 + interval_date) : interval_ts;
++		if (table_ts != last_table_ts) {
++			if (stmt)
++				sqlite3_finalize(stmt);
++
++			if (table_ts != interval_ts) {
++				char *retry_create_sql;
++				asprintf(
++					&retry_create_sql,
++					"CREATE TABLE IF NOT EXISTS records_%u ("
++					"family INTEGER, src_mac TEXT, src_addr TEXT, proto TEXT, "
++					"day INTEGER, count INTEGER, "
++					"out_pkts INTEGER, out_bytes INTEGER, in_pkts INTEGER, in_bytes INTEGER, "
++					"PRIMARY KEY (src_mac, src_addr, proto, day));",
++					table_ts);
++				rc = sqlite_exec(db, retry_create_sql);
++				free(retry_create_sql);
++
++				if (rc != SQLITE_OK)
++					goto free;
++			}
++
++			char *insert_sql;
++			asprintf(&insert_sql,
++				 "INSERT INTO records_%u (family, src_mac, src_addr, proto, day, "
++				 "count, out_pkts, out_bytes, in_pkts, in_bytes) "
++				 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
++				 "ON CONFLICT(src_mac, src_addr, proto, day) DO UPDATE SET "
++				 "count = count + excluded.count, "
++				 "out_pkts = out_pkts + excluded.out_pkts, "
++				 "out_bytes = out_bytes + excluded.out_bytes, "
++				 "in_pkts = in_pkts + excluded.in_pkts, "
++				 "in_bytes = in_bytes + excluded.in_bytes;",
++				 table_ts);
++			rc = sqlite3_prepare_v2(db, insert_sql, -1, &stmt, 0);
++			free(insert_sql);
++
++			if (rc != SQLITE_OK)
++				goto free;
++
++			last_table_ts = table_ts;
++		}
++
++		struct protocol *pr = lookup_protocol(rec->proto, be16toh(rec->dst_port));
++
++		sqlite3_bind_int(stmt, 1, rec->family);
++		sqlite3_bind_text(stmt, 2, format_macaddr(&rec->src_mac.ea), -1, SQLITE_STATIC);
++		sqlite3_bind_text(stmt, 3, format_ipaddr(rec->family, &rec->src_addr), -1, SQLITE_STATIC);
++		sqlite3_bind_text(stmt, 4, pr ? pr->name : "other", -1, SQLITE_STATIC);
++		sqlite3_bind_int(stmt, 5, rec_ts % 100);
++		sqlite3_bind_int64(stmt, 6, be64toh(rec->count));
++		sqlite3_bind_int64(stmt, 7, be64toh(rec->out_pkts));
++		sqlite3_bind_int64(stmt, 8, be64toh(rec->out_bytes));
++		sqlite3_bind_int64(stmt, 9, be64toh(rec->in_pkts));
++		sqlite3_bind_int64(stmt, 10, be64toh(rec->in_bytes));
++		sqlite3_step(stmt);
++		sqlite3_reset(stmt);
++	}
++
++	if (stmt)
++		sqlite3_finalize(stmt);
++
++	rc = sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL);
++free:
++	if (rc != SQLITE_OK) {
++		fprintf(stderr, "SQL statement failed: %s\n", sqlite3_errmsg(db));
++		sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
++	}
++
++	sqlite3_close(db);
++	return rc;
++}
++
++static int concat_old_generations(const char *db_path, int generations)
++{
++	sqlite3 *db;
++	sqlite3_stmt *stmt;
++	int rc = sqlite3_open(db_path, &db);
++	if (rc) {
++		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
++		return rc;
++	}
++
++	sqlite3_exec(db, "PRAGMA journal_mode=DELETE;", 0, 0, 0);
++	sqlite3_busy_timeout(db, DB_TIMEOUT);
++
++	rc = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
++	if (rc != SQLITE_OK) {
++		fprintf(stderr, "Failed to begin transaction: %s\n", sqlite3_errmsg(db));
++		sqlite3_close(db);
++		return rc;
++	}
++
++	const struct interval *intv = &opt.archive_interval;
++	uint32_t interval_ts	    = interval_timestamp(intv, 0);
++	char *select_sql;
++	asprintf(
++		&select_sql,
++		"SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'records_%%' AND name != 'records_%u' ORDER BY name;",
++		interval_ts);
++
++	rc = sqlite3_prepare_v2(db, select_sql, -1, &stmt, 0);
++	if (rc != SQLITE_OK)
++		goto free;
++
++	int table_count = 0;
++	while (sqlite3_step(stmt) == SQLITE_ROW) {
++		table_count++;
++	}
++
++	sqlite3_finalize(stmt);
++
++	if (table_count >= generations) {
++		rc = sqlite3_exec(
++			db,
++			"CREATE TABLE IF NOT EXISTS total_records ("
++			"family INTEGER, src_mac TEXT, src_addr TEXT, "
++			"count INTEGER, out_pkts INTEGER, out_bytes INTEGER, in_pkts INTEGER, in_bytes INTEGER, "
++			"PRIMARY KEY (src_mac, src_addr));",
++			NULL, NULL, NULL);
++		if (rc != SQLITE_OK)
++			goto free;
++
++		rc = sqlite3_prepare_v2(db, select_sql, -1, &stmt, 0);
++		if (rc != SQLITE_OK)
++			goto free;
++
++		while (table_count > 0 && sqlite3_step(stmt) == SQLITE_ROW) {
++			char *table_name = strdup((char *)sqlite3_column_text(stmt, 0));
++			sqlite3_finalize(stmt);
++
++			char *merge_sql;
++			asprintf(
++				&merge_sql,
++				"INSERT INTO total_records (family, src_mac, src_addr, count, out_pkts, out_bytes, in_pkts, in_bytes) "
++				"SELECT family, src_mac, src_addr, SUM(count), SUM(out_pkts), SUM(out_bytes), SUM(in_pkts), SUM(in_bytes) "
++				"FROM %s GROUP BY family, src_mac, src_addr "
++				"ON CONFLICT(src_mac, src_addr) DO UPDATE SET "
++				"count = count + excluded.count, "
++				"out_pkts = out_pkts + excluded.out_pkts, "
++				"out_bytes = out_bytes + excluded.out_bytes, "
++				"in_pkts = in_pkts + excluded.in_pkts, "
++				"in_bytes = in_bytes + excluded.in_bytes;",
++				table_name);
++			rc = sqlite_exec(db, merge_sql);
++			free(merge_sql);
++
++			if (rc != SQLITE_OK) {
++				free(table_name);
++				goto free;
++			}
++
++			char *drop_sql;
++			asprintf(&drop_sql, "DROP TABLE IF EXISTS %s;", table_name);
++			rc = sqlite_exec(db, drop_sql);
++
++			free(drop_sql);
++			free(table_name);
++
++			if (rc != SQLITE_OK) {
++				goto free;
++			}
++
++			table_count--;
++
++			rc = sqlite3_prepare_v2(db, select_sql, -1, &stmt, 0);
++			if (rc != SQLITE_OK)
++				goto free;
++		}
++
++		sqlite3_finalize(stmt);
++	}
++
++	rc = sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL);
++free:
++	free(select_sql);
++
++	if (rc != SQLITE_OK) {
++		fprintf(stderr, "SQL statement failed: %s\n", sqlite3_errmsg(db));
++		sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
++	}
++
++	sqlite3_close(db);
++	return rc;
++}
++
++static int delete_table_entries(sqlite3 *db, sqlite3_stmt *stmt, int limit)
++{
++	char *table_name = strdup((char *)sqlite3_column_text(stmt, 0));
++	int rc		 = SQLITE_OK;
++	sqlite3_stmt *count_stmt;
++
++	char *count_sql;
++	asprintf(&count_sql, "SELECT COUNT(*) FROM %s;", table_name);
++	rc = sqlite3_prepare_v2(db, count_sql, -1, &count_stmt, 0);
++	free(count_sql);
++
++	if (rc != SQLITE_OK)
++		goto free;
++
++	if (sqlite3_step(count_stmt) == SQLITE_ROW) {
++		int count = sqlite3_column_int(count_stmt, 0);
++		if (count > limit) {
++			char *delete_sql;
++			asprintf(
++				&delete_sql,
++				"DELETE FROM %s WHERE rowid IN (SELECT rowid FROM %s ORDER BY rowid LIMIT %d);",
++				table_name, table_name, count - limit);
++			rc = sqlite_exec(db, delete_sql);
++			free(delete_sql);
++
++			if (rc != SQLITE_OK)
++				goto free;
++		}
++	}
++
++	sqlite3_finalize(count_stmt);
++free:
++	free(table_name);
++	return rc;
++}
++
++static int delete_excess_entries(const char *db_path, int limit)
++{
++	sqlite3 *db;
++	sqlite3_stmt *stmt;
++	int rc = sqlite3_open(db_path, &db);
++	if (rc) {
++		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
++		return rc;
++	}
++
++	sqlite3_exec(db, "PRAGMA journal_mode=DELETE;", 0, 0, 0);
++	sqlite3_busy_timeout(db, DB_TIMEOUT);
++
++	rc = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
++	if (rc != SQLITE_OK) {
++		fprintf(stderr, "Failed to begin transaction: %s\n", sqlite3_errmsg(db));
++		sqlite3_close(db);
++		return rc;
++	}
++
++	rc = sqlite3_prepare_v2(
++		db,
++		"SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'records_%' ORDER BY name;",
++		-1, &stmt, 0);
++	if (rc != SQLITE_OK)
++		goto free;
++
++	while (sqlite3_step(stmt) == SQLITE_ROW) {
++		if ((rc = delete_table_entries(db, stmt, limit)) != SQLITE_OK)
++			goto free;
++	}
++	sqlite3_finalize(stmt);
++
++	rc = sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL);
++free:
++	if (rc != SQLITE_OK) {
++		fprintf(stderr, "SQL statement failed: %s\n", sqlite3_errmsg(db));
++		sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
++	}
++	sqlite3_close(db);
++	return rc;
++}
++
++int save_persistent()
++{
++	int err = SQLITE_OK;
++
++	if (opt.db.generations == 0) {
++		if (opt.db.directory)
++			unlink(opt.db.directory);
++		goto end;
++	}
++
++	err = sqlite_save(gdbh, opt.db.directory);
++	if (err) {
++		fprintf(stderr, "Unable to save database: %s\n", sqlite3_errstr(err));
++		goto end;
++	}
++
++	err = concat_old_generations(opt.db.directory, opt.db.generations);
++	if (err != SQLITE_OK) {
++		fprintf(stderr, "Unable to concat old generations: %s\n", sqlite3_errstr(err));
++	}
++
++	err = delete_excess_entries(opt.db.directory, opt.db.limit);
++	if (err != SQLITE_OK) {
++		fprintf(stderr, "Unable to delete excess entries: %s\n", sqlite3_errstr(err));
++	}
++
++end:
++	database_cleanup();
++	return err;
++}
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/database.h src/database.h
+--- upstream/database.h	2024-02-21 20:13:50.000000000 +0000
++++ src/database.h	2025-02-17 05:47:02.000000000 +0000
+@@ -25,12 +25,15 @@
+ #include <netinet/ether.h>
+ 
+ #include <libubox/avl.h>
++#include <sqlite3.h>
+ 
+ #include "timing.h"
+ #include "nlbwmon.h"
+ 
+ #define MAGIC 0x6e6c626d  /* 'nlbm' */
+ 
++#define DB_TIMEOUT 5000
++
+ #define db_size(db, n) \
+ 	(sizeof(*(db)) + (n) * sizeof(struct record))
+ 
+@@ -55,8 +58,6 @@
+ 
+ struct record {
+ 	uint8_t family;
+-	uint8_t proto;
+-	uint16_t dst_port;
+ 	union {
+ 		struct ether_addr ea;
+ 		uint64_t u64;
+@@ -65,6 +66,13 @@
+ 		struct in6_addr in6;
+ 		struct in_addr in;
+ 	} src_addr;
++	uint8_t proto;
++	uint16_t dst_port;
++	union {
++		struct in6_addr in6;
++		struct in_addr in;
++	} dst_addr;
++	uint32_t timestamp;
+ 	uint64_t count;
+ 	uint64_t out_pkts;
+ 	uint64_t out_bytes;
+@@ -115,4 +123,8 @@
+ 
+ void database_free(struct dbhandle *h);
+ 
++int generate_random_data(struct dbhandle *h, int num_records);
++
++int save_persistent();
++
+ #endif /* __DATABASE_H__ */
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/nfnetlink.c src/nfnetlink.c
+--- upstream/nfnetlink.c	2024-02-21 20:13:50.000000000 +0000
++++ src/nfnetlink.c	2025-02-17 05:47:02.000000000 +0000
+@@ -75,13 +75,22 @@
+ 	struct record record;
+ };
+ 
++static bool
++is_empty_mac(struct ether_addr *mac)
++{
++	for (int i = 0; i < sizeof(mac->ether_addr_octet); i++) {
++		if (mac->ether_addr_octet[i] != 0) {
++			return false;
++		}
++	}
++	return true;
++}
++
+ static void
+ database_insert_immediately(struct record *r)
+ {
+-	if (r->count != 0)
+-		database_insert(gdbh, r);
+-	else
+-		database_update(gdbh, r);
++	if (is_empty_mac(&r->src_mac.ea)) return;
++	database_insert(gdbh, r);
+ }
+ 
+ static void
+@@ -188,6 +197,7 @@
+ 	static struct nlattr *counters[CTA_COUNTERS_MAX + 1];
+ 
+ 	struct record r = { };
++	struct in6_addr null_addr6 = {0};
+ 	struct in6_addr orig_saddr, orig_daddr, reply_saddr, reply_daddr;
+ 
+ 	uint64_t orig_pkts, orig_bytes, reply_pkts, reply_bytes;
+@@ -247,6 +257,7 @@
+ 			r.out_pkts = orig_pkts;
+ 			r.out_bytes = orig_bytes;
+ 			r.src_addr.in6 = orig_saddr;
++			r.dst_addr.in6 = opt.save_dst_addr ? orig_daddr : null_addr6;
+ 		}
+ 
+ 		/* remote -> local */
+@@ -258,9 +269,34 @@
+ 			r.out_pkts = reply_pkts;
+ 			r.out_bytes = reply_bytes;
+ 			r.src_addr.in6 = reply_saddr;
++			r.dst_addr.in6 = opt.save_dst_addr ? reply_daddr : null_addr6;
+ 		}
+ 
+-		/* local -> local or remote -> remote */
++		/* local -> local */
++		else if (!match_subnet(r.family, &orig_saddr) && !match_subnet(r.family, &orig_daddr)) {
++			r.proto = orig_proto;
++			r.dst_port = orig_port;
++			r.in_pkts = reply_pkts;
++			r.in_bytes = reply_bytes;
++			r.out_pkts = orig_pkts;
++			r.out_bytes = orig_bytes;
++			r.src_addr.in6 = orig_saddr;
++			r.dst_addr.in6 = opt.save_dst_addr ? orig_daddr : null_addr6;
++		}
++
++		/* local -> local */
++		else if (!match_subnet(r.family, &reply_saddr) && !match_subnet(r.family, &reply_daddr)) {
++			r.proto = reply_proto;
++			r.dst_port = reply_port;
++			r.in_pkts = orig_pkts;
++			r.in_bytes = orig_bytes;
++			r.out_pkts = reply_pkts;
++			r.out_bytes = reply_bytes;
++			r.src_addr.in6 = reply_saddr;
++			r.dst_addr.in6 = opt.save_dst_addr ? reply_daddr : null_addr6;
++		}
++
++		/* remote -> remote */
+ 		else {
+ 			continue;
+ 		}
+@@ -272,6 +308,10 @@
+ 
+ 		r.count = htobe64(allow_insert);
+ 
++		struct interval local_archive_interval = opt.archive_interval;
++		local_archive_interval.type = HOURLY;
++		r.timestamp = interval_timestamp(&local_archive_interval, 0);
++
+ 		if (update_mac)
+ 			update_macaddr(r.family, &r.src_addr.in6);
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/nlbwmon.c src/nlbwmon.c
+--- upstream/nlbwmon.c	2024-02-21 20:13:50.000000000 +0000
++++ src/nlbwmon.c	2025-02-17 05:47:02.000000000 +0000
+@@ -71,54 +71,31 @@
+ 
+ 	.netlink_buffer_size = 524288,
+ 
+-	.tempdir = "/tmp",
+-	.socket = "/var/run/nlbwmon.sock",
+-	.protocol_db = "/usr/share/nlbwmon/protocols",
++	.tempdir = "/var/run/nlbwmon",
++	.socket = "/var/run/nlbwmon/nlbwmon.sock",
++	.protocol_db = "/usr/local/share/nlbwmon/protocols",
++
++	.save_dst_addr = true,
+ 
+ 	.db = {
+-		.directory = "/usr/share/nlbwmon/db"
++		.directory = "/usr/local/share/nlbwmon/data.db"
+ 	}
+ };
+ 
+-
+-static void save_persistent(uint32_t timestamp)
+-{
+-	int err;
+-
+-	err = database_save(gdbh, opt.db.directory, timestamp, opt.db.compress);
+-
+-	if (err == -EEXIST) {
+-		fprintf(stderr, "Existing database found, merging values\n");
+-
+-		err = database_load(gdbh, opt.db.directory, timestamp);
+-
+-		if (err) {
+-			fprintf(stderr, "Unable to load existing database: %s\n",
+-			        strerror(-err));
+-		}
+-	}
+-
+-	err = database_save(gdbh, opt.db.directory, timestamp, opt.db.compress);
+-
+-	if (err) {
+-		fprintf(stderr, "Unable to save database: %s\n",
+-		        strerror(-err));
+-	}
+-}
+-
+ static void handle_shutdown(int sig)
+ {
+ 	char path[256];
+-	uint32_t timestamp = interval_timestamp(&opt.archive_interval, 0);
+ 
+-	save_persistent(timestamp);
++	save_persistent();
+ 
+ 	if (sig == SIGTERM) {
+ 		snprintf(path, sizeof(path), "%s/0.db", opt.tempdir);
+ 		unlink(path);
++		snprintf(path, sizeof(path), "%s/0.db.gz", opt.tempdir);
++		unlink(path);
+ 	}
+ 	else {
+-		database_save(gdbh, opt.tempdir, 0, false);
++		database_save(gdbh, opt.tempdir, 0, opt.db.compress);
+ 	}
+ 
+ 	uloop_done();
+@@ -128,10 +105,8 @@
+ static void
+ handle_commit(struct uloop_timer_type *tm)
+ {
+-	uint32_t timestamp = interval_timestamp(&opt.archive_interval, 0);
+-
+ 	uloop_timer_reset(tm, opt.commit_interval * 1000);
+-	save_persistent(timestamp);
++	save_persistent();
+ }
+ 
+ static void
+@@ -162,7 +137,7 @@
+ 		return;
+ 	}
+ 
+-	database_save(gdbh, opt.tempdir, 0, false);
++	database_save(gdbh, opt.tempdir, 0, opt.db.compress);
+ }
+ 
+ static int
+@@ -211,11 +186,10 @@
+ server_main(int argc, char **argv)
+ {
+ 	struct sigaction sa = { .sa_handler = handle_shutdown };
+-	uint32_t timestamp;
+ 	int optchr, err;
+ 	char *e;
+ 
+-	while ((optchr = getopt(argc, argv, "b:i:r:s:o:p:G:I:L:PZ")) > -1) {
++	while ((optchr = getopt(argc, argv, "b:i:r:s:o:p:G:I:L:PZd")) > -1) {
+ 		switch (optchr) {
+ 		case 'b':
+ 			opt.netlink_buffer_size = (int)strtol(optarg, &e, 0);
+@@ -293,6 +267,10 @@
+ 		case 'Z':
+ 			opt.db.compress = true;
+ 			break;
++
++		case 'd':
++			opt.save_dst_addr = false;
++			break;
+ 		}
+ 	}
+ 
+@@ -311,8 +289,6 @@
+ 		return 1;
+ 	}
+ 
+-	database_cleanup();
+-
+ 	gdbh = database_init(&opt.archive_interval, opt.db.prealloc, opt.db.limit);
+ 
+ 	if (!gdbh) {
+@@ -323,11 +299,6 @@
+ 
+ 	err = database_load(gdbh, opt.tempdir, 0);
+ 
+-	if (err == -ENOENT) {
+-		timestamp = interval_timestamp(&opt.archive_interval, 0);
+-		err = database_load(gdbh, opt.db.directory, timestamp);
+-	}
+-
+ 	if (err != 0 && err != -ENOENT) {
+ 		fprintf(stderr, "Unable to restore database: %s\n",
+ 		        strerror(-err));
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/nlbwmon.h src/nlbwmon.h
+--- upstream/nlbwmon.h	2024-02-21 20:13:50.000000000 +0000
++++ src/nlbwmon.h	2025-02-17 05:47:02.000000000 +0000
+@@ -42,6 +42,8 @@
+ 	const char *tempdir;
+ 	const char *socket;
+ 
++	bool save_dst_addr;
++
+ 	struct {
+ 		bool compress;
+ 		bool prealloc;
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/socket.c src/socket.c
+--- upstream/socket.c	2024-02-21 20:13:50.000000000 +0000
++++ src/socket.c	2025-02-17 05:47:02.000000000 +0000
+@@ -66,34 +66,9 @@
+ static int
+ handle_dump(int sock, const char *arg)
+ {
+-	struct dbhandle *h;
++	struct dbhandle *h = gdbh;
+ 	struct record *rec = NULL;
+-	int err = 0, timestamp = 0;
+-	char *e;
+-
+-	if (arg) {
+-		timestamp = strtoul(arg, &e, 10);
+-
+-		if (arg == e || *e)
+-			return -EINVAL;
+-	}
+-
+-	if (timestamp == 0) {
+-		h = gdbh;
+-	}
+-	else {
+-		h = database_init(&opt.archive_interval, false, 0);
+-
+-		if (!h) {
+-			err = ENOMEM;
+-			goto out;
+-		}
+-
+-		err = database_load(h, opt.db.directory, timestamp);
+-
+-		if (err)
+-			goto out;
+-	}
++	int err = 0;
+ 
+ 	if (send_data(sock, h->db, sizeof(*h->db)) != sizeof(*h->db)) {
+ 		err = errno;
+@@ -107,46 +82,22 @@
+ 		}
+ 
+ out:
+-	if (h != gdbh)
+-		database_free(h);
+-
+ 	return -err;
+ }
+ 
+ static int
+ handle_list(int sock, const char *arg)
+ {
+-	int err;
+-	int delta = 0;
+-	uint32_t timestamp;
+-
+-	while (true) {
+-		timestamp = interval_timestamp(&opt.archive_interval, delta--);
+-		err = database_load(NULL, opt.db.directory, timestamp);
+-
+-		if (err) {
+-			if (-err != ENOENT)
+-				fprintf(stderr, "Corrupted database detected: %d (%s)\n",
+-				        timestamp, strerror(-err));
+-
+-			break;
+-		}
+-
+-		if (send(sock, &timestamp, sizeof(timestamp), 0) != sizeof(timestamp))
+-			return -errno;
+-	}
+-
+-	return 0;
++	return -errno;
+ }
+ 
+ static int
+ handle_commit(int sock, const char *arg)
+ {
+-	uint32_t timestamp = interval_timestamp(&opt.archive_interval, 0);
+ 	char buf[128];
+ 	int err, len;
+ 
+-	err = database_save(gdbh, opt.db.directory, timestamp, opt.db.compress);
++	err = save_persistent();
+ 	len = snprintf(buf, sizeof(buf), "%d %s", -err,
+ 	               err ? strerror(-err) : "ok");
+ 
+@@ -156,10 +107,36 @@
+ 	return 0;
+ }
+ 
++static int
++handle_generate(int sock, const char *arg)
++{
++	int num_records = 100;
++	char *e;
++	int entries;
++
++	if (arg) {
++		num_records = strtoul(arg, &e, 10);
++
++		if (arg == e || *e)
++			return -EINVAL;
++	}
++
++	entries = generate_random_data(gdbh, num_records);
++
++	char buf[128];
++	int len = snprintf(buf, sizeof(buf), "Generated %d records, total entries: %d", num_records, entries);
++
++	if (send_data(sock, buf, len) != len)
++		return -errno;
++
++	return 0;
++}
++
+ static struct command commands[] = {
+ 	{ "dump", handle_dump },
+ 	{ "list", handle_list },
+ 	{ "commit", handle_commit },
++	{ "generate", handle_generate },
+ };
+ 
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/timing.c src/timing.c
+--- upstream/timing.c	2024-02-21 20:13:50.000000000 +0000
++++ src/timing.c	2025-02-17 05:47:02.000000000 +0000
+@@ -24,9 +24,7 @@
+ 
+ #include "timing.h"
+ 
+-
+-static int
+-is_leapyear(int year)
++static int is_leapyear(int year)
+ {
+ 	if (!(year % 400))
+ 		return 1;
+@@ -40,8 +38,7 @@
+ 	return 0;
+ }
+ 
+-static int
+-days_in_month(int year, int month)
++static int days_in_month(int year, int month)
+ {
+ 	switch (month) {
+ 	case 1:
+@@ -66,34 +63,27 @@
+ 	return -ERANGE;
+ }
+ 
+-static void
+-tm_inc_dec(struct tm *tm, bool inc)
++static void tm_inc_dec(struct tm *tm, bool inc)
+ {
+ 	if (!inc) {
+ 		if (tm->tm_mon > 0) {
+ 			tm->tm_mon--;
+-		}
+-		else {
++		} else {
+ 			tm->tm_mon = 11;
+ 			tm->tm_year--;
+ 		}
+-	}
+-	else {
++	} else {
+ 		if (tm->tm_mon < 11) {
+ 			tm->tm_mon++;
+-		}
+-		else {
++		} else {
+ 			tm->tm_mon = 0;
+ 			tm->tm_year++;
+ 		}
+ 	}
+ }
+ 
+-static int
+-interval_timestamp_monthly(const struct interval *intv, int offset)
++static int monthly_date(struct tm *loc, const struct interval *intv, int offset)
+ {
+-	time_t now = time(NULL);
+-	struct tm *loc = localtime(&now);
+ 	int date = (int32_t)be32toh(intv->value);
+ 	int monthdays;
+ 
+@@ -101,8 +91,7 @@
+ 		if (offset < 0) {
+ 			tm_inc_dec(loc, false);
+ 			offset++;
+-		}
+-		else {
++		} else {
+ 			tm_inc_dec(loc, true);
+ 			offset--;
+ 		}
+@@ -113,8 +102,7 @@
+ 	if (date > 0) {
+ 		if (loc->tm_mday < date)
+ 			tm_inc_dec(loc, false);
+-	}
+-	else {
++	} else {
+ 		if (loc->tm_mday < (date + monthdays))
+ 			tm_inc_dec(loc, false);
+ 
+@@ -128,19 +116,35 @@
+ 			date = monthdays;
+ 	}
+ 
+-	return ((loc->tm_year + 1900) * 10000 +
+-	        (loc->tm_mon  +    1) *   100 +
+-	         date);
++	return date;
++}
++
++static int interval_timestamp_monthly(const struct interval *intv, int offset)
++{
++	time_t now     = time(NULL);
++	struct tm *loc = localtime(&now);
++	int date       = monthly_date(loc, intv, offset);
++
++	return ((loc->tm_year + 1900) * 10000 + (loc->tm_mon + 1) * 100 + date);
+ }
+ 
+-static int
+-interval_timestamp_fixed(const struct interval *intv, int offset)
++int interval_date_monthly(const struct interval *intv, int offset)
++{
++	if (intv->type != MONTHLY)
++		return 0;
++
++	time_t now     = time(NULL);
++	struct tm *loc = localtime(&now);
++	return monthly_date(loc, intv, offset);
++}
++
++static int interval_timestamp_fixed(const struct interval *intv, int offset)
+ {
+ 	time_t now, base;
+ 	struct tm *loc;
+ 	int32_t value;
+ 
+-	base = (time_t)be64toh(intv->base);
++	base  = (time_t)be64toh(intv->base);
+ 	value = (int32_t)be32toh(intv->value);
+ 
+ 	now = time(NULL);
+@@ -148,18 +152,35 @@
+ 	now += offset * (value * 86400);
+ 
+ 	base = now - ((now - base) % (value * 86400));
+-	loc = localtime(&base);
++	loc  = localtime(&base);
+ 
+-	return ((loc->tm_year + 1900) * 10000 +
+-	        (loc->tm_mon  +    1) *   100 +
+-	         loc->tm_mday);
++	return ((loc->tm_year + 1900) * 10000 + (loc->tm_mon + 1) * 100 + loc->tm_mday);
+ }
+ 
+-int
+-interval_pton(const char *spec, struct interval *intv)
++static int interval_timestamp_hourly(const struct interval *intv, int offset)
++{
++	time_t now, base;
++	struct tm *loc;
++	int32_t value;
++
++	base  = (time_t)be64toh(intv->base);
++	value = (int32_t)be32toh(intv->value);
++
++	now = time(NULL);
++	now -= now % 3600;
++	now += offset * (value * 3600);
++
++	base = now - ((now - base) % (value * 3600));
++	loc  = localtime(&base);
++
++	return ((loc->tm_year + 1900) * 1000000 + (loc->tm_mon + 1) * 10000 + loc->tm_mday * 100 +
++		loc->tm_hour);
++}
++
++int interval_pton(const char *spec, struct interval *intv)
+ {
+ 	unsigned int year, month, mday;
+-	struct tm loc = { };
++	struct tm loc = {};
+ 	time_t base;
+ 	int value;
+ 	char *e;
+@@ -178,9 +199,9 @@
+ 			return -ERANGE;
+ 
+ 		loc.tm_isdst = -1;
+-		loc.tm_mday = mday;
+-		loc.tm_mon = month - 1;
+-		loc.tm_year = year - 1900;
++		loc.tm_mday  = mday;
++		loc.tm_mon   = month - 1;
++		loc.tm_year  = year - 1900;
+ 
+ 		base = mktime(&loc);
+ 		base -= base % 86400;
+@@ -204,20 +225,17 @@
+ 	return 0;
+ }
+ 
+-void
+-interval_ntop(const struct interval *intv, char *spec, size_t len)
++void interval_ntop(const struct interval *intv, char *spec, size_t len)
+ {
+ 	struct tm *loc;
+ 	time_t base;
+ 
+-	switch (intv->type)
+-	{
++	switch (intv->type) {
+ 	case FIXED:
+ 		base = (time_t)be64toh(intv->base);
+-		loc = localtime(&base);
+-		snprintf(spec, len, "%04d-%02d-%02d/%d",
+-		         loc->tm_year + 1900, loc->tm_mon + 1, loc->tm_mday,
+-		         intv->value);
++		loc  = localtime(&base);
++		snprintf(spec, len, "%04d-%02d-%02d/%d", loc->tm_year + 1900, loc->tm_mon + 1, loc->tm_mday,
++			 intv->value);
+ 		break;
+ 
+ 	case MONTHLY:
+@@ -226,16 +244,17 @@
+ 	}
+ }
+ 
+-int
+-interval_timestamp(const struct interval *intv, int offset)
++int interval_timestamp(const struct interval *intv, int offset)
+ {
+-	switch (intv->type)
+-	{
++	switch (intv->type) {
+ 	case FIXED:
+ 		return interval_timestamp_fixed(intv, offset);
+ 
+ 	case MONTHLY:
+ 		return interval_timestamp_monthly(intv, offset);
++
++	case HOURLY:
++		return interval_timestamp_hourly(intv, offset);
+ 	}
+ 
+ 	return -EINVAL;
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/timing.h src/timing.h
+--- upstream/timing.h	2024-02-21 20:13:50.000000000 +0000
++++ src/timing.h	2025-02-17 05:47:02.000000000 +0000
+@@ -25,6 +25,7 @@
+ enum interval_type {
+ 	MONTHLY = 1,
+ 	FIXED   = 2,
++	HOURLY  = 3
+ };
+ 
+ struct interval {
+@@ -33,6 +34,7 @@
+ 	int32_t value;
+ };
+ 
++int interval_date_monthly(const struct interval *intv, int offset);
+ int interval_pton(const char *spec, struct interval *intv);
+ void interval_ntop(const struct interval *intv, char *spec, size_t len);
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/utils.c src/utils.c
+--- upstream/utils.c	2024-02-21 20:13:50.000000000 +0000
++++ src/utils.c	2025-02-17 05:47:02.000000000 +0000
+@@ -36,7 +36,22 @@
+ 	if (strlen(path) + 1 >= sizeof(tmp))
+ 		return -ENAMETOOLONG;
+ 
+-	snprintf(tmp, sizeof(tmp), "%s/", path);
++	if (strcmp(path, "/") == 0)
++		return 0;
++
++	// Copy path to tmp and strip filename if present
++	strncpy(tmp, path, sizeof(tmp) - 1);
++	tmp[sizeof(tmp) - 1] = '\0';
++	p = strrchr(tmp, '/');
++	if (p && *(p + 1) != '\0') {
++		*p = '\0';
++	}
++
++	size_t len = strlen(tmp);
++	if (len + 1 >= sizeof(tmp))
++		return -ENAMETOOLONG;
++	tmp[len] = '/';
++	tmp[len + 1] = '\0';
+ 
+ 	for (p = tmp + 1; *p; p++) {
+ 		if (*p == '/') {

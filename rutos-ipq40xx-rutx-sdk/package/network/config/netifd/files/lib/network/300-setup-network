@@ -1,0 +1,404 @@
+#!/bin/sh
+
+[ -f "/etc/config/network" ] && return 0
+
+. /lib/functions.sh
+
+config_load "network"
+
+ip6assign=
+disable_vlan=
+metric=0
+addr_offset=3
+
+generate_static_network() {
+	uci -q batch <<-EOF
+		set network.loopback='interface'
+		set network.loopback.device='lo'
+		set network.loopback.proto='static'
+		set network.loopback.ipaddr='127.0.0.1'
+		set network.loopback.netmask='255.0.0.0'
+		set network.loopback.area_type='lan'
+	EOF
+}
+
+apply_network_options() {
+	json_select network_options && {
+		json_get_vars ip6assign ula disable_vlan
+		json_select ..
+	}
+	[ -z "$ip6assign" ] && ip6assign=1
+	[ -z "$ula" ] && ula=1
+
+	[ -e /proc/sys/net/ipv6 ] && [ "$ula" = 1 ] && {
+		r1=$(dd if=/dev/urandom bs=1 count=1 2>/dev/null | hexdump -e '1/1 "%02x"')
+		r2=$(dd if=/dev/urandom bs=2 count=1 2>/dev/null | hexdump -e '2/1 "%02x"')
+		r3=$(dd if=/dev/urandom bs=2 count=1 2>/dev/null | hexdump -e '2/1 "%02x"')
+
+		uci -q batch <<-EOF
+			set network.globals='globals'
+			set network.globals.ula_prefix='fd${r1}:${r2}:${r3}::/48'
+		EOF
+	}
+}
+
+generate_switch_vlans_ports() {
+	local switch="$1"
+	local port ports role roles num attr val
+
+	#
+	# autogenerate vlans
+	#
+
+	if json_is_a roles array; then
+		json_get_keys roles roles
+		json_select roles
+
+		for role in $roles; do
+			json_select "$role"
+				json_get_vars ports
+			json_select ..
+
+			uci -q batch <<-EOF
+				add network switch_vlan
+				set network.@switch_vlan[-1].device='$switch'
+				set network.@switch_vlan[-1].vlan='$role'
+				set network.@switch_vlan[-1].vid='$role'
+				set network.@switch_vlan[-1].ports='$ports'
+			EOF
+		done
+
+		json_select ..
+	fi
+
+
+	#
+	# write port specific settings
+	#
+
+	if json_is_a ports array; then
+		json_get_keys ports ports
+		json_select ports
+
+		for port in $ports; do
+			json_select "$port"
+				json_get_vars num
+
+				if json_is_a attr object; then
+					json_get_keys attr attr
+					json_select attr
+						uci -q batch <<-EOF
+							add network switch_port
+							set network.@switch_port[-1].device='$switch'
+							set network.@switch_port[-1].port=$num
+						EOF
+
+						for attr in $attr; do
+							json_get_var val "$attr"
+							uci -q set network.@switch_port[-1].$attr="$val"
+						done
+					json_select ..
+				fi
+			json_select ..
+		done
+
+		json_select ..
+	fi
+}
+
+generate_switch() {
+	local key="$1"
+	local vlans
+
+	json_select switch
+	json_select "$key"
+	json_get_vars enable reset blinkrate cpu_port \
+		ar8xxx_mib_type ar8xxx_mib_poll_interval
+
+	[ "$disable_vlan" = 1 ] && enable=0
+	uci -q batch <<-EOF
+		add network switch
+		set network.@switch[-1].name='$key'
+		set network.@switch[-1].reset='$reset'
+		set network.@switch[-1].enable_vlan='$enable'
+		set network.@switch[-1].blinkrate='$blinkrate'
+		set network.@switch[-1].ar8xxx_mib_type='$ar8xxx_mib_type'
+		set network.@switch[-1].ar8xxx_mib_poll_interval='$ar8xxx_mib_poll_interval'
+	EOF
+
+	generate_switch_vlans_ports "$1"
+
+	json_select ..
+	json_select ..
+}
+
+generate_network() {
+	local ports device macaddr proto type ipaddr netmask vlan no_metric fallback
+	local bridge=$2
+
+	uci -q batch <<-EOF
+		set network.$1='interface'
+	EOF
+
+	json_select network
+		json_select "$1"
+			json_get_vars device macaddr proto ipaddr netmask vlan ipv6 guest type fallback default_ip
+			json_get_values ports ports
+		json_select ..
+	json_select ..
+
+	json_select network_options && {
+		json_get_vars no_metric
+		json_select ..
+	}
+
+	# Force bridge for "lan" as it may have other devices (e.g. wireless)
+	# bridged
+	[ "$1" = "lan" ] && [ -z "$ports" ] && {
+		ports="$device"
+	}
+
+	[ -n "$ports" ] && [ -z "$bridge" ] && {
+
+		[ -n "$macaddr" ] && {
+			for port in $ports; do
+				uci -q batch <<-EOF
+					add network device
+					set network.@device[-1].name='$port'
+					set network.@device[-1].macaddr='$macaddr'
+				EOF
+			done
+		}
+
+		uci -q batch <<-EOF
+			add network device
+			rename network.@device[-1]='br_$1'
+			set network.@device[-1].name='br-$1'
+			set network.@device[-1].type='bridge'
+		EOF
+
+		[ -n "$device" ] && uci add_list network.@device[-1].ports="$device" || {
+			for port in $ports; do
+				uci add_list network.@device[-1].ports="$port"
+			done
+		}
+
+		device=br-$1
+		type=
+		macaddr=""
+
+		json_select hwinfo
+			json_get_vars dsa
+		json_select ..
+
+	}
+
+	if [ -n "$macaddr" ]; then
+		uci -q batch <<-EOF
+			add network device
+			set network.@device[-1].name='$device'
+			set network.@device[-1].macaddr='$macaddr'
+		EOF
+	fi
+
+	uci -q batch <<-EOF
+		set network.$1='interface'
+		set network.$1.type='$type'
+		set network.$1.device='$device'
+		set network.$1.proto='none'
+	EOF
+	[ "$1" != "lan" ] && metric=$((metric+1))
+	[ "$guest" = "1" ] && {
+		uci -q batch <<-EOF
+			set network.$1.guest='1'
+			set network.br_guest='device'
+			set network.br_guest.type='bridge'
+			set network.br_guest.name='br-guest'
+			set network.$1.device='br-guest'
+		EOF
+	}
+
+	case "$proto" in
+		static)
+			local ipad metr
+			case "$1" in
+				lan)
+					ipad=${default_ip}
+					;;
+				*)
+					ipad=${ipaddr:-"192.168.$((addr_offset++)).1"}
+					;;
+			esac
+
+			uci set network.$1.area_type='lan'
+			netm=${netmask:-"255.255.255.0"}
+
+			uci -q batch <<-EOF
+				set network.$1.proto='static'
+				set network.$1.ipaddr='$ipad'
+				set network.$1.netmask='$netm'
+				set network.$1.metric='$metr'
+			EOF
+
+			[ "$ipv6" = "1" ] && uci set network.$1.ipv6="$ipv6"
+			[ -e /proc/sys/net/ipv6 ] && [ "$ip6assign" = 1 ] && \
+				uci set network.$1.ip6assign='60'
+		;;
+
+		dhcp)
+			# fixup IPv6 slave interface if parent is a bridge
+			[ "$type" = "bridge" ] && device="br-$1"
+
+			uci -q batch <<-EOF
+				set network.$1.proto='dhcp'
+				set network.$1.metric='$metric'
+				set network.$1.area_type='wan'
+			EOF
+
+			[ "$fallback" = "1" ] && uci set network.$1.fallback='1'
+
+			[ -e /proc/sys/net/ipv6 ] && [ "$ipv6" != 0 ] && {
+				metric=$((metric+1))
+				uci -q batch <<-EOF
+					set network.${1}6='interface'
+					set network.${1}6.device='$device'
+					set network.${1}6.proto='dhcpv6'
+					set network.${1}6.metric='$metric'
+					set network.${1}6.area_type='wan'
+				EOF
+				[ "$ip6assign" != 1 ] && uci set network.${1}6.delegate='0'
+			}
+		;;
+
+		pppoe)
+			uci -q batch <<-EOF
+				set network.$1.proto='pppoe'
+				set network.$1.username='username'
+				set network.$1.password='password'
+				set network.$1.area_type='wan'
+			EOF
+			[ -e /proc/sys/net/ipv6 ] && {
+				uci -q batch <<-EOF
+					set network.$1.ipv6='1'
+					set network.${1}6='interface'
+					set network.${1}6.device='@${1}'
+					set network.${1}6.proto='dhcpv6'
+					set network.${1}6.area_type='wan'
+				EOF
+			}
+		;;
+
+		dhcpv6)
+			[ -e /proc/sys/net/ipv6 ] && {
+				uci -q batch <<-EOF
+					set network.$1.proto='dhcpv6'
+					set network.$1.metric='$metric'
+					set network.$1.area_type='wan'
+				EOF
+
+				[ "$ip6assign" != 1 ] && uci set network.$1.delegate='0'
+			}
+		;;
+	esac
+
+	[ -n "$no_metric" ] && {
+		uci -q delete network.${1}.metric
+		[ -e /proc/sys/net/ipv6 ] && uci -q delete network.${1}6.metric
+	}
+}
+
+add_dhcp() {
+
+	json_select network
+		json_select "$1"
+			json_get_vars _dhcp
+		json_select ..
+	json_select ..
+
+	[ "$_dhcp" = "true" ] || return
+	uci -q batch <<-EOF
+		set dhcp.$1='dhcp'
+		set dhcp.$1.interface='$1'
+		set dhcp.$1.start='100'
+		set dhcp.$1.limit='150'
+		set dhcp.$1.leasetime='1h'
+		set dhcp.$1.ignore_ipv6='1'
+	EOF
+}
+
+apply_network_options() {
+
+	json_select network_options && {
+		json_get_vars ip6assign ula disable_vlan
+		json_select ..
+	}
+
+	[ -z "$ip6assign" ] && ip6assign=1
+	[ -z "$ula" ] && ula=1
+
+	[ -e /proc/sys/net/ipv6 ] && [ "$ula" = 1 ] && {
+
+		r1=$(dd if=/dev/urandom bs=1 count=1 2>/dev/null | hexdump -e '1/1 "%02x"')
+		r2=$(dd if=/dev/urandom bs=2 count=1 2>/dev/null | hexdump -e '2/1 "%02x"')
+		r3=$(dd if=/dev/urandom bs=2 count=1 2>/dev/null | hexdump -e '2/1 "%02x"')
+
+		uci -q batch <<-EOF
+			set network.globals='globals'
+			set network.globals.ula_prefix='fd${r1}:${r2}:${r3}::/48'
+		EOF
+	}
+
+	return 0
+}
+
+apply_port_options() {
+
+	generate_ports_template() { return 1; }
+
+	. /lib/network/config.sh
+
+	generate_ports_template
+
+	return 0
+}
+
+apply_device_options() {
+
+	json_get_keys keys network
+
+	for key in $keys; do
+		generate_network $key
+		add_dhcp "$key"
+	done
+
+	return 0
+}
+
+apply_switch_options() {
+
+	json_get_keys keys switch
+	for key in $keys; do generate_switch $key; done
+
+	return 0
+}
+
+create_network_conf() {
+        touch /etc/config/network
+	chmod 660 /etc/config/network
+	chown network:network /etc/config/network
+}
+
+conf_file_register_hook create_network_conf /etc/config/network
+conf_register_hook generate_static_network
+conf_register_hook apply_network_options
+conf_register_hook apply_port_options
+conf_register_hook apply_device_options
+conf_register_hook apply_switch_options
+
+[ -f /lib/functions/mobile.sh ] && {
+	. /lib/functions/mobile.sh
+
+	conf_register_hook generate_dynamic_lte
+}
+
+uci_commit "network"

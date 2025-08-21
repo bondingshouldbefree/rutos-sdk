@@ -1,0 +1,13 @@
+{
+  "services/bluetooth": {
+    "title": "Bluetooth",
+    "index": 60,
+    "view": "services/Bluetooth",
+    "acls": ["services/bluetooth"],
+    "depends": {
+      "board": {
+        "allOf": ["has_bluetooth"]
+      }
+    }
+  }
+}

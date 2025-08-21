@@ -1,0 +1,57 @@
+--- a/client.c
++++ b/client.c
+@@ -276,7 +276,9 @@ static bool client_init_cb(struct client
+ 
+ static bool rfc1918_filter_check(struct client *cl)
+ {
+-	if (!conf.rfc1918_filter)
++	if (cl->tls && !conf.tls_rfc1918_filter)
++		return true;
++	else if (!cl->tls && !conf.rfc1918_filter)
+ 		return true;
+ 
+ 	if (!uh_addr_rfc1918(&cl->peer_addr) || uh_addr_rfc1918(&cl->srv_addr))
+--- a/main.c
++++ b/main.c
+@@ -151,7 +151,10 @@ static int usage(const char *name)
+ 		"	-I string       Use given filename as index for directories, multiple allowed\n"
+ 		"	-S              Do not follow symbolic links outside of the docroot\n"
+ 		"	-D              Do not allow directory listings, send 403 instead\n"
+-		"	-R              Enable RFC1918 filter\n"
++		"	-R              Enable RFC1918 filter for HTTP\n"
++#ifdef HAVE_TLS
++		"	-F              Enable RFC1918 filter for HTTPS\n"
++#endif
+ 		"	-n count        Maximum allowed number of concurrent script requests\n"
+ 		"	-N count        Maximum allowed number of concurrent connections\n"
+ #ifdef HAVE_LUA
+@@ -268,7 +271,7 @@ int main(int argc, char **argv)
+ 	init_defaults_pre();
+ 	signal(SIGPIPE, SIG_IGN);
+ 
+-	while ((ch = getopt(argc, argv, "A:abC:c:Dd:E:e:fh:H:I:i:K:k:L:l:m:N:n:P:p:qRr:Ss:T:t:U:u:Xx:y:")) != -1) {
++	while ((ch = getopt(argc, argv, "A:abC:c:Dd:E:e:fh:H:I:i:K:k:L:l:m:N:n:P:p:qRFr:Ss:T:t:U:u:Xx:y:")) != -1) {
+ 		switch(ch) {
+ #ifdef HAVE_TLS
+ 		case 'C':
+@@ -287,6 +290,10 @@ int main(int argc, char **argv)
+ 			conf.tls_redirect = 1;
+ 			break;
+ 
++		case 'F':
++			conf.tls_rfc1918_filter = 1;
++			break;
++
+ 		case 's':
+ 			n_tls++;
+ 			/* fall through */
+--- a/uhttpd.h
++++ b/uhttpd.h
+@@ -74,6 +74,7 @@ struct config {
+ 	int no_dirlists;
+ 	int network_timeout;
+ 	int rfc1918_filter;
++	int tls_rfc1918_filter;
+ 	int tls_redirect;
+ 	int tcp_keepalive;
+ 	int max_script_requests;

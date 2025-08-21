@@ -1,0 +1,19 @@
+{
+	"user": "multiple_ap",
+	"listen": [ "wireless.state", "ubus.object.add" ],
+	"access": {
+		"network": {
+			"methods": [ "reload" ]
+		},
+		"wpa_supplicant.*": {
+			"methods": [ "get_status" ]
+		},
+		"iwinfo": {
+			"methods": [ "scan" ]
+		},
+		"network.wireless": {
+			"methods": [ "up", "down", "status" ]
+		}
+	}
+}
+

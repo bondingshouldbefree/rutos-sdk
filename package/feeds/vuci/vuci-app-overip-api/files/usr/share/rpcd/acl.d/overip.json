@@ -1,0 +1,1 @@
+{"services/serial_utilities/overip":{"description":"OverIP configuration","read":{"api":{"/overip/*":["*"],"/serial/status/*":["*"],"/firewall/zones/config/*":["name"],"/certificates/config/*":["fullname","cert_type","type"]}},"write":{"api":["/overip/*"]}}}

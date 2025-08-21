@@ -1,0 +1,104 @@
+qmi_wwan driver, when in qmux mode, tries to rx aggregate skbs through wwan* usb_interface,
+this appears as constant increase in rx errors on wwan* and a slight performance penalty.
+Ideally, we could just add FLAG_MULTI_PACKET flag to qmi_wwan, but since the subdriver basically
+2 different drivers in one, some usbnet hacking is required.
+
+--- a/drivers/net/usb/qmi_wwan.c
++++ b/drivers/net/usb/qmi_wwan.c
+@@ -932,7 +932,7 @@ static int qmi_wwan_rx_fixup(struct usbn
+ 		if (rawip)
+ 			return 0;
+ 		if (is_multicast_ether_addr(skb->data))
+-			return 1;
++			goto send_it;
+ 		/* possibly bogus destination - rewrite just in case */
+ 		skb_reset_mac_header(skb);
+ 		goto fix_dest;
+@@ -940,13 +940,13 @@ static int qmi_wwan_rx_fixup(struct usbn
+ 		if (rawip)
+ 			return 0;
+ 		/* pass along other packets without modifications */
+-		return 1;
++		goto send_it;
+ 	}
+ 	if (rawip) {
+ 		skb_reset_mac_header(skb);
+ 		skb->dev = dev->net; /* normally set by eth_type_trans */
+ 		skb->protocol = proto;
+-		return 1;
++		goto send_it;
+ 	}
+ 
+ 	if (skb_headroom(skb) < ETH_HLEN)
+@@ -957,7 +957,9 @@ static int qmi_wwan_rx_fixup(struct usbn
+ 	eth_zero_addr(eth_hdr(skb)->h_source);
+ fix_dest:
+ 	memcpy(eth_hdr(skb)->h_dest, dev->net->dev_addr, ETH_ALEN);
+-	return 1;
++send_it:
++	usbnet_skb_return(dev, skb);
++	return -EALREADY;
+ }
+ 
+ /* very simplistic detection of IPv4 or IPv6 headers */
+@@ -1297,7 +1299,7 @@ err:
+ 
+ static const struct driver_info	qmi_wwan_info = {
+ 	.description	= "WWAN/QMI device",
+-	.flags		= FLAG_WWAN | FLAG_SEND_ZLP,
++	.flags		= FLAG_WWAN | FLAG_SEND_ZLP | FLAG_MULTI_PACKET,
+ 	.bind		= qmi_wwan_bind,
+ 	.unbind		= qmi_wwan_unbind,
+ 	.manage_power	= qmi_wwan_manage_power,
+@@ -1306,7 +1308,7 @@ static const struct driver_info	qmi_wwan
+ 
+ static const struct driver_info	qmi_wwan_info_quirk_dtr = {
+ 	.description	= "WWAN/QMI device",
+-	.flags		= FLAG_WWAN | FLAG_SEND_ZLP,
++	.flags		= FLAG_WWAN | FLAG_SEND_ZLP | FLAG_MULTI_PACKET,
+ 	.bind		= qmi_wwan_bind,
+ 	.unbind		= qmi_wwan_unbind,
+ 	.manage_power	= qmi_wwan_manage_power,
+@@ -1316,7 +1318,7 @@ static const struct driver_info	qmi_wwan
+ 
+ static const struct driver_info qmi_wwan_info_quirk_dtr_sdx55 = {
+ 	.description    = "WWAN/QMI device",
+-	.flags          = FLAG_WWAN | FLAG_RX_ASSEMBLE | FLAG_NOARP | FLAG_SEND_ZLP,
++	.flags          = FLAG_WWAN | FLAG_RX_ASSEMBLE | FLAG_NOARP | FLAG_SEND_ZLP | FLAG_MULTI_PACKET,
+ 	.bind           = qmi_wwan_bind,
+ 	.unbind         = qmi_wwan_unbind,
+ 	.manage_power   = qmi_wwan_manage_power,
+--- a/drivers/net/usb/usbnet.c
++++ b/drivers/net/usb/usbnet.c
+@@ -572,8 +572,10 @@ static int rx_submit (struct usbnet *dev
+ 
+ static inline int rx_process(struct usbnet *dev, struct sk_buff *skb)
+ {
++	int ret = 1;
++
+ 	if (dev->driver_info->rx_fixup &&
+-	    !dev->driver_info->rx_fixup (dev, skb)) {
++	    !(ret = dev->driver_info->rx_fixup (dev, skb))) {
+ 		/* With RX_ASSEMBLE, rx_fixup() must update counters */
+ 		if (!(dev->driver_info->flags & FLAG_RX_ASSEMBLE))
+ 			dev->net->stats.rx_errors++;
+@@ -581,6 +583,10 @@ static inline int rx_process(struct usbn
+ 	}
+ 	// else network stack removes extra byte if we forced a short packet
+ 
++	/* subdriver already consumed the packet */
++	if (ret == -EALREADY)
++		return 0;
++
+ 	/* all data was already cloned from skb inside the driver */
+ 	if (dev->driver_info->flags & FLAG_MULTI_PACKET)
+ 		return -EALREADY;
+@@ -1438,7 +1444,7 @@ netdev_tx_t usbnet_start_xmit (struct sk
+ 	}
+ 	urb->transfer_buffer_length = length;
+ 
+-	if (info->flags & FLAG_MULTI_PACKET) {
++	if (info->tx_fixup && (info->flags & FLAG_MULTI_PACKET)) {
+ 		/* Driver has set number of packets and a length delta.
+ 		 * Calculate the complete length and ensure that it's
+ 		 * positive.

@@ -1,0 +1,27 @@
+--- a/drivers/net/wireless/ath/ath10k/htt_tx.c
++++ b/drivers/net/wireless/ath/ath10k/htt_tx.c
+@@ -1419,16 +1419,22 @@ static int ath10k_htt_tx_32(struct ath10
+ 
+ 	if (!is_eth) {
+ 		struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)msdu->data;
++		unsigned int mic_len = IEEE80211_CCMP_MIC_LEN;
++
++		if (skb_cb->ucast_cipher == WLAN_CIPHER_SUITE_GCMP ||
++			skb_cb->ucast_cipher == WLAN_CIPHER_SUITE_GCMP_256) {
++			mic_len = IEEE80211_GCMP_MIC_LEN;
++		}
+ 
+ 		if ((ieee80211_is_action(hdr->frame_control) ||
+ 		     ieee80211_is_deauth(hdr->frame_control) ||
+ 		     ieee80211_is_disassoc(hdr->frame_control)) &&
+ 		     ieee80211_has_protected(hdr->frame_control)) {
+-			skb_put(msdu, IEEE80211_CCMP_MIC_LEN);
++			skb_put(msdu, mic_len);
+ 		} else if (!(skb_cb->flags & ATH10K_SKB_F_NO_HWCRYPT) &&
+ 			   txmode == ATH10K_HW_TXRX_RAW &&
+ 			   ieee80211_has_protected(hdr->frame_control)) {
+-			skb_put(msdu, IEEE80211_CCMP_MIC_LEN);
++			skb_put(msdu, mic_len);
+ 		}
+ 	}
+ 

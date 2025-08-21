@@ -1,0 +1,56 @@
+--- a/util.c
++++ b/util.c
+@@ -189,9 +189,15 @@ __private FILE *uci_open_stream(struct u
+ 	int fd, ret;
+ 	int flags = (write ? O_RDWR : O_RDONLY);
+ 	mode_t mode = UCI_FILEMODE;
++	uid_t user = -1;
++	gid_t group = -1;
+ 	char *name = NULL;
+ 	char *filename2 = NULL;
+ 
++	if (create && stat(filename, &statbuf1) == 0) {
++		create = false;
++	}
++
+ 	if (create) {
+ 		flags |= O_CREAT;
+ 		if (origfilename) {
+@@ -202,8 +208,11 @@ __private FILE *uci_open_stream(struct u
+ 		if ((asprintf(&filename2, "%s/%s", ctx->confdir, name) < 0) || !filename2) {
+ 			UCI_THROW(ctx, UCI_ERR_MEM);
+ 		} else {
+-			if (stat(filename2, &statbuf1) == 0)
++			if (stat(filename2, &statbuf1) == 0) {
+ 				mode = statbuf1.st_mode;
++				user = statbuf1.st_uid;
++				group = statbuf1.st_gid;
++			}
+ 
+ 			free(filename2);
+ 		}
+@@ -219,6 +228,11 @@ __private FILE *uci_open_stream(struct u
+ 		if (fd < 0)
+ 			goto error;
+ 
++		if (create) {
++			fchown(fd, user, group);
++			fchmod(fd, mode);
++		}
++
+ 		ret = flock(fd, (write ? LOCK_EX : LOCK_SH));
+ 		if ((ret < 0) && (errno != ENOSYS))
+ 			goto error_close;
+--- a/uci.h
++++ b/uci.h
+@@ -38,8 +38,8 @@ extern "C" {
+ 
+ #define UCI_CONFDIR "/etc/config"
+ #define UCI_SAVEDIR "/tmp/.uci"
+-#define UCI_DIRMODE 0700
+-#define UCI_FILEMODE 0600
++#define UCI_DIRMODE 0777
++#define UCI_FILEMODE 0666
+ 
+ enum
+ {

@@ -1,0 +1,58 @@
+For offloaded flows that have a gap in transmission, hw will set ib1 state
+field to MTK_FOE_STATE_UNBIND, as well as clobbering certain configuration
+fields, like MTK_FOE_IB1_BIND_VLAN_LAYER.
+
+Since mtk_flow_entry_update causes entire ib1 value from hw table to be
+sync'ed to the software entry, it can prevent that software entry from ever
+establishing offloading again, since it will from then on try writing an
+ib1 value for an unbound entry.
+
+Fix this by only allowing mtk_flow_entry_update to update
+MTK_FOE_IB1_BIND_TIMESTAMP field of ib1. Also add a check for flow status,
+since unbound entries have a different format for timestamps, though it
+still would not make sense to use it, even if was read correctly.
+
+Note: this was ported from 5.10 kernel, where there wasn't a preexisting check
+for MTK_FOE_IB1_STATE. This might not be an issue on 5.15, though the non-atomic
+read through memcpy might cause a race condition.
+
+--- a/drivers/net/ethernet/mediatek/mtk_ppe.c
++++ b/drivers/net/ethernet/mediatek/mtk_ppe.c
+@@ -566,12 +566,14 @@ static bool
+ mtk_flow_entry_update(struct mtk_ppe *ppe, struct mtk_flow_entry *entry,
+ 		      u64 *packets, u64 *bytes)
+ {
++	u32 ib1_ts_mask = mtk_get_ib1_ts_mask(ppe->eth);
+ 	struct mtk_foe_accounting *acct;
+ 	struct mtk_foe_entry foe = {};
+ 	struct mtk_foe_entry *hwe;
+ 	u16 hash = entry->hash;
+ 	bool ret = false;
+ 	int len;
++	u32 ib1;
+ 
+ 	if (hash == 0xffff)
+ 		return false;
+@@ -579,9 +581,10 @@ mtk_flow_entry_update(struct mtk_ppe *pp
+ 	hwe = mtk_foe_get_entry(ppe, hash);
+ 	len = mtk_flow_entry_match_len(ppe->eth, &entry->data);
+ 	memcpy(&foe, hwe, len);
++	ib1 = READ_ONCE(hwe->ib1);
+ 
+ 	if (!mtk_flow_entry_match(ppe->eth, entry, &foe, len) ||
+-	    FIELD_GET(MTK_FOE_IB1_STATE, foe.ib1) != MTK_FOE_STATE_BIND) {
++	    FIELD_GET(MTK_FOE_IB1_STATE, ib1) != MTK_FOE_STATE_BIND) {
+ 		acct = mtk_ppe_acct_data(ppe, hash);
+ 		if (acct) {
+ 			entry->prev_packets += acct->packets;
+@@ -591,7 +594,9 @@ mtk_flow_entry_update(struct mtk_ppe *pp
+ 		goto out;
+ 	}
+ 
+-	entry->data.ib1 = foe.ib1;
++	entry->data.ib1 &= ~ib1_ts_mask;
++	entry->data.ib1 |= ib1 & ib1_ts_mask;
++
+ 	acct = mtk_ppe_mib_entry_read(ppe, hash);
+ 	ret = true;
+ 

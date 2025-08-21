@@ -1,0 +1,2 @@
+# setup /usr/local/modem_updater
+/usr/local/modem_updater		root:user		770	cd

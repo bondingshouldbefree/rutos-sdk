@@ -1,0 +1,24 @@
+From dbf5a69a1e4214753395aa79681dbb55bf7dc400 Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Thu, 28 Nov 2024 10:47:02 +0200
+Subject: [PATCH 1/1] minify .js with npx
+
+---
+ Makefile.am | 3 +++
+ 1 file changed, 3 insertions(+)
+
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -333,6 +333,12 @@ clean-demo:
+ 	     -e "s/^#/\/\/ #/"                                                \
+ 	     -e "s/VERSION/\"@VERSION@ @VCS_REVISION@\"/g"                    \
+ 	     "$<" >"$@"
++	@mv "$@" "$@.big.js"
++	@{ \
++		[ -n "$$DL_DIR" ] && CACHE_OPT="--cache=$$DL_DIR" && mkdir -p "$$DL_DIR"; \
++		npx $$CACHE_OPT esbuild "$@.big.js" --minify --outfile="$@"; \
++	}
++	@rm "$@.big.js"
+ 
+ .js.h:
+ 	@echo od "$<" '>'"$@"

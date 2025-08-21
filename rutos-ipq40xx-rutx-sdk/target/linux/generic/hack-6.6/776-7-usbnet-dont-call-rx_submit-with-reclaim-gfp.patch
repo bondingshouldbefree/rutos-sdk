@@ -1,0 +1,40 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Tue Apr 29 14:46:01 2025 +0300
+Subject: usbnet: don't call rx_submit with non-atomic GFP flags
+
+rx_submit internally calls __netdev_alloc_skb (or derivative) with provided
+GFP flags. However __netdev_alloc_skb implementation has a branch that calls
+page_frag_alloc under local_bh_disable, with the same unmodified GFP flags.
+
+So it appears __netdev_alloc_skb shouldn't ever be called with anything other
+than GPF_ATOMIC. Though, a quick kernel grep tells me that certainly isn't the
+case.
+
+This patch fixes "sleeping while atomic" warning and subsequent kernel crash
+when usbnet is processing packets under OOM conditions.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/net/usb/usbnet.c |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+--- a/drivers/net/usb/usbnet.c
++++ b/drivers/net/usb/usbnet.c
+@@ -1319,7 +1319,7 @@ fail_halt:
+ 				usb_free_urb(urb);
+ 				goto fail_lowmem;
+ 			}
+-			if (rx_submit (dev, urb, GFP_KERNEL) == -ENOLINK)
++			if (rx_submit (dev, urb, GFP_ATOMIC) == -ENOLINK)
+ 				resched = 0;
+ 			usb_autopm_put_interface(dev->intf);
+ fail_lowmem:
+@@ -2079,7 +2079,7 @@ int usbnet_resume (struct usb_interface
+ 			if (netif_device_present(dev->net) &&
+ 				!timer_pending(&dev->delay) &&
+ 				!test_bit(EVENT_RX_HALT, &dev->flags))
+-					rx_alloc_submit(dev, GFP_NOIO);
++					rx_alloc_submit(dev, GFP_ATOMIC);
+ 
+ 			if (!(dev->txq.qlen >= TX_QLEN(dev)))
+ 				netif_tx_wake_all_queues(dev->net);

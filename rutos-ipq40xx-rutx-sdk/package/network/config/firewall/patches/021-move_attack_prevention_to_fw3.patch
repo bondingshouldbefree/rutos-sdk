@@ -1,0 +1,232 @@
+--- a/defaults.c
++++ b/defaults.c
+@@ -66,6 +66,13 @@ const struct fw3_option fw3_flag_opts[]
+ 	FW3_OPT("__flags_v4",          int,      defaults, flags[0]),
+ 	FW3_OPT("__flags_v6",          int,      defaults, flags[1]),
+ 
++	FW3_OPT("null_flags",          bool,     defaults, null_flags),
++	FW3_OPT("syn_fin",             bool,     defaults, syn_fin),
++	FW3_OPT("x_max",               bool,     defaults, x_max),
++	FW3_OPT("syn_rst",             bool,     defaults, syn_rst),
++	FW3_OPT("nmap_fin",            bool,     defaults, nmap_fin),
++	FW3_OPT("nmap_fin",            bool,     defaults, nmap_fin),
++
+ 	{ }
+ };
+ 
+@@ -335,6 +342,59 @@ fw3_print_default_head_rules(struct fw3_
+ 		}
+ 		break;
+ 
++	case FW3_TABLE_RAW:
++
++		if (defs->null_flags) {
++			r = fw3_ipt_rule_create(handle, &tcp, NULL, NULL, NULL, NULL);
++			fw3_ipt_rule_comment(r, "Null flags prevention");
++			fw3_ipt_rule_addarg(r, false, "--tcp-flags", NULL);
++			fw3_ipt_rule_addarg(r, false, "FIN,SYN,RST,PSH,ACK,URG", NULL);
++			fw3_ipt_rule_addarg(r, false, "NONE", NULL);
++			fw3_ipt_rule_target(r, "DROP");
++			fw3_ipt_rule_append(r, "PREROUTING");
++		}
++
++		if (defs->syn_fin) {
++			r = fw3_ipt_rule_create(handle, &tcp, NULL, NULL, NULL, NULL);
++			fw3_ipt_rule_comment(r, "SYN FIN prevention");
++			fw3_ipt_rule_addarg(r, false, "--tcp-flags", NULL);
++			fw3_ipt_rule_addarg(r, false, "FIN,SYN", NULL);
++			fw3_ipt_rule_addarg(r, false, "FIN,SYN", NULL);
++			fw3_ipt_rule_target(r, "DROP");
++			fw3_ipt_rule_append(r, "PREROUTING");
++		}
++
++		if (defs->x_max) {
++			r = fw3_ipt_rule_create(handle, &tcp, NULL, NULL, NULL, NULL);
++			fw3_ipt_rule_comment(r, "XMAS prevention");
++			fw3_ipt_rule_addarg(r, false, "--tcp-flags", NULL);
++			fw3_ipt_rule_addarg(r, false, "FIN,SYN,RST,PSH,ACK,URG", NULL);
++			fw3_ipt_rule_addarg(r, false, "FIN,PSH,URG", NULL);
++			fw3_ipt_rule_target(r, "DROP");
++			fw3_ipt_rule_append(r, "PREROUTING");
++		}
++
++		if (defs->syn_rst) {
++			r = fw3_ipt_rule_create(handle, &tcp, NULL, NULL, NULL, NULL);
++			fw3_ipt_rule_comment(r, "SYN RST prevention");
++			fw3_ipt_rule_addarg(r, false, "--tcp-flags", NULL);
++			fw3_ipt_rule_addarg(r, false, "SYN,RST", NULL);
++			fw3_ipt_rule_addarg(r, false, "SYN,RST", NULL);
++			fw3_ipt_rule_target(r, "DROP");
++			fw3_ipt_rule_append(r, "PREROUTING");
++		}
++
++		if (defs->nmap_fin) {
++			r = fw3_ipt_rule_create(handle, &tcp, NULL, NULL, NULL, NULL);
++			fw3_ipt_rule_comment(r, "Nmap FIN prevention");
++			fw3_ipt_rule_addarg(r, false, "--tcp-flags", NULL);
++			fw3_ipt_rule_addarg(r, false, "FIN,SYN,RST,PSH,ACK,URG", NULL);
++			fw3_ipt_rule_addarg(r, false, "FIN", NULL);
++			fw3_ipt_rule_target(r, "DROP");
++			fw3_ipt_rule_append(r, "PREROUTING");
++		}
++		break;
++
+ 	default:
+ 		break;
+ 	}
+--- a/options.h
++++ b/options.h
+@@ -332,6 +332,12 @@ struct fw3_defaults
+ 
+ 	bool disable_ipv6;
+ 
++	bool null_flags;
++	bool syn_fin;
++	bool x_max;
++	bool syn_rst;
++	bool nmap_fin;
++
+ 	uint32_t flags[2];
+ };
+ 
+@@ -373,6 +379,10 @@ struct fw3_zone
+ 	uint32_t flags[2];
+ 
+ 	struct list_head old_addrs;
++
++	bool port_scan;
++	uint32_t hitcount;
++	uint32_t seconds;
+ };
+ 
+ struct fw3_rule
+@@ -686,6 +696,7 @@ bool fw3_parse_setmatch(void *ptr, const
+ bool fw3_parse_direction(void *ptr, const char *val, bool is_list);
+ bool fw3_parse_cthelper(void *ptr, const char *val, bool is_list);
+ bool fw3_parse_setentry(void *ptr, const char *val, bool is_list);
++bool fw3_parse_hitcount(void *ptr, const char *val, bool is_list);
+ 
+ bool fw3_parse_ttl_action(void *ptr, const char *val, bool is_list);
+ bool fw3_parse_ttl_value(void *ptr, const char *val, bool is_list);
+--- a/zones.c
++++ b/zones.c
+@@ -50,6 +50,8 @@ static const struct fw3_chain_spec zone_
+ 	C(V4,  NAT,    CUSTOM_CHAINS, "prerouting_?_rule"),
+ 	C(V4,  NAT,    CUSTOM_CHAINS, "postrouting_?_rule"),
+ 
++	C(ANY, FILTER, UNSPEC, "zone_?_port_scan"),
++
+ 	{ }
+ };
+ 
+@@ -95,6 +97,10 @@ const struct fw3_option fw3_zone_opts[]
+ 
+ 	FW3_LIST("__addrs",            address,  zone,     old_addrs),
+ 
++	FW3_OPT("port_scan",           bool,     zone,     port_scan),
++	FW3_OPT("hitcount",            hitcount,      zone,     hitcount),
++	FW3_OPT("seconds",             int,      zone,     seconds),
++
+ 	{ }
+ };
+ 
+@@ -432,6 +438,21 @@ print_zone_chain(struct fw3_ipt_handle *
+ 		}
+ 	}
+ 
++	if (zone->port_scan && zone->hitcount && zone->seconds && handle->table == FW3_TABLE_FILTER) {
++		char chain_name[64];
++		snprintf(chain_name, sizeof(chain_name), "zone_%s_port_scan", zone->name);
++
++		fw3_ipt_create_chain(handle, reload, chain_name);
++
++		r = fw3_ipt_rule_new(handle);
++		fw3_ipt_rule_target(r, "zone_%s_port_scan", zone->name);
++		fw3_ipt_rule_append(r, "zone_%s_input", zone->name);
++
++		r = fw3_ipt_rule_new(handle);
++		fw3_ipt_rule_target(r, "zone_%s_port_scan", zone->name);
++		fw3_ipt_rule_append(r, "zone_%s_forward", zone->name);
++	}
++
+ 	set(zone->flags, handle->family, handle->table);
+ }
+ 
+@@ -676,6 +697,7 @@ print_zone_rule(struct fw3_ipt_handle *h
+ 	struct fw3_address *msrc;
+ 	struct fw3_address *mdest;
+ 	struct fw3_ipt_rule *r;
++	struct fw3_protocol tcp = { .protocol = 6 };
+ 
+ 	if (!fw3_is_family(zone, handle->family))
+ 		return;
+@@ -700,6 +722,28 @@ print_zone_rule(struct fw3_ipt_handle *h
+ 			fw3_ipt_rule_append(r, "zone_%s_forward", zone->name);
+ 		}
+ 
++		if (zone->port_scan && zone->hitcount && zone->seconds) {
++			char seconds[7];
++			char hitcount[7];
++
++			r = fw3_ipt_rule_create(handle, &tcp, NULL, NULL, NULL, NULL);
++			fw3_ipt_rule_comment(r, "Port scan prevention for %s", zone->name);
++			fw3_ipt_rule_extra(r, "-m conntrack --ctstate NEW -m recent --update");
++			snprintf(seconds, sizeof(seconds), "%u", zone->seconds);
++			snprintf(hitcount, sizeof(hitcount), "%u", zone->hitcount);
++
++			fw3_ipt_rule_addarg(r, false, "--seconds", seconds);
++			fw3_ipt_rule_addarg(r, false, "--hitcount", hitcount);
++			fw3_ipt_rule_target(r, "DROP");
++			fw3_ipt_rule_append(r, "zone_%s_port_scan",  zone->name);
++
++			r = fw3_ipt_rule_create(handle, &tcp, NULL, NULL, NULL, NULL);
++			fw3_ipt_rule_extra(r, "-m conntrack --ctstate NEW -m recent --set");
++			fw3_ipt_rule_comment(r, "Port scan prevention for %s", zone->name);
++			fw3_ipt_rule_target(r, "RETURN");
++			fw3_ipt_rule_append(r, "zone_%s_port_scan",  zone->name);
++		}
++
+ 		r = fw3_ipt_rule_new(handle);
+ 		fw3_ipt_rule_target(r, "zone_%s_src_%s", zone->name,
+ 		                     fw3_flag_names[zone->policy_input]);
+--- a/options.c
++++ b/options.c
+@@ -1348,3 +1348,38 @@ fw3_parse_ttl_value(void *ptr, const cha
+ 
+ 	return (n >= 0 && n <= 255);
+ }
++
++bool
++fw3_parse_hitcount(void *ptr, const char *val, bool is_list)
++{
++	FILE *hitcount_file;
++	unsigned int max_value;
++	char buf[4] = { 0 };
++	if ((hitcount_file = fopen("/sys/module/xt_recent/parameters/ip_pkt_list_tot", "r")) != NULL) {
++		fgets(buf, sizeof(buf), hitcount_file);
++		fclose(hitcount_file);
++	} else {
++		return false;
++	}
++
++	errno = 0;
++	max_value = strtol(buf, NULL, 10);
++
++	if(errno)
++		return false;
++
++	if(max_value == 0 || max_value > 255)
++		max_value = 255;
++
++	if (!fw3_parse_int(ptr,val,is_list))
++		return false;
++
++	int n = *((int *)ptr);
++
++	if (n >= 1 && n <= max_value)
++		return true;
++
++	*(int **)ptr = NULL;
++	return false;
++}
++

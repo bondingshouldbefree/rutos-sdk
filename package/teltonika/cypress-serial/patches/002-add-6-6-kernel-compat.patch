@@ -1,0 +1,30 @@
+Index: cypress-serial-1.1.1/usb_serial_driver.c
+===================================================================
+--- cypress-serial-1.1.1.orig/usb_serial_driver.c	2025-01-21 08:36:06.269535054 +0200
++++ cypress-serial-1.1.1/usb_serial_driver.c	2025-01-21 08:36:57.706264390 +0200
+@@ -25,7 +25,11 @@
+ #else
+ static unsigned int cyp_write_room(struct tty_struct *tty);
+ #endif
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,1,0)
+ static void cyp_set_termios(struct tty_struct *tty, struct usb_serial_port *port, struct ktermios *old_termios);
++#else
++static void cyp_set_termios(struct tty_struct *tty, struct usb_serial_port *port, const struct ktermios *old_termios);
++#endif
+ static void cyp_read_int_callback(struct urb *urb);
+ static int cyp_prepare_write_buffer(struct usb_serial_port *port, void *dest, size_t size);
+ 
+@@ -173,8 +177,13 @@
+ }
+ #endif
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,1,0)
+ static void cyp_set_termios(struct tty_struct *tty,
+                             struct usb_serial_port *port, struct ktermios *old_termios)
++#else
++static void cyp_set_termios(struct tty_struct *tty,
++                            struct usb_serial_port *port, const struct ktermios *old_termios)
++#endif
+ {
+ 	if (old_termios && !tty_termios_hw_change(&tty->termios, old_termios)) {
+ 		dev_dbg(&port->dev, "termios didn't change");

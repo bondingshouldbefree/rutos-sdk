@@ -1,0 +1,426 @@
+Index: rpcd-2021-03-11-ccb75178/main.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/main.c
++++ rpcd-2021-03-11-ccb75178/main.c
+@@ -17,6 +17,8 @@
+  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+  */
+ 
++#include <fcntl.h>
++#include <stdio.h>
+ #include <unistd.h>
+ #include <stdlib.h>
+ 
+@@ -32,11 +34,25 @@
+ #include <rpcd/uci.h>
+ #define RPC_UCI_DIR_PREFIX	"/var/run/rpcd"
+ #define RPC_UCI_SAVEDIR_PREFIX	RPC_UCI_DIR_PREFIX "/uci-"
++#define RPCD_CONNECT_RETRY	10
++#define RPCD_RECONNECT_DELAY 100000
++
+ static struct ubus_auto_conn conn;
+ static bool respawn = false;
++static bool ubus_connected = false;
++static int saved_argc;
++static char **saved_argv;
++static struct uloop_fd reload_fd;
++static int reload_pipe[2] = {-1, -1};
+ 
+ int rpc_exec_timeout = RPC_EXEC_DEFAULT_TIMEOUT;
+ 
++struct reconnect_ctx {
++	struct uloop_timeout timer;
++	const char *ubus_socket;
++	int retries;
++};
++
+ static void
+ rpc_uci_purge_dir(const char *path)
+ {
+@@ -81,40 +97,130 @@ static void rpc_uci_purge_savedirs(void)
+ }
+ 
+ static void
+-handle_signal(int sig)
++exec_self(void)
+ {
++	const char *cmd = rpc_exec_lookup(saved_argv[0]);
++	if (!cmd)
++		_exit(EXIT_FAILURE);
++
++	close(reload_pipe[0]);
++	close(reload_pipe[1]);
++	reload_pipe[0] = reload_pipe[1] = -1;
++
++	for (int i=0;i<3;i++)
++		if (fcntl(i, F_GETFL) == -1)
++			close(i);
++
++	setenv("RPC_HANGUP", "1", 1);
++	execv(cmd, saved_argv);
++	_exit(EXIT_FAILURE);
++}
++
++static void reload_cb(struct uloop_fd *fd, unsigned int events) {
++	char buf[16];
++
++	if (read(fd->fd, buf, sizeof(buf)) <= 0)
++		return;
++
+ 	rpc_session_freeze();
+ 	uloop_cancelled = true;
+-	respawn = (sig == SIGHUP);
++	respawn = true;
++	uloop_end();
+ }
+ 
+ static void
+-exec_self(int argc, char **argv)
++handle_signal(struct uloop_signal *usig)
+ {
+-	int i;
+-	const char *cmd;
+-	char **args;
++	int sig = usig->signo;
++	if (sig == SIGHUP || sig == SIGUSR1) {
++		if (reload_pipe[1] != -1) {
++			write(reload_pipe[1], "X", 1);
++		}
++	} else {
++		uloop_cancelled = true;
++	}
++}
+ 
+-	cmd = rpc_exec_lookup(argv[0]);
+-	if (!cmd)
++static void setup_signals(void) {
++	static struct uloop_signal sigs[] = {
++		{ .cb = handle_signal, .signo = SIGHUP },
++		{ .cb = handle_signal, .signo = SIGUSR1 },
++		{ .cb = handle_signal, .signo = SIGINT },
++		{ .cb = handle_signal, .signo = SIGTERM }
++	};
++
++	for (size_t i = 0; i < sizeof(sigs)/sizeof(sigs[0]); i++)
++		uloop_signal_add(&sigs[i]);
++}
++
++static void setup_reload_pipe(void) {
++	if (pipe(reload_pipe) < 0) {
++		exit(EXIT_FAILURE);
++	}
++
++	if (fcntl(reload_pipe[0], F_SETFD, FD_CLOEXEC) < 0 ||
++		fcntl(reload_pipe[1], F_SETFD, FD_CLOEXEC) < 0) {
++		close(reload_pipe[0]);
++		close(reload_pipe[1]);
++		exit(EXIT_FAILURE);
++	}
++
++	reload_fd.fd = reload_pipe[0];
++	reload_fd.cb = reload_cb;
++	if (uloop_fd_add(&reload_fd, ULOOP_READ) < 0) {
++		close(reload_pipe[0]);
++		close(reload_pipe[1]);
++		exit(EXIT_FAILURE);
++	}
++}
++static void ubus_connect_handler(struct ubus_context *ctx)
++{
++	int ret;
++
++	if ((ret = rpc_session_api_init(ctx)) != 0) {
++		fprintf(stderr, "Session API init failed: %d\n", ret);
+ 		return;
++	}
+ 
+-	args = calloc(argc + 1, sizeof(char *));
+-	if (!args)
++	if ((ret = rpc_plugin_api_init(ctx)) == UBUS_STATUS_CONNECTION_FAILED) {
++		fprintf(stderr, "Plugin API init failed: %d\n", ret);
+ 		return;
++	}
++	ubus_connected = true;
++	fprintf(stderr, "UBUS connection established\n");
++}
+ 
+-	for (i = 0; i < argc; i++)
+-		args[i] = argv[i];
++static void reconnect_cb(struct uloop_timeout *t) {
++	struct reconnect_ctx *ctx = container_of(t, struct reconnect_ctx, timer);
+ 
+-	setenv("RPC_HANGUP", "1", 1);
+-	execv(cmd, (char *const *)args);
++	if (ubus_connected) {
++		free(ctx);
++		return;
++	}
++	ubus_auto_shutdown(&conn);
++	conn.cb = ubus_connect_handler;
++	conn.path = ctx->ubus_socket;
++	ubus_auto_connect(&conn);
++
++	if (!ubus_connected && ++ctx->retries < RPCD_CONNECT_RETRY) {
++		uloop_timeout_set(&ctx->timer, RPCD_RECONNECT_DELAY / 1000);
++		return;
++	}
++
++	if (!ubus_connected) {
++		fprintf(stderr, "UBUS connection failed after %d attempts\n", ctx->retries);
++	}
++	free(ctx);
+ }
+ 
+-static void ubus_connect_handler(struct ubus_context *ctx)
+-{
+-	rpc_session_api_init(ctx);
+-	rpc_rc_api_init(ctx);
+-	rpc_plugin_api_init(ctx);
++static void start_ubus_reconnect(const char *ubus_socket) {
++	struct reconnect_ctx *ctx = calloc(1, sizeof(*ctx));
++	if (!ctx)
++		exit(EXIT_FAILURE);
++	ctx->timer.cb = reconnect_cb;
++	ctx->ubus_socket = ubus_socket;
++	ctx->retries = 0;
++	reconnect_cb(&ctx->timer);
+ }
+ 
+ int main(int argc, char **argv)
+@@ -124,6 +230,9 @@ int main(int argc, char **argv)
+ 	const char *ubus_socket = NULL;
+ 	int ch;
+ 
++	saved_argc = argc;
++	saved_argv = argv;
++
+ 	while ((ch = getopt(argc, argv, "s:t:")) != -1) {
+ 		switch (ch) {
+ 		case 's':
+@@ -144,36 +253,33 @@ int main(int argc, char **argv)
+ 		return -1;
+ 	}
+ 
+-	if (stat(RPC_UCI_DIR_PREFIX, &s))
+-		mkdir(RPC_UCI_DIR_PREFIX, 0700);
+-
+ 	umask(0077);
+ 
+-	signal(SIGPIPE, SIG_IGN);
+-	signal(SIGHUP,  handle_signal);
+-	signal(SIGUSR1, handle_signal);
++	if (stat(RPC_UCI_DIR_PREFIX, &s))
++		mkdir(RPC_UCI_DIR_PREFIX, 0700);
+ 
+ 	uloop_init();
+-
+-	conn.cb	  = ubus_connect_handler;
+-	conn.path = ubus_socket;
+-
++	setup_signals();
++	setup_reload_pipe();
+ 	rpc_session_init();
+ 
+ 	hangup = getenv("RPC_HANGUP");
+-
+ 	if (!hangup || strcmp(hangup, "1"))
+ 		rpc_uci_purge_savedirs();
+-	else
++
++	start_ubus_reconnect(ubus_socket);
++
++	if (hangup && !strcmp(hangup, "1"))
+ 		rpc_session_thaw();
+ 
+-	ubus_auto_connect(&conn);
+ 	uloop_run();
+ 	uloop_done();
+ 	ubus_auto_shutdown(&conn);
+-
++	rpc_uci_purge_savedirs();
++	if (reload_pipe[0] != -1) close(reload_pipe[0]);
++	if (reload_pipe[1] != -1) close(reload_pipe[1]);
+ 	if (respawn)
+-		exec_self(argc, argv);
++		exec_self();
+ 
+ 	return 0;
+ }
+Index: rpcd-2021-03-11-ccb75178/session.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/session.c
++++ rpcd-2021-03-11-ccb75178/session.c
+@@ -45,6 +45,7 @@ static struct avl_tree sessions;
+ static struct blob_buf buf;
+ struct rpc_session_acl *rpc_session_get_acl(struct rpc_session *ses, const char *scope, const char *object);
+ void rpc_grant_endpoint_options(struct rpc_session *ses, struct blob_attr *api_attr);
++struct rpc_session *rpc_session_thaw_single(const char *sid);
+ 
+ static LIST_HEAD(create_callbacks);
+ static LIST_HEAD(destroy_callbacks);
+@@ -363,8 +364,11 @@ rpc_session_get(const char *id)
+ 	struct rpc_session *ses;
+ 
+ 	ses = avl_find_element(&sessions, id, ses, avl);
+-	if (!ses)
+-		return NULL;
++	if (!ses) {
++		ses = rpc_session_thaw_single(id);
++		if (!ses)
++			return NULL;
++	}
+ 
+ 	rpc_touch_session(ses);
+ 	return ses;
+@@ -1698,11 +1702,11 @@ rpc_handle_reload_acls(struct ubus_conte
+ 
+ 		struct rpc_session_acl_scope *acl_scope	 = NULL;
+ 		struct rpc_session_acl_scope *nacl_scope = NULL;
+-		
++
+ 		avl_for_each_element_safe(&ses->acls, acl_scope, avl, nacl_scope) {
+ 			rpc_session_destroy_alcs(&ses->acls, acl_scope);
+ 		}
+-	
++
+ 		avl_init(&ses->acls, avl_strcmp, true, NULL);
+ 		rpc_login_setup_acls(ses, login);
+ 	}
+@@ -1730,33 +1734,45 @@ rpc_validate_sid(const char *id)
+ 	return true;
+ }
+ 
+-static int
+-rpc_blob_to_file(const char *path, struct blob_attr *attr)
+-{
+-	int fd, len;
++static int rpc_blob_to_file(const char *path, struct blob_attr *attr) {
++	int fd;
++	ssize_t total_written = 0;
++	ssize_t blob_size = blob_pad_len(attr);
+ 
+-	fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
++	if (blob_size <= 0)
++		return -1;
+ 
++	fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+ 	if (fd < 0)
+ 		return fd;
+ 
+-	len = write(fd, attr, blob_pad_len(attr));
+-
+-	close(fd);
++	while (total_written < blob_size) {
++	   	ssize_t written = write(fd, (char *)attr + total_written, blob_size - total_written);
++	   	if (written < 0) {
++	   	   	if (errno == EINTR)
++	   	   	   	continue;
++	   	   	fprintf(stderr, "Failed to write to file %s: %s\n", path, strerror(errno));
++	   	   	unlink(path);
++	   	   	close(fd);
++	   	   	return -1;
++	   	}
++	   	total_written += written;
++	}
+ 
+-	if (len != blob_pad_len(attr))
+-	{
++	if (close(fd) < 0) {
++	   	fprintf(stderr, "Failed to close file %s: %s\n", path, strerror(errno));
+ 		unlink(path);
+-		return -1;
++	   	return -1;
+ 	}
+ 
+-	return len;
++	return total_written;
+ }
+ 
+ static struct blob_attr *
+ rpc_blob_from_file(const char *path)
+ {
+-	int fd = -1, len;
++	int fd = -1;
++	ssize_t len, total_read = 0;
+ 	struct stat s;
+ 	struct blob_attr head, *attr = NULL;
+ 
+@@ -1780,13 +1796,18 @@ rpc_blob_from_file(const char *path)
+ 
+ 	memcpy(attr, &head, sizeof(head));
+ 
+-	len += read(fd, (char *)attr + sizeof(head), s.st_size - sizeof(head));
++	while (total_read < s.st_size - sizeof(head)) {
++	   	len = read(fd, (char *)attr + sizeof(head) + total_read, s.st_size - sizeof(head) - total_read);
++	   	if (len < 0) {
++	   	   	if (errno == EINTR)
++				continue;
+ 
+-	if (len != blob_pad_len(&head))
+-		goto fail;
++		   	goto fail;
++	   	}
++	   	total_read += len;
++	}
+ 
+ 	close(fd);
+-
+ 	return attr;
+ 
+ fail:
+@@ -1843,7 +1864,7 @@ rpc_session_from_blob(struct uci_context
+ 				fprintf(stderr, "Cannot save username!\n");
+ 				return false;
+ 			}
+-			
++
+ 			rpc_login_setup_acls(ses, login);
+ 		}
+ 	}
+@@ -1936,6 +1957,41 @@ void rpc_session_destroy_cb(struct rpc_s
+ 		list_add(&cb->list, &destroy_callbacks);
+ }
+ 
++struct rpc_session
++*rpc_session_thaw_single(const char *sid)
++{
++	char path[PATH_MAX];
++	struct blob_attr *attr = NULL;
++	struct rpc_session *ses = NULL;
++	struct uci_context *uci = NULL;
++
++	if (!rpc_validate_sid(sid))
++		return NULL;
++
++	snprintf(path, sizeof(path), RPC_SESSION_DIRECTORY "/%s", sid);
++	attr = rpc_blob_from_file(path);
++	if (!attr)
++		return NULL;
++
++	uci = uci_alloc_context();
++	if (!uci)
++		goto cleanup;
++
++	if (!rpc_session_from_blob(uci, attr))
++		goto cleanup;
++
++	ses = avl_find_element(&sessions, sid, ses, avl);
++
++cleanup:
++	if (uci)
++		uci_free_context(uci);
++	if (attr)
++		free(attr);
++
++	return ses;
++}
++
++
+ void rpc_session_freeze(void)
+ {
+ 	struct stat s;
+@@ -1995,4 +2051,3 @@ void rpc_session_thaw(void)
+ 
+ 	uci_free_context(uci);
+ }
+-

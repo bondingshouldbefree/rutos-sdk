@@ -1,0 +1,19 @@
+{
+	"system/admin/datetime": {
+		"title": "Date & Time",
+		"index": 15
+	},
+		"system/admin/datetime/general": {
+			"title": "General",
+			"index": 10,
+			"view": "services/NtpGeneral",
+			"acls": [ "system/admin/datetime/general" ],
+			"main_page": true
+		},
+		"system/admin/datetime/ntp": {
+			"title": "NTP",
+			"index": 20,
+			"view": "services/Ntp",
+			"acls": [ "system/admin/datetime/ntp_general" ]
+		}
+}

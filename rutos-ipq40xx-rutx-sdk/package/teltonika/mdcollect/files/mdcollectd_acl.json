@@ -1,0 +1,14 @@
+{
+	"user": "mdcollectd",
+	"publish": [ "mdcollect" ],
+	"access": {
+		"network.interface": {
+			"methods": [ "dump" ]
+		},
+		"network.wireless": {
+			"methods": [ "status" ]
+		}
+	},
+	"listen": [ "ubus.object.add", "wireless.state" ],
+	"subscribe": [ "network.interface" ]
+}

@@ -1,0 +1,106 @@
+Change struct nf_flow_route to contain data for a single direction.
+
+With changes to flow_offload_add, holding data for both directions is no longer necessary.
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -202,25 +202,23 @@ static inline __s32 nf_flow_timeout_delt
+ }
+ 
+ struct nf_flow_route {
++	struct dst_entry		*dst;
+ 	struct {
+-		struct dst_entry		*dst;
++		u32			ifindex;
+ 		struct {
+-			u32			ifindex;
+-			struct {
+-				u16		id;
+-				__be16		proto;
+-			} encap[NF_FLOW_TABLE_ENCAP_MAX];
+-			u8			num_encaps:2,
+-						ingress_vlans:2;
+-		} in;
+-		struct {
+-			u32			ifindex;
+-			u32			hw_ifindex;
+-			u8			h_source[ETH_ALEN];
+-			u8			h_dest[ETH_ALEN];
+-		} out;
+-		enum flow_offload_xmit_type	xmit_type;
+-	} tuple[FLOW_OFFLOAD_DIR_MAX];
++			u16		id;
++			__be16		proto;
++		} encap[NF_FLOW_TABLE_ENCAP_MAX];
++		u8			num_encaps:2,
++					ingress_vlans:2;
++	} in;
++	struct {
++		u32			ifindex;
++		u32			hw_ifindex;
++		u8			h_source[ETH_ALEN];
++		u8			h_dest[ETH_ALEN];
++	} out;
++	enum flow_offload_xmit_type	xmit_type;
+ };
+ 
+ struct nf_conn_flow {
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -98,9 +98,9 @@ static u32 flow_offload_dst_cookie(struc
+ static struct dst_entry *nft_route_dst_fetch(struct nf_flow_route *route,
+ 					     enum flow_offload_tuple_dir dir)
+ {
+-	struct dst_entry *dst = route->tuple[dir].dst;
++	struct dst_entry *dst = route->dst;
+ 
+-	route->tuple[dir].dst = NULL;
++	route->dst = NULL;
+ 
+ 	return dst;
+ }
+@@ -122,24 +122,24 @@ static int flow_offload_fill_route(struc
+ 		break;
+ 	}
+ 
+-	flow_tuple->iifidx = route->tuple[dir].in.ifindex;
+-	for (i = route->tuple[dir].in.num_encaps - 1; i >= 0; i--) {
+-		flow_tuple->encap[j].id = route->tuple[dir].in.encap[i].id;
+-		flow_tuple->encap[j].proto = route->tuple[dir].in.encap[i].proto;
+-		if (route->tuple[dir].in.ingress_vlans & BIT(i))
++	flow_tuple->iifidx = route->in.ifindex;
++	for (i = route->in.num_encaps - 1; i >= 0; i--) {
++		flow_tuple->encap[j].id = route->in.encap[i].id;
++		flow_tuple->encap[j].proto = route->in.encap[i].proto;
++		if (route->in.ingress_vlans & BIT(i))
+ 			flow_tuple->in_vlan_ingress |= BIT(j);
+ 		j++;
+ 	}
+-	flow_tuple->encap_num = route->tuple[dir].in.num_encaps;
++	flow_tuple->encap_num = route->in.num_encaps;
+ 
+-	switch (route->tuple[dir].xmit_type) {
++	switch (route->xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+-		memcpy(flow_tuple->out.h_dest, route->tuple[dir].out.h_dest,
++		memcpy(flow_tuple->out.h_dest, route->out.h_dest,
+ 		       ETH_ALEN);
+-		memcpy(flow_tuple->out.h_source, route->tuple[dir].out.h_source,
++		memcpy(flow_tuple->out.h_source, route->out.h_source,
+ 		       ETH_ALEN);
+-		flow_tuple->out.ifidx = route->tuple[dir].out.ifindex;
+-		flow_tuple->out.hw_ifidx = route->tuple[dir].out.hw_ifindex;
++		flow_tuple->out.ifidx = route->out.ifindex;
++		flow_tuple->out.hw_ifidx = route->out.hw_ifindex;
+ 		dst_release(dst);
+ 		break;
+ 	case FLOW_OFFLOAD_XMIT_XFRM:
+@@ -151,7 +151,7 @@ static int flow_offload_fill_route(struc
+ 		WARN_ON_ONCE(1);
+ 		break;
+ 	}
+-	flow_tuple->xmit_type = route->tuple[dir].xmit_type;
++	flow_tuple->xmit_type = route->xmit_type;
+ 
+ 	return 0;
+ }

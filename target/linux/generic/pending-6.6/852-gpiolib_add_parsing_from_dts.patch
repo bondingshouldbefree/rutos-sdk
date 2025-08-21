@@ -1,0 +1,202 @@
+--- a/drivers/gpio/gpiolib.c
++++ b/drivers/gpio/gpiolib.c
+@@ -344,113 +344,83 @@ static struct gpio_desc *gpio_name_to_de
+ 	return NULL;
+ }
+ 
+-/*
+- * Take the names from gc->names and assign them to their GPIO descriptors.
+- * Warn if a name is already used for a GPIO line on a different GPIO chip.
+- *
+- * Note that:
+- *   1. Non-unique names are still accepted,
+- *   2. Name collisions within the same GPIO chip are not reported.
+- */
+-static int gpiochip_set_desc_names(struct gpio_chip *gc)
++int tlt_gpio_set_line_name(struct gpio_chip *chip, const char *line_name, int index)
+ {
+-	struct gpio_device *gdev = gc->gpiodev;
+-	int i;
++	struct gpio_device *gdev;
+ 
+-	/* First check all names if they are unique */
+-	for (i = 0; i != gc->ngpio; ++i) {
+-		struct gpio_desc *gpio;
+-
+-		gpio = gpio_name_to_desc(gc->names[i]);
+-		if (gpio)
+-			dev_warn(&gdev->dev,
+-				 "Detected name collision for GPIO name '%s'\n",
+-				 gc->names[i]);
++	if (!chip || !line_name) {
++		return 1;
+ 	}
+ 
+-	/* Then add all names to the GPIO descriptors */
+-	for (i = 0; i != gc->ngpio; ++i)
+-		gdev->descs[i].name = gc->names[i];
++	gdev = chip->gpiodev;
++	if (gdev->ngpio < index) {
++			return 1;
++	}
++
++	if (gdev->descs[index].name) {
++			return 1;
++	}
++	gdev->descs[index].name = line_name;
+ 
+ 	return 0;
+ }
++EXPORT_SYMBOL_GPL(tlt_gpio_set_line_name);
+ 
+-/*
+- * gpiochip_set_names - Set GPIO line names using device properties
+- * @chip: GPIO chip whose lines should be named, if possible
+- *
+- * Looks for device property "gpio-line-names" and if it exists assigns
+- * GPIO line names for the chip. The memory allocated for the assigned
+- * names belong to the underlying firmware node and should not be released
+- * by the caller.
+- */
+-static int gpiochip_set_names(struct gpio_chip *chip)
++int tlt_gpio_set_active_low(struct gpio_chip *chip, int index)
+ {
+-	struct gpio_device *gdev = chip->gpiodev;
+-	struct device *dev = &gdev->dev;
+-	const char **names;
+-	int ret, i;
+-	int count;
++	struct gpio_device *gdev;
+ 
+-	count = device_property_string_array_count(dev, "gpio-line-names");
+-	if (count < 0)
+-		return 0;
++	if (!chip) {
++		return 1;
++	}
+ 
+-	/*
+-	 * When offset is set in the driver side we assume the driver internally
+-	 * is using more than one gpiochip per the same device. We have to stop
+-	 * setting friendly names if the specified ones with 'gpio-line-names'
+-	 * are less than the offset in the device itself. This means all the
+-	 * lines are not present for every single pin within all the internal
+-	 * gpiochips.
+-	 */
+-	if (count <= chip->offset) {
+-		dev_warn(dev, "gpio-line-names too short (length %d), cannot map names for the gpiochip at offset %u\n",
+-			 count, chip->offset);
+-		return 0;
++	gdev = chip->gpiodev;
++	if (gdev->ngpio < index) {
++		return 1;
+ 	}
++	set_bit(FLAG_ACTIVE_LOW, &gdev->descs[index].flags);
+ 
+-	names = kcalloc(count, sizeof(*names), GFP_KERNEL);
+-	if (!names)
+-		return -ENOMEM;
++	return 0;
++}
++EXPORT_SYMBOL_GPL(tlt_gpio_set_active_low);
+ 
+-	ret = device_property_read_string_array(dev, "gpio-line-names",
+-						names, count);
+-	if (ret < 0) {
+-		dev_warn(dev, "failed to read GPIO line names\n");
+-		kfree(names);
+-		return ret;
++struct gpio_chip *gpiochip_find_by_id(int id)
++{
++	struct gpio_device *gdev;
++	struct gpio_chip *chip = NULL;
++	unsigned long flags;
++
++	spin_lock_irqsave(&gpio_lock, flags);
++	list_for_each_entry(gdev, &gpio_devices, list){
++			if (gdev->id == id) {
++					chip = gdev->chip;
++					break;
++			}
+ 	}
++	spin_unlock_irqrestore(&gpio_lock, flags);
+ 
+-	/*
+-	 * When more that one gpiochip per device is used, 'count' can
+-	 * contain at most number gpiochips x chip->ngpio. We have to
+-	 * correctly distribute all defined lines taking into account
+-	 * chip->offset as starting point from where we will assign
+-	 * the names to pins from the 'names' array. Since property
+-	 * 'gpio-line-names' cannot contains gaps, we have to be sure
+-	 * we only assign those pins that really exists since chip->ngpio
+-	 * can be different of the chip->offset.
+-	 */
+-	count = (count > chip->offset) ? count - chip->offset : count;
+-	if (count > chip->ngpio)
+-		count = chip->ngpio;
++	return chip;
++}
++EXPORT_SYMBOL_GPL(gpiochip_find_by_id);
+ 
+-	for (i = 0; i < count; i++) {
+-		/*
+-		 * Allow overriding "fixed" names provided by the GPIO
+-		 * provider. The "fixed" names are more often than not
+-		 * generic and less informative than the names given in
+-		 * device properties.
+-		 */
+-		if (names[chip->offset + i] && names[chip->offset + i][0])
+-			gdev->descs[i].name = names[chip->offset + i];
+-	}
++int tlt_gpio_get_line_by_name(struct gpio_chip *chip, const char *line_name)
++{
++	struct gpio_device *gdev;
++	int i;
+ 
+-	kfree(names);
++	if (!chip || !line_name) {
++		return -1;
++	}
+ 
+-	return 0;
++	gdev = chip->gpiodev;
++	for (i = 0; i < gdev->ngpio; i++) {
++		if (gdev->descs[i].name && !strcmp(gdev->descs[i].name, line_name)) {
++			return i;
++		}
++	}
++	return -1;
+ }
++EXPORT_SYMBOL_GPL(tlt_gpio_get_line_by_name);
+ 
+ static unsigned long *gpiochip_allocate_mask(struct gpio_chip *gc)
+ {
+@@ -856,15 +826,6 @@ int gpiochip_add_data_with_key(struct gp
+ 	INIT_LIST_HEAD(&gdev->pin_ranges);
+ #endif
+ 
+-	if (gc->names) {
+-		ret = gpiochip_set_desc_names(gc);
+-		if (ret)
+-			goto err_remove_from_list;
+-	}
+-	ret = gpiochip_set_names(gc);
+-	if (ret)
+-		goto err_remove_from_list;
+-
+ 	ret = gpiochip_init_valid_mask(gc);
+ 	if (ret)
+ 		goto err_remove_from_list;
+--- a/include/linux/gpio/driver.h
++++ b/include/linux/gpio/driver.h
+@@ -825,4 +825,10 @@ static inline struct fwnode_handle *gpio
+ 	return NULL;
+ }
+ 
++struct gpio_desc *gpiochip_get_desc(struct gpio_chip *gc, unsigned int hwnum);
++int tlt_gpio_set_line_name(struct gpio_chip *chip, const char *line_name, int index);
++int tlt_gpio_set_active_low(struct gpio_chip *chip, int index);
++struct gpio_chip *gpiochip_find_by_id(int id);
++int tlt_gpio_get_line_by_name(struct gpio_chip *chip, const char *line_name);
++
+ #endif /* __LINUX_GPIO_DRIVER_H */

@@ -1,0 +1,37 @@
+--- a/interface.c
++++ b/interface.c
+@@ -714,6 +714,9 @@
+ 		free(iface->host_device);
+ 	if (iface->modem)
+ 		free(iface->modem);
++	if (iface->zone) {
++		free(iface->zone);
++	}
+ 
+ 	free(iface);
+ }
+@@ -1344,6 +1347,12 @@
+ 
+ 	if_old->jail_device = if_new->jail_device;
+ 
++	if (if_old->zone) {
++		free(if_old->zone);
++	}
++
++	if_old->zone = if_new->zone;
++
+ 	if (if_old->host_device)
+ 		free(if_old->host_device);
+ 
+--- a/interface.h
++++ b/interface.h
+@@ -108,7 +108,7 @@
+ 
+ 	const char *name;
+ 	const char *device;
+-	const char *zone;
++	char *zone;
+ 	char *jail;
+ 	char *jail_device;
+ 	char *host_device;
+

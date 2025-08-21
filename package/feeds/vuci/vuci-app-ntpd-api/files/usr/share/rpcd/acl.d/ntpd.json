@@ -1,0 +1,1 @@
+{"system/admin/datetime/ntpd":{"description":"NTPD time synchronisation configuration module","read":{"api":{"/date_time/ntpd/*":["*"],"/date_time/ntp/server/config/*":["enabled"]}},"write":{"api":["/date_time/ntpd/*"]}}}

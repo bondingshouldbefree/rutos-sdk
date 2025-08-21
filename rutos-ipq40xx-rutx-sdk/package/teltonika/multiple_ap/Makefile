@@ -1,0 +1,46 @@
+#
+# Copyright (C) 2021 Teltonika
+#
+
+include $(TOPDIR)/rules.mk
+include $(INCLUDE_DIR)/download.mk
+
+PKG_NAME:=multiple_ap
+PKG_VERSION:=2025-07-09
+PKG_RELEASE:=1
+PKG_LICENSE:=Teltonika-closed
+
+PKG_SOURCE_VERSION:=7.17
+PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+
+include $(INCLUDE_DIR)/package.mk
+
+define Package/multiple_ap
+	SECTION:=base
+	CATEGORY:=Base system
+	TITLE:=Multiple Access Points in Station Mode
+	USERID:=multiple_ap:multiple_ap
+endef
+
+define Package/multiple_ap/conffiles
+/etc/config/multi_wifi
+endef
+
+
+
+define Package/multiple_ap/install
+	$(INSTALL_DIR) $(1)/etc/init.d/
+	$(INSTALL_DIR) $(1)/usr/sbin/
+	$(INSTALL_DIR) $(1)/etc/config/
+	$(INSTALL_DIR) $(1)/usr/share/acl.d/
+	$(INSTALL_DIR) $(1)/etc/permtab.d/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/multiple_ap.sh $(1)/usr/sbin/multiple_ap.sh
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/multi_wifi.init $(1)/etc/init.d/multi_wifi
+	$(INSTALL_CONF_USR) $(PKG_BUILD_DIR)/files/multi_wifi.config $(1)/etc/config/multi_wifi
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/files/multiple_ap_acl.json $(1)/usr/share/acl.d/multiple_ap.json
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/files/multiple_ap.permtab $(1)/etc/permtab.d/multiple_ap
+endef
+
+
+$(eval $(call BuildPackage,multiple_ap))

@@ -1,0 +1,54 @@
+{
+  "network/dhcp_servers": {
+    "title": "DHCP",
+    "index": 110
+  },
+  "network/dhcp_servers/general": {
+    "title": "Server Settings",
+    "index": 10
+  },
+  "network/dhcp_servers/general/ipv4": {
+    "title": "IPv4",
+    "acls": ["network/dhcp_servers/general"],
+    "view": "network/Dhcp4Server/Dhcp4Servers",
+    "index": 10
+  },
+  "network/dhcp_servers/general/ipv6": {
+    "title": "IPv6",
+    "acls": ["network/dhcp_servers/general"],
+    "view": "network/Dhcp6Server/Dhcp6Servers",
+    "index": 20
+  },
+  "network/dhcp_servers/static_leases": {
+    "title": "Static Leases",
+    "index": 20
+  },
+  "network/dhcp_servers/static_leases/ipv4": {
+    "title": "IPv4",
+    "acls": ["network/dhcp_servers/static_leases"],
+    "view": "network/StaticLease/Static4Leases",
+    "index": 10
+  },
+  "network/dhcp_servers/static_leases/ipv6": {
+    "title": "IPv6",
+    "acls": ["network/dhcp_servers/static_leases"],
+    "view": "network/StaticLease/Static6Leases",
+    "index": 20
+  },
+  "status/network/lan": {
+    "title": "LAN",
+    "index": 30
+  },
+  "status/network/lan/ipv4": {
+    "title": "IPv4",
+    "acls": ["status/network/lan"],
+    "view": "status/Lease4Status",
+    "index": 10
+  },
+  "status/network/lan/ipv6": {
+    "title": "IPv6",
+    "acls": ["status/network/lan"],
+    "view": "status/Lease6Status",
+    "index": 20
+  }
+}

@@ -1,0 +1,46 @@
+From f61626e434de08991456e0570eb65f9deb0ea4ac Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Tue, 18 Mar 2025 15:03:18 +0200
+Subject: [PATCH 1/1] acls: fix use after free
+
+---
+ ubusd_acl.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/ubusd_acl.c b/ubusd_acl.c
+index 352c581..b94d3e3 100644
+--- a/ubusd_acl.c
++++ b/ubusd_acl.c
+@@ -58,6 +58,7 @@ struct ubusd_acl_obj {
+ 
+ struct ubusd_acl_file {
+ 	struct vlist_node avl;
++	char *avl_key;
+ 
+ 	const char *user;
+ 	const char *group;
+@@ -223,6 +224,7 @@ ubusd_acl_file_free(struct ubusd_acl_file *file)
+ 		free(p);
+ 	}
+ 
++	free(file->avl_key);
+ 	free(file);
+ }
+ 
+@@ -431,11 +433,12 @@ ubusd_acl_load_file(const char *filename)
+ 		return -1;
+ 
+ 	file->blob = blob;
++	file->avl_key = strdup(filename);
+ 
+ 	memcpy(blob, bbuf.head, blob_raw_len(bbuf.head));
+ 	INIT_LIST_HEAD(&file->acl);
+ 
+-	vlist_add(&ubusd_acl_files, &file->avl, filename);
++	vlist_add(&ubusd_acl_files, &file->avl, file->avl_key);
+ 	syslog(LOG_INFO, "loading %s\n", filename);
+ 
+ 	return 0;
+-- 
+2.48.1
+

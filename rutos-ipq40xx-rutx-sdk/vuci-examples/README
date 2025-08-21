@@ -1,0 +1,108 @@
+# Custom Web Page and API Creation
+
+## Technologies Used
+
+- **Frontend:** Vue 3 JavaScript framework
+- **Backend:** Lua 5.1 programming language
+
+## Building the Application
+
+1. **Copy Example Files**
+
+   Copy the example API and UI packages to the VUCI directory
+
+   ```sh
+   cp "vuci-app-example-api" "vuci-app-example-ui" "RUTX_R_GPL_00.07.17.1/package/feeds/vuci/"
+   ```
+
+   > **Note:** Directory names can be changed, but API and UI names must match.  
+   > Example: `vuci-app-test-app-api` and `vuci-app-test-app-ui`
+
+2. **Configure OpenWrt**
+
+   ```sh
+   make menuconfig
+   ```
+
+   Navigate to **VuCI → Applications/UI** and select:
+   - `[M]` for manual installation (package will need to be installed separately)
+   - `[*]` for automatic installation (package will be included in firmware)
+
+   Keyboard hotkeys are `m` and `y`, respectively.
+
+3. **Build the Application**
+
+   For manual installation mode (`[M]`):
+
+   ```sh
+   make package/vuci-app-example-ui/{clean,compile}
+   ```
+
+   For automatic installation mode (`[*]`):
+
+   ```sh
+   make clean
+   make
+   ```
+
+   > After building, both API and UI packages will be available in:  
+   > `RUTX_R_GPL_00.07.17.1/bin/packages/ipq40xx/vuci`
+
+## Manual Installation
+
+1. **Copy Packages to Device**
+
+   Copy both API and UI packages to the device:
+
+   ```sh
+   scp "RUTX_R_GPL_00.07.17.1/bin/packages/ipq40xx/vuci/vuci-app-example-api_1_ipq40xx.ipk" \
+       "RUTX_R_GPL_00.07.17.1/bin/packages/ipq40xx/vuci/vuci-app-example-ui_1_ipq40xx.ipk" \
+       root@192.168.1.1:/tmp
+   ```
+
+2. **Install Packages**
+
+   Install using opkg:
+
+   ```sh
+   opkg install /tmp/vuci-app-example-ui_1_ipq40xx.ipk \
+               /tmp/vuci-app-example-api_1_ipq40xx.ipk
+   ```
+
+## Package Manager Integration
+
+1. **Modify Package Configuration**
+
+   Edit `RUTX_R_GPL_00.07.17.1/ipk_packages.json`:
+
+   ```json
+   {
+     "vuci-app-example-ui": {
+       "name": "example_app",
+       "vuci_dep": "vuci-app-example-api"
+     }
+   }
+   ```
+
+2. **Configure OpenWrt**
+
+   ```sh
+   make menuconfig
+   ```
+
+   Navigate to **VuCI → Applications/UI** and select `[M]` for `vuci-app-example-ui`.
+
+3. **Build Application**
+
+   ```sh
+   make package/vuci-app-example-ui/{clean,compile}
+   ```
+
+4. **Compile Package Manager Packages**
+
+   ```sh
+   make pm
+   ```
+
+   > After compilation, the package will be available as `example_app.tar.gz` in:  
+   > `RUTX_R_GPL_00.07.17.1/bin/packages/<arch_name>/zipped_packages`

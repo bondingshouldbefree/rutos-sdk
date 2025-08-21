@@ -1,0 +1,12 @@
+{
+    "system/flashops": {
+        "title": "Firmware",
+        "index": 40
+    },
+    "system/flashops/general": {
+        "title": "Update Firmware",
+        "acls": [ "system/flashops/general" ],
+        "view": "system/Firmware",
+        "index": 10
+    }
+}

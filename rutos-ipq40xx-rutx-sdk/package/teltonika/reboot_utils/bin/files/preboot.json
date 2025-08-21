@@ -1,0 +1,43 @@
+{
+	"user": "preboot",
+	"access": {
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"send_sms"
+			]
+		},
+		"log": {
+			"methods": [
+				"write_ext"
+			]
+		},
+		"quota_limit": {
+			"methods": [
+				"status"
+			]
+		},
+		"poeman": {
+			"methods": [
+				"set"
+			]
+		},
+		"network.interface*": {
+			"methods": [
+				"status",
+				"up",
+				"down"
+			]
+		},
+		"rpc-sys": {
+			"methods": [
+				"reboot"
+			]
+		},
+		"mctl": {
+			"methods": [
+				"reboot"
+			]
+		}
+	}
+}

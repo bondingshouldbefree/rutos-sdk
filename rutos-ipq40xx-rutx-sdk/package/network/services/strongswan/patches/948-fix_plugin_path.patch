@@ -1,0 +1,18 @@
+--- a/src/libstrongswan/plugins/plugin_loader.c
++++ b/src/libstrongswan/plugins/plugin_loader.c
+@@ -1079,6 +1079,15 @@ static bool find_plugin(char *path, char
+ 			return TRUE;
+ 		}
+ 	}
++	if (path && snprintf(buf, PATH_MAX, "/usr/local/%s/libstrongswan-%s.so",
++						 path, name) < PATH_MAX)
++	{
++		if (stat(buf, &stb) == 0)
++		{
++			*file = buf;
++			return TRUE;
++		}
++	}
+ 	return FALSE;
+ }
+ 

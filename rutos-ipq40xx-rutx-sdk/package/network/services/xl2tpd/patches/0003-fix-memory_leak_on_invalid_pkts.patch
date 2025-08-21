@@ -1,0 +1,199 @@
+Index: xl2tpd-1.3.16/control.c
+===================================================================
+--- xl2tpd-1.3.16.orig/control.c
++++ xl2tpd-1.3.16/control.c
+@@ -1306,6 +1306,151 @@ static inline int check_control (const s
+     return 0;
+ }
+ 
++int check_l2tp (struct buffer *buf, int tunnel, int call)
++{
++    size_t ehlen = MIN_PAYLOAD_HDR_LEN;
++
++    if (CTBIT(*((_u16 *)buf->start)))
++    {
++        struct control_hdr *h = (struct control_hdr *) (buf->start);
++
++        if (buf->len < sizeof(struct control_hdr))
++        {
++            if (gconfig.debug_network)
++                l2tp_log (LOG_DEBUG, "%s: Received too small of packet\n", __FUNCTION__);
++            return -EINVAL;
++        }
++
++        if (!CLBIT (h->ver))
++        {
++            if (gconfig.debug_network)
++                l2tp_log (LOG_DEBUG, "%s: Length bit not set\n", __FUNCTION__);
++            return -EINVAL;
++        }
++
++        if (buf->len != h->length)
++        {
++            if (gconfig.debug_network)
++                l2tp_log (LOG_DEBUG, "%s: Reported and actual sizes differ (%d != %d)\n", __FUNCTION__, h->length, buf->len);
++            return -EINVAL;
++        }
++
++        if (!CFBIT (h->ver))
++        {
++            if (gconfig.debug_network)
++                l2tp_log (LOG_DEBUG, "%s: Flow bit not set\n", __FUNCTION__);
++            return -EINVAL;
++        }
++
++        if (CVER (h->ver) != VER_L2TP)
++        {
++            if (gconfig.debug_network)
++            {
++                if (CVER (h->ver) == VER_PPTP)
++                {
++                    l2tp_log (LOG_DEBUG, "%s: PPTP packet received\n", __FUNCTION__);
++                }
++                else if (CVER (h->ver) < VER_L2TP)
++                {
++                    l2tp_log (LOG_DEBUG, "%s: L2F packet received\n", __FUNCTION__);
++                }
++                else
++                {
++                    l2tp_log (LOG_DEBUG, "%s: Unknown version received\n", __FUNCTION__);
++                }
++            }
++            return -EINVAL;
++        }
++
++        if (!tunnel)
++        {
++            if (call)
++            {
++                if (gconfig.debug_network)
++                    l2tp_log (LOG_WARNING, "%s: call ID specified, but no tunnel ID specified, tossing.\n", __FUNCTION__);
++                return -EINVAL;
++            }
++
++            if (buf->len == sizeof (struct control_hdr))
++            {
++                if (gconfig.debug_network)
++                    l2tp_log (LOG_WARNING, "%s: ZLB pkt, but no tunnel ID specified, tossing.\n", __FUNCTION__);
++                return -EINVAL;
++            }
++        }
++    }
++    else
++    {
++        struct payload_hdr *h = (struct payload_hdr *) (buf->start);
++
++        if (buf->len < MIN_PAYLOAD_HDR_LEN)
++        {
++            if (gconfig.debug_network)
++                l2tp_log (LOG_DEBUG, "%s:Received to small of packet\n", __FUNCTION__);
++            return -EINVAL;
++        }
++
++        if (PLBIT (h->ver))
++        {
++            ehlen += 2;         /* Should have length information */
++            ehlen += h->length; /* include length if available */
++        }
++
++        if (PFBIT (h->ver))
++        {
++            ehlen += 4;         /* Should have Ns and Nr too */
++        }
++
++        if (PSBIT (h->ver))
++        {
++            ehlen += 2;         /* Offset information */
++        }
++
++        if ((buf->len < ehlen) && !PLBIT (h->ver))
++        {
++            if (gconfig.debug_network)
++                l2tp_log (LOG_DEBUG, "%s payload too small (%d < %d)\n", __FUNCTION__, buf->len, ehlen);
++            return -EINVAL;
++        }
++
++        if ((buf->len != h->length) && PLBIT (h->ver))
++        {
++            if (gconfig.debug_network)
++                l2tp_log (LOG_DEBUG, "%s: size mismatch (%d != %d)\n", __FUNCTION__, buf->len, h->length);
++            return -EINVAL;
++        }
++
++        if (PVER (h->ver) != VER_L2TP)
++        {
++            if (gconfig.debug_network)
++            {
++                if (PVER (h->ver) == VER_PPTP)
++                {
++                    l2tp_log (LOG_DEBUG, "%s: PPTP packet received\n", __FUNCTION__);
++                }
++                else if (CVER (h->ver) < VER_L2TP)
++                {
++                    l2tp_log (LOG_DEBUG, "%s: L2F packet received\n", __FUNCTION__);
++                }
++                else
++                {
++                    l2tp_log (LOG_DEBUG, "%s: Unknown version received\n", __FUNCTION__);
++                }
++            }
++            return -EINVAL;
++        }
++
++        if (!tunnel)
++        {
++            if (gconfig.debug_network)
++                l2tp_log (LOG_DEBUG, "%s: cannot handle data packet with tunnel id 0\n", __FUNCTION__);
++            return -EINVAL;
++        }
++    }
++
++    return 0;
++}
++
+ static inline int check_payload (struct buffer *buf, struct tunnel *t,
+                           struct call *c)
+ {
+Index: xl2tpd-1.3.16/control.h
+===================================================================
+--- xl2tpd-1.3.16.orig/control.h
++++ xl2tpd-1.3.16/control.h
+@@ -64,4 +64,6 @@ extern void hello (void *);
+ extern void send_zlb (void *);
+ extern void dethrottle (void *);
+ 
++extern int check_l2tp (struct buffer *, int tunnel, int call);
++
+ #endif
+Index: xl2tpd-1.3.16/network.c
+===================================================================
+--- xl2tpd-1.3.16.orig/network.c
++++ xl2tpd-1.3.16/network.c
+@@ -626,6 +626,13 @@ void network_thread ()
+ 		do_packet_dump (buf);
+ 	    }
+ 
++	    /* jtao: ignore invalid l2tp pkt */
++            if (check_l2tp (buf, tunnel, call) != 0)
++            {
++                if (st) st=st->next;
++                    continue;
++            }
++
+         if (!(c = get_call (tunnel, call, from.sin_addr,
+                 from.sin_port, refme, refhim)))
+         {
+@@ -665,6 +672,13 @@ void network_thread ()
+             {
+                 if (gconfig.debug_tunnel)
+                 l2tp_log (LOG_DEBUG, "%s: bad packet\n", __FUNCTION__);
++
++		/* jtao: destroy the newly allocated tunnel due to tunnel id 0, if the control pkt handling failed */
++                if (!tunnel)
++                {
++                    c->container->self->needclose = 0;
++                    c->container->self->closing = -1;
++                }
+             }
+             if (c->cnu)
+             {

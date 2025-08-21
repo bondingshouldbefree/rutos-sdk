@@ -1,0 +1,65 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=70
+STOP=1
+BOOT=0
+ENABLED=0
+GLOBAL_ENABLED=0
+
+enabled_cb() {
+	local sec=$1
+	local io_juggler
+
+	config_get enabled $sec enabled 0
+	config_get io_juggler $sec io_juggler 0
+	[ "$enabled" -eq 1 ] && {
+		[ "$io_juggler" -eq 1 ] && ENABLED=${GLOBAL_ENABLED} || ENABLED=1
+	}
+}
+
+start_service() {
+	local log_level log_type
+
+	config_load event_juggler
+	config_get GLOBAL_ENABLED general enabled 1
+	config_foreach enabled_cb event
+	[ "$ENABLED" -ne 1 ] && return
+
+	config_get log_level general log_level
+	config_get log_type general log_type
+
+	procd_open_instance
+	procd_set_param command /usr/sbin/event_juggler
+	[ "$BOOT" -eq 1 ] &&
+		procd_append_param command --boot
+
+	[ -n "$log_level" ] &&
+		procd_append_param command --llevel "$log_level"
+
+	[ -n "$log_type" ] &&
+		procd_append_param command --ltype "$log_type"
+
+	procd_set_param respawn
+	procd_set_param file /etc/config/event_juggler
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+shutdown() {
+	ubus list event_juggler > /dev/null 2>&1 || return 0
+	
+	# If it is not responding, it means that the event_juggler is busy
+	# since it is a single-threaded application. This can lead to a 10 sec delay in shutdown.
+	ubus -t 10 call event_juggler status > /dev/null 2>&1
+	stop
+}
+
+service_triggers() {
+	procd_add_reload_trigger "event_juggler"
+}
+
+boot() {
+	BOOT=1
+	start
+}

@@ -1,0 +1,24 @@
+Index: rpcd-2021-03-11-ccb75178/session.c
+===================================================================
+--- rpcd-2021-03-11-ccb75178.orig/session.c
++++ rpcd-2021-03-11-ccb75178/session.c
+@@ -1160,6 +1160,9 @@ rpc_login_test_login(struct uci_context
+ 		if (uci_lookup_ptr(uci, &ptr, NULL, true))
+ 			continue;
+ 
++		if (!ptr.o)
++			continue;
++
+ 		if (ptr.o->type != UCI_TYPE_STRING)
+ 			continue;
+ 
+@@ -1184,6 +1187,9 @@ rpc_login_test_login(struct uci_context
+ 		if (uci_lookup_ptr(uci, &ptr, NULL, true))
+ 			continue;
+ 
++		if (!ptr.o)
++			continue;
++
+ 		if (ptr.o->type != UCI_TYPE_STRING)
+ 			continue;
+ 

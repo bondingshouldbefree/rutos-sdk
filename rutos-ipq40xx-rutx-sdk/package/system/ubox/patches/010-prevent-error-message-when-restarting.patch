@@ -1,0 +1,21 @@
+Index: ubox-2020-10-25-9ef88681/log/logread.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/logread.c
++++ ubox-2020-10-25-9ef88681/log/logread.c
+@@ -632,7 +632,6 @@ int main(int argc, char **argv)
+ 
+ 		ret = ubus_lookup_id(ctx, "log", &id);
+ 		if (ret) {
+-			fprintf(stderr, "Failed to find log object: %s\n", ubus_strerror(ret));
+ 			sleep(1);
+ 			continue;
+ 		}
+@@ -646,6 +645,8 @@ int main(int argc, char **argv)
+ 		uloop_run();
+ 
+ 	} while (logd_conn_tries--);
++	if (ret)
++		fprintf(stderr, "Failed to find log object: %s\n", ubus_strerror(ret));
+ 
+ 	ubus_free(ctx);
+ 	uloop_done();

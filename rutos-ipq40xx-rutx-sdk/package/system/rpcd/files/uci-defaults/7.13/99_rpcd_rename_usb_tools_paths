@@ -1,0 +1,29 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+check_group() {
+    from="$2"
+    to="$3"
+    config_list_foreach "$1" "read" rename_path "$1" "read" "$from" "$to"
+    config_list_foreach "$1" "write" rename_path "$1" "write" "$from" "$to"
+}
+
+rename_path() {
+    rule="$1"
+    group_name="$2"
+    type="$3"
+    from="$4"
+    to="$5"
+    case "$rule" in
+        *"$from"* )
+        new_rule="${rule/$from/$to}"
+        uci_remove_list "rpcd" "$group_name" "$type" "$rule"
+        uci_add_list "rpcd" "$group_name" "$type" "$new_rule"
+        ;;
+    esac
+}
+
+config_load "rpcd"
+config_foreach check_group "group" "services/usb_tools" "services/sd_usb_tools"
+uci_commit "rpcd"

@@ -1,0 +1,48 @@
+{
+  "extends": "./tsconfig.app.json",
+  "exclude": [
+    "../node_modules",
+    "node_modules",
+    "../**/cypress",
+    "../cypress.config*",
+    "../**/*.stories.*"
+  ],
+  "include": [
+    "../applications/**/*",
+    "../vuci-ui-core/**/*",
+    "../**/.{spec,test}.{js,ts}"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.vitest.tsbuildinfo",
+
+    "lib": [],
+    "types": ["node", "jsdom", "vitest/globals"],
+    "paths": {
+      "@": [
+        "vuci-ui-core/src"
+      ],
+      "@/*": [
+        "vuci-ui-core/src/src/*"
+      ],
+      "@ui-core": [
+        "vuci-ui-core/src/ui-core"
+      ],
+      "@ui-core/*": [
+        "vuci-ui-core/src/ui-core/*"
+      ],
+      "@root": [
+        "./"
+      ],
+      "@root/*": [
+        "./*"
+      ],
+      "@tests": [
+        "vuci-ui-core/src/tests"
+      ],
+      "@tests/*": [
+        "vuci-ui-core/src/tests/*"
+      ]
+    }
+  }
+}

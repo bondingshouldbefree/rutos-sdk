@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+
+IMG_NAME_PREFIX=git.teltonika.lt:4567/docker/buildsys/
+IMG_NAME=${IMG_NAME:-${IMG_NAME_PREFIX}tools}
+IMG_TAG=${IMG_TAG:-1.27}
+
+# Color codes
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+err() {
+	echo -e "${RED}==> $1$NC"
+}
+
+info() {
+	echo -e "${YELLOW}==> $1$NC"
+}
+
+calc_images_size() {
+	for id in $($DOCKER_CMD image ls --all --format '{{.ID}}' 'git.teltonika.lt:4567/docker/buildsys/*'); do
+		$DOCKER_CMD history "$id" --format '{{.Size}} {{.CreatedBy}}'
+	done | sort -u | cut -d' ' -f1 | tr , . | python3 -c '
+import sys
+
+units = {"k": 10**3, "M": 10**6, "G": 10**9}
+
+def parse_size(size):
+	if size[-1] == "B":
+		size = size[:-1]
+	unit = size[-1]
+	return int(float(size[:-1]) * units[unit]) if unit in units else int(size)
+
+print(sum(parse_size(line.strip()) for line in sys.stdin))
+'
+}
+
+cleanup() {
+	local obsolete_containers
+	obsolete_containers=$($DOCKER_CMD ps --all | grep '/buildsys/tool.*"tail -f /toolchain' | awk '{print $1}')
+	[[ -n $obsolete_containers ]] && {
+		#shellcheck disable=SC2086
+		$DOCKER_CMD stop $obsolete_containers &>/dev/null
+		obsolete_containers=$($DOCKER_CMD ps --all | grep '/buildsys/tool.*"tail -f /toolchain' | awk '{print $1}')
+		[[ -n $obsolete_containers ]] && {
+			#shellcheck disable=SC2086
+			$DOCKER_CMD rm $obsolete_containers &>/dev/null
+		}
+	}
+
+	local size
+	size=$(calc_images_size)
+	[[ $size -lt 10737418240 ]] && return
+
+	#shellcheck disable=SC2016
+	info "$(printf 'Toolchain docker images take up %s on disk. You can cleanup all of them with:\n\n\t$ %s image ls --all --format "{{.ID}}" "*/docker/buildsys/*" | xargs %s image rm\n\n' "$(echo "$size" | LC_ALL=en_US.UTF-8 numfmt --to=iec)" "$DOCKER_CMD" "$DOCKER_CMD")"
+}
+
+# Check for Docker installation
+if ! command -v docker &>/dev/null; then
+	err "Docker could not be found."
+	exit 1
+fi
+
+# Chicken and egg problem - cannot reliably check if docker is running before determining correct permissions,
+# but permissions check might print wrong information if the docker is not running.
+
+# Permission handling for Docker command
+DOCKER_CMD="docker"
+if $DOCKER_CMD info -f "{{println .SecurityOptions}}" 2>/dev/null | grep -q rootless; then
+	info "Cannot use rootless docker due to file ownership issues. Will proceed with sudo..."
+	info "To use docker without sudo, refer to https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user"
+	DOCKER_CMD="sudo docker"
+fi
+if ! $DOCKER_CMD ps &>/dev/null; then
+	info "Docker commands require sudo. Attempting to proceed with sudo..."
+	info "To use docker without sudo, refer to https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user"
+	DOCKER_CMD="sudo docker"
+fi
+
+# Check if Docker daemon is running
+if ! $DOCKER_CMD info &>/dev/null; then
+	info "Docker is not running."
+	# Check for systemd to start Docker
+	if ! command -v systemctl &>/dev/null; then
+		err "Systemd not found. Please start Docker manually."
+		exit 1
+	fi
+
+	info "Attempting to start Docker using systemd..."
+	sudo systemctl start docker || {
+		err "Failed to start Docker. Please start Docker manually."
+		exit 1
+	}
+	info "Docker started successfully."
+fi
+
+FUNC=run_main
+echo "$IMG_NAME" | grep -q '/buildsys/' && {
+	TOKEN=aCb3RawxFnwuSZymE7XM
+}
+echo "$IMG_NAME" | grep -qP '(^|/)tbot' && {
+	TOKEN=CDFnJK15XBkAu8nU13fS
+	FUNC=run_tbot
+}
+
+# Check if the Docker image and tag exists locally
+if ! $DOCKER_CMD image inspect "$IMG_NAME:$IMG_TAG" >/dev/null 2>&1; then
+	info "Docker image $IMG_NAME:$IMG_TAG not found locally. Attempting to download..."
+
+	if [[ -z $TOKEN ]]; then {
+		err "No token for $(dirname "$IMG_NAME")  Docker repository. Trying to pull the image without authentication."
+	}; else {
+		$DOCKER_CMD login "${IMG_NAME%%/*}" -u oauth2 -p "$TOKEN" 2>/dev/null # a shared token for read-only access to the container registry
+	}; fi
+
+	$DOCKER_CMD pull "$IMG_NAME:$IMG_TAG" || {
+		err "Failed to download Docker image. Please check the image name and tag."
+		exit 1
+	}
+fi
+
+WORKDIR="$(pwd)"
+PASSWD="/etc/passwd"
+GROUP="/etc/group"
+HOSTS="/etc/hosts"
+USER_GROUP="$(id -u "$USER"):$(id -g "$USER")"
+
+CONTAINER_NAME=${IMG_NAME##"$IMG_NAME_PREFIX"}_${WORKDIR}_${IMG_TAG}
+CONTAINER_NAME=${CONTAINER_NAME//\//_}
+CONTAINER_NAME=${CONTAINER_NAME//__/_}
+CONTAINER_NAME=${CONTAINER_NAME//./_}
+
+cleanup
+
+# Create volumes for staging_dir/host and staging_dir/hostpkg
+create_volume() {
+	if ! $DOCKER_CMD volume ls --quiet | grep -q "^${1}\$"; then
+		$DOCKER_CMD volume create "$1" >/dev/null
+		# Force fix permissions on the volume root
+		$DOCKER_CMD run --rm -v "$1":/test alpine:3.20 \
+			/bin/sh -c 'touch /test/.initialized && chown -R 1000:1000 /test' >/dev/null
+	fi
+}
+
+gen_dns() {
+	local default_routes
+	default_routes=$(ip route | grep default)
+
+	while read -r ip; do
+		echo "$default_routes" | grep -q " $ip " && continue # skip gateway DNS to avoid DNS resolution issues when using VPNs
+		printf -- '--dns %s ' "$ip"
+	done < <(grep -oP '(?<=nameserver\s)(\d{1,3})(\.(?1))+' /etc/resolv.conf | grep -vP '^127\.*')
+}
+
+run_main() {
+	# Start a long-running container
+	if ! $DOCKER_CMD ps --all --quiet --filter name="$CONTAINER_NAME" | grep -q .; then
+		VOLUME_PREFIX="${WORKDIR//\//_}"
+		VOLUME_STAGING_HOST="${VOLUME_PREFIX:1}_staging_host"
+		VOLUME_STAGING_HOSTPKG="${VOLUME_PREFIX:1}_staging_hostpkg"
+		create_volume "$VOLUME_STAGING_HOST"
+		create_volume "$VOLUME_STAGING_HOSTPKG"
+		mkdir -p "$WORKDIR/staging_dir/host" "$WORKDIR/staging_dir/hostpkg"
+
+		#shellcheck disable=SC2046
+		$DOCKER_CMD run -d \
+			--rm \
+			--name "$CONTAINER_NAME" \
+			--user "$USER_GROUP" \
+			$(gen_dns) \
+			--workdir "$WORKDIR" \
+			--volume "$HOME:$HOME" \
+			--volume "$WORKDIR:$WORKDIR" \
+			--volume "$VOLUME_STAGING_HOST:$WORKDIR/staging_dir/host" \
+			--volume "$VOLUME_STAGING_HOSTPKG:$WORKDIR/staging_dir/hostpkg" \
+			--volume "$PASSWD:$PASSWD:ro" \
+			--volume "$GROUP:$GROUP:ro" \
+			--volume "$HOSTS:$HOSTS:ro" \
+			--env EXEC_REAL_BUILD=1 \
+			--env INSIDE_DOCKER=1 \
+			--env DOCKERBUILD=1 \
+			--ulimit "nofile=1024:1048576" \
+			"$IMG_NAME:$IMG_TAG" \
+			sleep 86400 >/dev/null
+	fi
+
+	# Execute command in the long-running container
+	$DOCKER_CMD exec -it "$CONTAINER_NAME" "$@"
+}
+
+run_tbot() {
+	fws_dir=$(find "bin/targets/x86" -type d -name "tltFws")
+	f_iso=$(find "$fws_dir" -name "X86*_LIVE.iso" -printf '%T+ %p\n' | sort | tail -n1 | awk '{print $2}')
+	[[ -z $f_iso ]] && {
+		err "No firmware image found in $fws_dir"
+		exit 1
+	}
+
+	case "$@" in
+	*--debug*) opts="--publish 42069:42069" ;;
+	esac
+	[[ -t 0 ]] && opts="$opts -it"
+	if [[ -e /dev/kvm ]]; then
+		opts="$opts --device /dev/kvm"
+	else
+		err "KVM not available - performance will be significantly degraded."
+	fi
+
+	#shellcheck disable=SC2068,SC2086
+	$DOCKER_CMD run --rm $opts --cap-add=NET_ADMIN \
+		--device /dev/net/tun:/dev/net/tun \
+		--volume "$WORKDIR":/x86_64:rw -w /x86_64 \
+		--sysctl net.ipv4.ip_forward=1 \
+		--sysctl net.ipv6.conf.all.disable_ipv6=0 \
+		--sysctl net.ipv6.conf.all.forwarding=1 \
+		--publish 2200:2200 \
+		--publish 8000:8000 \
+		"$IMG_NAME:$IMG_TAG" \
+		$@
+}
+
+$FUNC "$@"

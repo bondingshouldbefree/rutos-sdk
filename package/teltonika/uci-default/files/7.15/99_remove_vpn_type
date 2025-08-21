@@ -1,0 +1,12 @@
+#!/bin/sh
+. /lib/functions.sh
+
+remove_vpn_type() {
+	local section="$1"
+	uci -q delete firewall.$section.vpn_type
+}
+
+config_load firewall
+config_foreach "remove_vpn_type"
+uci commit firewall
+exit 0

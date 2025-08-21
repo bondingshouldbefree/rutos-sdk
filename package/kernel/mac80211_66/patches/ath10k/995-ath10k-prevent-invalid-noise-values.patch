@@ -1,0 +1,37 @@
+Index: backports-6.12.6/drivers/net/wireless/ath/ath10k/wmi.c
+===================================================================
+--- backports-6.12.6/drivers/net/wireless/ath/ath10k/wmi.c
++++ backports-6.12.6/drivers/net/wireless/ath/ath10k/wmi.c
+@@ -2741,7 +2741,9 @@ static void ath10k_wmi_event_chan_info_u
+ 
+ 	memset(survey, 0, sizeof(*survey));
+ 
+-	survey->noise = params->noise_floor;
++	if (params->noise_floor)
++		survey->noise = params->noise_floor;
++	
+ 	survey->time = (params->cycle_count / params->mac_clk_mhz) / 1000;
+ 	survey->time_busy = (params->rx_clear_count / params->mac_clk_mhz) / 1000;
+ 	survey->filled |= SURVEY_INFO_NOISE_DBM | SURVEY_INFO_TIME |
+@@ -2768,7 +2770,9 @@ static void ath10k_wmi_event_chan_info_p
+ 	if (params->cmd_flags & WMI_CHAN_INFO_FLAG_COMPLETE) {
+ 		if (ar->ch_info_can_report_survey) {
+ 			survey = &ar->survey[idx];
+-			survey->noise = params->noise_floor;
++			if (params->noise_floor)
++				survey->noise = params->noise_floor;
++
+ 			survey->filled = SURVEY_INFO_NOISE_DBM;
+ 
+ 			ath10k_hw_fill_survey_time(ar,
+@@ -5834,7 +5838,9 @@ static int ath10k_wmi_event_pdev_bss_cha
+ 
+ 	survey = &ar->survey[idx];
+ 
+-	survey->noise     = noise_floor;
++	if (noise_floor)
++		survey->noise = noise_floor;
++
+ 	survey->time      = div_u64(total, cc_freq_hz);
+ 	survey->time_busy = div_u64(busy, cc_freq_hz);
+ 	survey->time_rx   = div_u64(rx_bss, cc_freq_hz);

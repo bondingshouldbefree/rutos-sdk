@@ -1,0 +1,12 @@
+{
+  "system/admin": {
+    "title": "Administration",
+    "index": 10
+  },
+  "system/admin/certificates": {
+    "title": "Certificates",
+    "acls": ["system/admin/certificates/manager"],
+    "view": "system/CertManager",
+    "index": 60
+  }
+}

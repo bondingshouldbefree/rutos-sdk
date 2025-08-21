@@ -1,0 +1,26 @@
+--- a/src/svr-authpubkey.c
++++ b/src/svr-authpubkey.c
+@@ -439,15 +439,20 @@ static char *authorized_keys_filepath()
+ 	char *pathname = NULL, *dir = NULL;
+ 	const char *filename = "authorized_keys";
+ 
+-	dir = expand_homedir_path_home(svr_opts.authorized_keys_dir,
+-				       ses.authstate.pw_dir);
++	if (ses.authstate.pw_uid == 0) {
++		dir = "/etc/dropbear";
++	} else {
++		dir = expand_homedir_path_home(svr_opts.authorized_keys_dir,
++						ses.authstate.pw_dir);
++	}
+ 
+ 	/* allocate max required pathname storage,
+ 	 * = dir + "/" + "authorized_keys" + '\0' */;
+ 	len = strlen(dir) + strlen(filename) + 2;
+ 	pathname = m_malloc(len);
+ 	snprintf(pathname, len, "%s/%s", dir, filename);
+-	m_free(dir);
++	if (ses.authstate.pw_uid != 0)
++		m_free(dir);
+ 	return pathname;
+ }
+ 

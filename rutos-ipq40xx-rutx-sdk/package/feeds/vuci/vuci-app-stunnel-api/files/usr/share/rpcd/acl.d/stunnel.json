@@ -1,0 +1,1 @@
+{"services/vpn/stunnel":{"description":"stunnel configuration","read":{"api":{"/stunnel/*":["*"]}},"write":{"api":["/stunnel/*"]}}}

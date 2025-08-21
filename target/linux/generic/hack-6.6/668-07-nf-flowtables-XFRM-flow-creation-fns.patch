@@ -1,0 +1,210 @@
+net: netfilter: flowtables: supporting code for creating XFRM-type flows
+
+Adds 'nf_flow_xfrm' for users to collect flow info (similar to 'nf_flow_route').
+Adds 'flow_offload_add_xfrm' for submitting a 'nf_flow_xfrm' to be offloaded.
+'flow_offload_add' renamed to 'flow_offload_add_route' for consistency.
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -78,6 +78,7 @@ struct nf_flowtable {
+ 	struct list_head		list;
+ 	struct hlist_head		flows;
+ 	spinlock_t			flows_lock;
++	spinlock_t			insertion_lock; /* Guards non-atomic flow insertions */
+ 	struct rhashtable		rhashtable;
+ 	int				priority;
+ 	const struct nf_flowtable_type	*type;
+@@ -284,6 +285,42 @@ struct nf_flow_route {
+ 	enum flow_offload_xmit_type	xmit_type;
+ };
+ 
++struct nf_flow_xfrm {
++	struct {
++		union {
++			struct in_addr	src_v4;
++			struct in6_addr	src_v6;
++		};
++		union {
++			struct in_addr	dst_v4;
++			struct in6_addr	dst_v6;
++		};
++		union {
++			struct {
++				__be16	src_port;
++				__be16	dst_port;
++			};
++			__be32		spi;
++		};
++
++		int			iifidx;
++
++		u8			l3proto;
++		u8			l4proto;
++		struct {
++			u16		id;
++			__be16		proto;
++		} encap[NF_FLOW_TABLE_ENCAP_MAX];
++
++		struct flow_xfrm_tuple		xfrm_tuple;
++
++		u8			encap_num:2,
++					in_vlan_ingress:2;
++	} tuple;
++
++	struct xfrm_state		*x;
++};
++
+ struct nf_conn_flow {
+ 	struct flow_offload __rcu *flow;
+ };
+@@ -398,8 +435,11 @@ nf_flow_table_offload_del_cb(struct nf_f
+ 		flow_table->type->put(flow_table);
+ }
+ 
+-int flow_offload_add(struct nf_flowtable *flow_table, struct nf_conn *ct,
++int flow_offload_add_route(struct nf_flowtable *flow_table, struct nf_conn *ct,
+ 		     struct nf_flow_route *route, enum flow_offload_tuple_dir dir);
++int flow_offload_add_xfrm(struct nf_flowtable *flow_table,
++			  struct nf_flow_xfrm *xfrm, struct net *net);
++
+ void flow_offload_refresh(struct nf_flowtable *flow_table,
+ 			  struct flow_offload *flow, bool force);
+ 
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -355,8 +355,9 @@ err_unset:
+ 	return NULL;
+ }
+ 
+-int flow_offload_add(struct nf_flowtable *flow_table, struct nf_conn *ct,
+-		     struct nf_flow_route *route, enum flow_offload_tuple_dir dir)
++int flow_offload_add_route(struct nf_flowtable *flow_table, struct nf_conn *ct,
++			   struct nf_flow_route *route,
++			   enum flow_offload_tuple_dir dir)
+ {
+ 	struct nf_conn_flow *flow_ext = nf_ct_ext_find(ct, NF_CT_EXT_FLOW_OFFLOAD);
+ 	struct flow_offload *flow;
+@@ -427,7 +428,101 @@ err:
+ 	}
+ 	return err;
+ }
+-EXPORT_SYMBOL_GPL(flow_offload_add);
++EXPORT_SYMBOL_GPL(flow_offload_add_route);
++
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++static void flow_offload_fill_xfrm(struct flow_offload *flow, struct nf_flow_xfrm *xfrm)
++{
++	struct flow_offload_tuple *tuple = &flow->tuplehash[0].tuple;
++	int i, j = 0;
++
++	switch (xfrm->tuple.l3proto) {
++	case NFPROTO_IPV4:
++		tuple->src_v4 = xfrm->tuple.src_v4;
++		tuple->dst_v4 = xfrm->tuple.dst_v4;
++		break;
++	case NFPROTO_IPV6:
++		tuple->src_v6 = xfrm->tuple.src_v6;
++		tuple->dst_v6 = xfrm->tuple.dst_v6;
++		break;
++	}
++
++	switch (xfrm->tuple.l4proto) {
++	case IPPROTO_ESP:
++		tuple->spi = xfrm->tuple.spi;
++	}
++
++	tuple->l3proto = xfrm->tuple.l3proto;
++	tuple->l4proto = xfrm->tuple.l4proto;
++
++	tuple->iifidx = xfrm->tuple.iifidx;
++	for (i = xfrm->tuple.encap_num - 1; i >= 0; i--) {
++		tuple->encap[j].id = xfrm->tuple.encap[i].id;
++		tuple->encap[j].proto = xfrm->tuple.encap[i].proto;
++		if (xfrm->tuple.in_vlan_ingress & BIT(i))
++			tuple->in_vlan_ingress |= BIT(j);
++		j++;
++	}
++	tuple->encap_num = xfrm->tuple.encap_num;
++
++	nf_flow_xfrm_tuple_clone(&tuple->xfrm_tuple, &xfrm->tuple.xfrm_tuple);
++
++	tuple->xfrm.x = xfrm->x;
++	xfrm->x = NULL;
++}
++
++int flow_offload_add_xfrm(struct nf_flowtable *flow_table,
++			  struct nf_flow_xfrm *xfrm, struct net *net)
++{
++	struct flow_offload_tuple_rhash *tuplehash;
++	struct flow_offload *flow;
++	int err;
++
++	flow = _flow_offload_alloc();
++	if (!flow)
++		return -ENOMEM;
++
++	flow_offload_fill_xfrm(flow, xfrm);
++
++	/* We use insertion_lock here to make sure we don't insert duplicate flows.
++	 * We can't use functions like rhashtable_lookup_insert_fast, because current
++	 * nf_flow_offload_rhash_params doesn't allow it, and I don't see how to fix
++	 * that without negatively affecting fastpath lookups.
++	 */
++	spin_lock_bh(&flow_table->insertion_lock);
++
++	tuplehash = rhashtable_lookup(&flow_table->rhashtable, &flow->tuplehash[0].tuple,
++				      nf_flow_offload_rhash_params);
++	if (tuplehash) {
++		err = -EEXIST;
++		goto flow_release;
++	}
++
++	write_pnet(&flow->_net, net);
++	flow->type = NF_FLOW_OFFLOAD_XFRM;
++	flow->timeout = nf_flowtable_time_stamp + flow_offload_get_timeout(flow);
++	flow->flags = BIT(NF_FLOW_TUPLE_ORIG);
++
++	err = rhashtable_insert_fast(&flow_table->rhashtable,
++				     &flow->tuplehash[0].node,
++				     nf_flow_offload_rhash_params);
++	if (err)
++ 		goto flow_release;
++
++	spin_unlock_bh(&flow_table->insertion_lock);
++
++	nf_flow_offload_register(flow_table, flow);
++
++	return 0;
++
++flow_release:
++	spin_unlock_bh(&flow_table->insertion_lock);
++	flow_offload_xfrm_release(flow);
++	kfree(flow);
++	return err;
++}
++EXPORT_SYMBOL_GPL(flow_offload_add_xfrm);
++#endif
+ 
+ void flow_offload_refresh(struct nf_flowtable *flow_table,
+ 			  struct flow_offload *flow, bool force)
+@@ -727,6 +822,7 @@ int nf_flow_table_init(struct nf_flowtab
+ 
+ 	INIT_HLIST_HEAD(&flowtable->flows);
+ 	spin_lock_init(&flowtable->flows_lock);
++	spin_lock_init(&flowtable->insertion_lock);
+ 
+ 	mutex_lock(&flowtable_lock);
+ 	list_add(&flowtable->list, &flowtables);
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -669,8 +669,8 @@ flowoffload_tg(struct sk_buff *skb, cons
+ 
+ 	table = &flowtable[!!(info->flags & XT_FLOWOFFLOAD_HW)];
+ 
+-	if (flow_offload_add(&table->ft, ct, &route,
+-			     (enum flow_offload_tuple_dir)dir))
++	if (flow_offload_add_route(&table->ft, ct, &route,
++				   (enum flow_offload_tuple_dir)dir))
+ 		goto err_route_free;
+ 
+ 	xt_flowoffload_check_device(table, indev);

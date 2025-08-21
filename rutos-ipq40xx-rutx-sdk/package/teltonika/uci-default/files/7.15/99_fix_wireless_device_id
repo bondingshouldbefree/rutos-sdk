@@ -1,0 +1,267 @@
+#!/bin/sh
+. /lib/functions.sh
+
+WIFI_IFACE=
+DEVICEID=
+DEVICE2G=false
+DEVICE5G=false
+LIST=
+DUPLICATES_LIST=
+CHANGE_LIST=
+CHANGED_WIRELESS=false
+CHANGED_SQM=false
+
+DEVICEID_MISSING=false
+DEVICEID_PRESENT=false
+IND5G=0
+IND2G=0
+FOUND=0
+
+smallest_unused_number() {
+	local sortedlist="$( echo "$LIST" | sort -n )"
+	local n=1
+
+	for deviceid in $sortedlist; do
+		[ "$deviceid" -gt "$n" ] && break
+		[ "$deviceid" -eq "$n" ] && n="$((n + 1))"
+	done
+	echo "$n"
+}
+
+duplicates_list() {
+	local sortedlist="$( echo "$LIST" | sort -n )"
+	local n=0
+	local count=0
+
+	DUPLICATES_LIST=
+	for deviceid in $sortedlist; do
+		[ "$deviceid" -le "$n" ] && { count="$((count + 1))"; continue; }
+		[ "$count" -gt 0 ] && append DUPLICATES_LIST "${n}:${count}"
+		n="$deviceid"
+		count=0
+	done
+	[ "$count" -gt 0 ] && append DUPLICATES_LIST "${n}:${count}"
+}
+
+add_default_device_prefix() {
+	local wifi_device="$1"
+	local radio
+
+	case "$wifi_device" in
+		'radio0') radio=0 ;;
+		'radio1') radio=1 ;;
+		*) return 0 ;;
+	esac
+	uci_set 'wireless' "$wifi_device" 'ifname_prefix' "wlan${radio}" && CHANGED_WIRELESS=true
+}
+
+make_interface_list() {
+	local wifi_iface="$1"
+	local device_id
+
+	config_get device_id "$wifi_iface" '_device_id'
+
+	[ -z "$device_id" ] && { DEVICEID_MISSING=true; return 0; }
+
+	DEVICEID_PRESENT=true
+	append LIST "$device_id" $'\n'
+}
+
+find_interface_by_deviceid() {
+	local wifi_iface="$1"
+	local find_device_id="$2"
+	local device_id
+	local devices
+	local device
+
+	config_get device_id "$wifi_iface" '_device_id'
+
+	[[ -z "$device_id" || "$device_id" != "$find_device_id" || "$FOUND" -gt 1 ]] && return 0
+
+	FOUND="$((FOUND + 1))"
+	WIFI_IFACE="$wifi_iface"
+	DEVICEID="$device_id"
+	DEVICE2G=false
+	DEVICE5G=false
+
+	config_get devices "$wifi_iface" 'device'
+
+	for device in $devices; do
+		case "$device" in
+			'radio0') DEVICE2G=true ;;
+			'radio1') DEVICE5G=true ;;
+		esac
+	done
+}
+
+setup_change_sqm_interfaces_new_firmware() {
+	local wifi_iface="$1"
+	local device_id="$2"
+	local new_device_id="$3"
+	local device_2g="$4"
+	local device_5g="$5"
+
+	"$device_2g" && append CHANGE_LIST "wlan0-${new_device_id}:wlan0-${device_id}"
+	"$device_5g" && append CHANGE_LIST "wlan1-${new_device_id}:wlan1-${device_id}"
+}
+
+index_devices_old_firmware() {
+	local wifi_iface="$1"
+	local devices
+	local disabled
+
+	config_get_bool disabled "$wifi_iface" 'disabled' 0
+	[ "$disabled" -eq 1 ] && return 0
+
+	config_get devices "$wifi_iface" 'device'
+	for device in $devices; do
+		case "$device" in
+			'radio0') IND2G="$((IND2G + 1))" ;;
+			'radio1') IND5G="$((IND5G + 1))" ;;
+		esac
+	done
+}
+
+setup_change_sqm_interfaces_old_firmware() {
+	local wifi_iface="$1"
+	local device_id="$2"
+	local oldid
+	local radio
+	local devices
+	local disabled
+
+	config_get_bool disabled "$wifi_iface" 'disabled' 0
+	[ "$disabled" -eq 1 ] && return 0
+
+	config_get devices "$wifi_iface" 'device'
+	for device in $devices; do
+		oldid=''
+		case "$device" in
+			'radio0')
+				radio=0
+				[ "$IND2G" -gt 0 ] && oldid="-${IND2G}"
+				IND2G="$((IND2G + 1))" ;;
+			'radio1')
+				radio=1
+				[ "$IND5G" -gt 0 ] && oldid="-${IND5G}"
+				IND5G="$((IND5G + 1))" ;;
+			*) continue ;;
+		esac
+		append CHANGE_LIST "wlan${radio}-${device_id}:wlan${radio}${oldid}"
+	done
+}
+
+add_device_id() {
+	local wifi_iface="$1"
+	local device_id
+	local devices
+
+	config_get device_id "$wifi_iface" '_device_id'
+
+	[ -n "$device_id" ] && {
+		index_devices_old_firmware "$wifi_iface"
+		return 0
+	}
+
+	device_id="$(smallest_unused_number)"
+	uci_set 'wireless' "$wifi_iface" '_device_id' "$device_id" && CHANGED_WIRELESS=true
+	append LIST "$device_id" $'\n'
+	setup_change_sqm_interfaces_old_firmware "$wifi_iface" "$device_id"
+}
+
+change_old_sqm() {
+	local queue="$1"
+	local new_interface="$2"
+	local old_interface="$3"
+
+	config_get interface "$queue" 'interface'
+	[ "$interface" == "$old_interface" ] && config_set "$queue" 'interface' "::tmp::$new_interface"
+}
+
+remove_tmp_config() {
+	local queue="$1"
+	local interface
+
+	config_get interface "$queue" 'interface'
+	[[ "$interface" == "::tmp::"* ]] && uci_set 'sqm' "$queue" 'interface' "${interface#::tmp::}" && CHANGED_SQM=true
+}
+
+apply_changes_sqm() {
+	local queue="$1"
+	local new_interface
+	local old_interface
+
+	config_load sqm
+	for interface in $CHANGE_LIST; do
+		old_interface="${interface#*:}"
+		new_interface="${interface%:*}"
+		config_foreach change_old_sqm "$queue" "$new_interface" "$old_interface"
+	done
+	config_foreach remove_tmp_config "$queue"
+	CHANGE_LIST=
+}
+
+update_device_id () {
+	local wifi_iface="$1"
+	local device_id="$2"
+	local device_2g="$3"
+	local device_5g="$4"
+	local new_device_id
+
+	[ -z "$device_id" ] && return 0
+
+	new_device_id="$(smallest_unused_number)"
+	uci_set 'wireless' "$wifi_iface" '_device_id' "$new_device_id" && CHANGED_WIRELESS=true
+	config_set "$wifi_iface" '_device_id' "$new_device_id"
+	append LIST "$new_device_id" $'\n'
+	setup_change_sqm_interfaces_new_firmware "$wifi_iface" "$device_id" "$new_device_id" "$device_2g" "$device_5g"
+}
+
+fix_duplicates() {
+	local deviceid
+	local count
+
+	for duplicate in $DUPLICATES_LIST; do
+		deviceid="${duplicate%:*}"
+		count="${duplicate#*:}"
+
+		i=0
+		while [ "$i" -lt "$count" ]; do
+			DEVICEID=
+			FOUND=0
+			config_foreach find_interface_by_deviceid 'wifi-iface' "$deviceid"
+			update_device_id "$WIFI_IFACE" "$DEVICEID" "$DEVICE2G" "$DEVICE5G"
+			i="$((i + 1))"
+		done
+	done
+	apply_changes_sqm 'queue'
+}
+
+write_config() {
+	"$CHANGED_WIRELESS" && uci_commit wireless && CHANGED_WIRELESS=false
+	"$CHANGED_SQM" && uci_commit sqm && CHANGED_SQM=false
+}
+
+[ ! -f /etc/config/wireless ] && exit 0
+
+#load config, find all _device_id values
+config_load wireless
+config_foreach make_interface_list 'wifi-iface'
+
+#migration from old configuration
+"$DEVICEID_MISSING" && {
+	config_foreach add_default_device_prefix 'wifi-device'
+	config_foreach add_device_id 'wifi-iface'
+	"$DEVICEID_PRESENT" && CHANGE_LIST= || apply_changes_sqm 'queue'
+	write_config
+}
+
+#fix _device_id duplicates
+config_load wireless
+LIST=
+config_foreach make_interface_list 'wifi-iface'
+duplicates_list
+fix_duplicates
+write_config
+
+exit 0

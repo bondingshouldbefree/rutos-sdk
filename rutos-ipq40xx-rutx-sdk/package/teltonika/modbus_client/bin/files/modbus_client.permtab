@@ -1,0 +1,2 @@
+/etc/config/modbus_client modbus_client:modbus_client 660
+/usr/local/share/modbus_client modbus_client:modbus_client 755 cd

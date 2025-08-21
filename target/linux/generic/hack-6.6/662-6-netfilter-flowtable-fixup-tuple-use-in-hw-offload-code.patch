@@ -1,0 +1,246 @@
+nf_flow_table_offload.c uses data from the reverse direction tuple to determine 
+offloading actions. Since it's no longer guaranteed that both tuples will be filled
+(save for ip/port/protonum data, which is filled from conntrack), change
+such uses to avoid touching the reverse tuple. Add additional (duplicate) fields
+where necessary.
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -155,6 +155,15 @@ struct flow_offload_tuple {
+ 			u32		iifidx;
+ 		} tc;
+ 	};
++	struct dst_entry		*dst_reverse;
++	struct {
++		struct {
++			u16		id;
++			__be16		proto;
++		} encap[NF_FLOW_TABLE_ENCAP_MAX];
++		u8			encap_num:2,
++					ingress_vlans:2;
++	} encap_out;
+ };
+ 
+ struct flow_offload_tuple_rhash {
+@@ -203,6 +212,7 @@ static inline __s32 nf_flow_timeout_delt
+ 
+ struct nf_flow_route {
+ 	struct dst_entry		*dst;
++	struct dst_entry		*dst_reverse;
+ 	struct {
+ 		u32			ifindex;
+ 		struct {
+@@ -217,6 +227,12 @@ struct nf_flow_route {
+ 		u32			hw_ifindex;
+ 		u8			h_source[ETH_ALEN];
+ 		u8			h_dest[ETH_ALEN];
++		struct {
++			u16		id;
++			__be16		proto;
++		} encap[NF_FLOW_TABLE_ENCAP_MAX];
++		u8			num_encaps:2,
++					ingress_vlans:2;
+ 	} out;
+ 	enum flow_offload_xmit_type	xmit_type;
+ };
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -132,6 +132,16 @@ static int flow_offload_fill_route(struc
+ 	}
+ 	flow_tuple->encap_num = route->in.num_encaps;
+ 
++	j = 0;
++	for (i = route->out.num_encaps - 1; i >= 0; i--) {
++		flow_tuple->encap_out.encap[j].id = route->out.encap[i].id;
++		flow_tuple->encap_out.encap[j].proto = route->out.encap[i].proto;
++		if (route->out.ingress_vlans & BIT(i))
++			flow_tuple->encap_out.ingress_vlans |= BIT(j);
++		j++;
++	}
++	flow_tuple->encap_out.encap_num = route->out.num_encaps;
++
+ 	switch (route->xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+ 		memcpy(flow_tuple->out.h_dest, route->out.h_dest,
+@@ -151,6 +161,8 @@ static int flow_offload_fill_route(struc
+ 		WARN_ON_ONCE(1);
+ 		break;
+ 	}
++	flow_tuple->dst_reverse = route->dst_reverse;
++	route->dst_reverse = NULL;
+ 	flow_tuple->xmit_type = route->xmit_type;
+ 
+ 	return 0;
+@@ -162,6 +174,8 @@ static void nft_flow_dst_release(struct
+ 	if (flow->tuplehash[dir].tuple.xmit_type == FLOW_OFFLOAD_XMIT_NEIGH ||
+ 	    flow->tuplehash[dir].tuple.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)
+ 		dst_release(flow->tuplehash[dir].tuple.dst_cache);
++
++	dst_release(flow->tuplehash[dir].tuple.dst_reverse);
+ }
+ 
+ static void flow_offload_fixup_tcp(struct ip_ct_tcp *tcp)
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -227,21 +227,20 @@ static int flow_offload_eth_src(struct n
+ {
+ 	struct flow_action_entry *entry0 = flow_action_entry_next(flow_rule);
+ 	struct flow_action_entry *entry1 = flow_action_entry_next(flow_rule);
+-	const struct flow_offload_tuple *other_tuple, *this_tuple;
++	const struct flow_offload_tuple *tuple;
+ 	struct net_device *dev = NULL;
+ 	const unsigned char *addr;
+ 	u32 mask, val;
+ 	u16 val16;
+ 
+-	this_tuple = &flow->tuplehash[dir].tuple;
++	tuple = &flow->tuplehash[dir].tuple;
+ 
+-	switch (this_tuple->xmit_type) {
++	switch (tuple->xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+-		addr = this_tuple->out.h_source;
++		addr = tuple->out.h_source;
+ 		break;
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+-		other_tuple = &flow->tuplehash[!dir].tuple;
+-		dev = dev_get_by_index(net, other_tuple->iifidx);
++		dev = tuple->dst_cache->dev;
+ 		if (!dev)
+ 			return -ENOENT;
+ 
+@@ -262,8 +261,6 @@ static int flow_offload_eth_src(struct n
+ 	flow_offload_mangle(entry1, FLOW_ACT_MANGLE_HDR_TYPE_ETH, 8,
+ 			    &val, &mask);
+ 
+-	dev_put(dev);
+-
+ 	return 0;
+ }
+ 
+@@ -546,29 +543,30 @@ static void flow_offload_redirect(struct
+ 				  enum flow_offload_tuple_dir dir,
+ 				  struct nf_flow_rule *flow_rule)
+ {
+-	const struct flow_offload_tuple *this_tuple, *other_tuple;
++	const struct flow_offload_tuple *tuple;
+ 	struct flow_action_entry *entry;
+ 	struct net_device *dev;
+ 	int ifindex;
+ 
+-	this_tuple = &flow->tuplehash[dir].tuple;
+-	switch (this_tuple->xmit_type) {
++	tuple = &flow->tuplehash[dir].tuple;
++	switch (tuple->xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+-		this_tuple = &flow->tuplehash[dir].tuple;
+-		ifindex = this_tuple->out.hw_ifidx;
++		tuple = &flow->tuplehash[dir].tuple;
++		ifindex = tuple->out.hw_ifidx;
++		dev = dev_get_by_index(net, ifindex);
++		if (!dev)
++			return;
+ 		break;
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+-		other_tuple = &flow->tuplehash[!dir].tuple;
+-		ifindex = other_tuple->iifidx;
++		dev = tuple->dst_cache->dev;
++		if (!dev)
++			return;
++		dev_hold(dev);
+ 		break;
+ 	default:
+ 		return;
+ 	}
+ 
+-	dev = dev_get_by_index(net, ifindex);
+-	if (!dev)
+-		return;
+-
+ 	entry = flow_action_entry_next(flow_rule);
+ 	entry->id = FLOW_ACTION_REDIRECT;
+ 	entry->dev = dev;
+@@ -603,15 +601,13 @@ static void flow_offload_decap_tunnel(co
+ 				      enum flow_offload_tuple_dir dir,
+ 				      struct nf_flow_rule *flow_rule)
+ {
+-	const struct flow_offload_tuple *other_tuple;
++	const struct flow_offload_tuple *tuple;
+ 	struct flow_action_entry *entry;
+ 	struct dst_entry *dst;
+ 
+-	other_tuple = &flow->tuplehash[!dir].tuple;
+-	if (other_tuple->xmit_type == FLOW_OFFLOAD_XMIT_DIRECT)
+-		return;
++	tuple = &flow->tuplehash[dir].tuple;
+ 
+-	dst = other_tuple->dst_cache;
++	dst = tuple->dst_reverse;
+ 	if (dst && dst->lwtstate) {
+ 		struct ip_tunnel_info *tun_info;
+ 
+@@ -628,7 +624,6 @@ nf_flow_rule_route_common(struct net *ne
+ 			  enum flow_offload_tuple_dir dir,
+ 			  struct nf_flow_rule *flow_rule)
+ {
+-	const struct flow_offload_tuple *other_tuple;
+ 	const struct flow_offload_tuple *tuple;
+ 	int i;
+ 
+@@ -653,25 +648,25 @@ nf_flow_rule_route_common(struct net *ne
+ 		}
+ 	}
+ 
+-	other_tuple = &flow->tuplehash[!dir].tuple;
++	tuple = &flow->tuplehash[dir].tuple;
+ 
+-	for (i = 0; i < other_tuple->encap_num; i++) {
++	for (i = 0; i < tuple->encap_out.encap_num; i++) {
+ 		struct flow_action_entry *entry;
+ 
+-		if (other_tuple->in_vlan_ingress & BIT(i))
++		if (tuple->encap_out.ingress_vlans & BIT(i))
+ 			continue;
+ 
+ 		entry = flow_action_entry_next(flow_rule);
+ 
+-		switch (other_tuple->encap[i].proto) {
++		switch (tuple->encap_out.encap[i].proto) {
+ 		case htons(ETH_P_PPP_SES):
+ 			entry->id = FLOW_ACTION_PPPOE_PUSH;
+-			entry->pppoe.sid = other_tuple->encap[i].id;
++			entry->pppoe.sid = tuple->encap_out.encap[i].id;
+ 			break;
+ 		case htons(ETH_P_8021Q):
+ 			entry->id = FLOW_ACTION_VLAN_PUSH;
+-			entry->vlan.vid = other_tuple->encap[i].id;
+-			entry->vlan.proto = other_tuple->encap[i].proto;
++			entry->vlan.vid = tuple->encap_out.encap[i].id;
++			entry->vlan.proto = tuple->encap_out.encap[i].proto;
+ 			break;
+ 		}
+ 	}
+@@ -734,9 +729,8 @@ nf_flow_offload_rule_alloc(struct net *n
+ 			   enum flow_offload_tuple_dir dir)
+ {
+ 	const struct nf_flowtable *flowtable = offload->flowtable;
+-	const struct flow_offload_tuple *tuple, *other_tuple;
++	const struct flow_offload_tuple *tuple;
+ 	struct flow_offload *flow = offload->flow;
+-	struct dst_entry *other_dst = NULL;
+ 	struct nf_flow_rule *flow_rule;
+ 	int err = -ENOMEM;
+ 
+@@ -753,11 +747,8 @@ nf_flow_offload_rule_alloc(struct net *n
+ 	flow_rule->rule->match.key = &flow_rule->match.key;
+ 
+ 	tuple = &flow->tuplehash[dir].tuple;
+-	other_tuple = &flow->tuplehash[!dir].tuple;
+-	if (other_tuple->xmit_type == FLOW_OFFLOAD_XMIT_NEIGH)
+-		other_dst = other_tuple->dst_cache;
+ 
+-	err = nf_flow_rule_match(&flow_rule->match, tuple, other_dst);
++	err = nf_flow_rule_match(&flow_rule->match, tuple, tuple->dst_reverse);
+ 	if (err < 0)
+ 		goto err_flow_match;
+ 

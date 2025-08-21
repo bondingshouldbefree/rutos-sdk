@@ -1,0 +1,3 @@
+# setup fuse.config
+/etc/fuse.conf		root:users		660	cf
+/etc/config/sshfs	sshfs:sshfs		666	-

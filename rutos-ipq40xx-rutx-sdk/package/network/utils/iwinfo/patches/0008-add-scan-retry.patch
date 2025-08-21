@@ -1,0 +1,23 @@
+Index: libiwinfo-2023-05-17-c9f5c3f7/iwinfo_nl80211.c
+===================================================================
+--- libiwinfo-2023-05-17-c9f5c3f7.orig/iwinfo_nl80211.c	2024-10-16 15:01:49.384398598 +0300
++++ libiwinfo-2023-05-17-c9f5c3f7/iwinfo_nl80211.c	2024-10-16 15:02:22.547217578 +0300
+@@ -2696,9 +2696,16 @@
+ static int nl80211_get_scanlist_nl(const char *ifname, char *buf, int *len)
+ {
+ 	struct nl80211_scanlist sl = { .e = (struct iwinfo_scanlist_entry *)buf };
++	int ret, tries = 0;
+ 
+-	if (nl80211_request(ifname, NL80211_CMD_TRIGGER_SCAN, 0, NULL, NULL))
+-		goto out;
++	while ((ret = nl80211_request(ifname, NL80211_CMD_TRIGGER_SCAN, 0, NULL, NULL)))
++	{
++		if (tries >= 5 || ret != -EBUSY)
++			goto out;
++
++		tries++;
++		sleep(1);
++	}
+ 
+ 	if (nl80211_wait("nl80211", "scan",
+ 	                 NL80211_CMD_NEW_SCAN_RESULTS, NL80211_CMD_SCAN_ABORTED))

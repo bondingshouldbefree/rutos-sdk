@@ -1,0 +1,1 @@
+{"services/vpn/sstp":{"description":"sstp configuration","read":{"api":{"/sstp/*":["*"],"/certificates/ca/config/*":["certificates"]}},"write":{"api":["/sstp/*"]},"source":["/sstp/*"],"exception":["/sstp/config/*"]}}

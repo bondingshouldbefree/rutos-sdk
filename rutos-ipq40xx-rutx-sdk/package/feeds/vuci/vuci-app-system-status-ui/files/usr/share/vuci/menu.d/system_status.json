@@ -1,0 +1,8 @@
+{
+    "status/system": {
+        "title": "System",
+        "acls": ["status/system"],
+        "view": "status/System",
+        "index": 20
+    }
+}

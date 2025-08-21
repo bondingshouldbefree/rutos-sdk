@@ -1,0 +1,12 @@
+{
+	"system/admin/datetime": {
+		"title": "Date & Time",
+		"index": 15
+	},
+		"system/admin/datetime/ntpd": {
+			"title": "NTPD",
+			"index": 30,
+			"view": "services/Ntpd",
+			"acls": [ "system/admin/datetime/ntpd" ]
+		}
+}

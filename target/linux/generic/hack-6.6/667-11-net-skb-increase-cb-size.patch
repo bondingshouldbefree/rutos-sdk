@@ -1,0 +1,18 @@
+net: skb: increase 'cb' size on 64-bit platforms
+
+Needed to fit 'nf_flow_xfrm_skb_cb' with wider pointers.
+
+--- a/include/linux/skbuff.h
++++ b/include/linux/skbuff.h
+@@ -873,7 +873,11 @@ struct sk_buff {
+ 	 * want to keep them across layers you have to do a skb_clone()
+ 	 * first. This is owned by whoever has the skb queued ATM.
+ 	 */
++#if BITS_PER_LONG > 32
++	char			cb[64] __aligned(8);
++#else
+ 	char			cb[48] __aligned(8);
++#endif
+ 
+ 	union {
+ 		struct {

@@ -1,0 +1,198 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2006-2015 OpenWrt.org
+
+START=60
+USE_PROCD=1
+
+BIN=/usr/sbin/xl2tpd
+BIN6="/usr/sbin/xl2tpd6"
+[ -x "$BIN6" ] || BIN6="/usr/local${BIN6}"
+TMP_DIR="/var/run/xl2tpd"
+CONFIG=${TMP_DIR}/xl2tpd.conf
+OPTIONS=${TMP_DIR}/options.xl2tpd
+SERVER=
+BIND_STOP=
+
+service_triggers()
+{
+	procd_add_reload_trigger "xl2tpd" "network"
+}
+
+check_bind()
+{
+	local section="$1"
+	local tunnel="$2"
+	local remote="${section%%_*}"
+	local bind status
+
+	config_get bind $section bind_to
+	[ "$bind" = "$tunnel" ] || return 1
+
+	if [ "$PLUTO_VERB" = "up-host" ]; then
+		return 1
+	elif [ "$PLUTO_VERB" = "down-host" ]; then
+		BIND_STOP="yes"
+	else
+		status=$(swanctl --list-sas 2>/dev/null)
+		if ! echo "$status" | grep "${section}: " | grep -q 'INSTALLED'; then
+			BIND_STOP="yes"
+		fi
+	fi
+}
+
+add_pppd_opts() {
+	[ -n "$1" ] && echo "$1" >> $OPTIONS
+}
+
+setup_config() {
+	local section="$1"
+	local enabled localip remoteipstart remoteipend type auth_chap auth_pap auth_mschap2 chap
+
+	config_get enabled "$section" enabled 0
+	config_get type "$section" type
+
+	[ "$enabled" -eq 0 ] && return 1
+	[ "$type" = "server" ] || return 1
+
+	config_load ipsec
+	config_foreach check_bind connection "$section"
+	
+	config_load xl2tpd
+	config_get localip "$section" localip
+	config_get remoteipstart "$section" start
+	config_get remoteipend "$section" limit
+	config_get auth_chap "$1" auth_chap "1"
+	config_get auth_pap "$1" auth_pap "0"
+	config_get auth_mschap2 "$1" auth_mschap2 "1"
+	config_get chap "$section" chap
+	config_get auth "$section" auth
+	config_get port "$section" port
+
+	if [ -n "$remoteipstart" ] && [ -n "$remoteipend" ]; then
+		remoteip="${remoteipstart}-${remoteipend}"
+	else
+		config_get remoteip "$section" remoteip
+	fi
+
+	[ -n "$remoteip" ] && [ -n "$localip" ] && {
+		SERVER=1
+		echo "local ip = $localip" >> $CONFIG
+		echo "ip range = $remoteip" >> $CONFIG
+		echo "ms-dns $localip" >> $OPTIONS
+	}
+
+    [ "$auth_chap" = "1" ] && {
+		echo "require chap = yes" >> "$CONFIG"
+		echo "require-chap" >> "$OPTIONS"
+	} || {
+		echo "refuse chap = yes" >> "$CONFIG"
+		echo "refuse-chap" >> "$OPTIONS"
+	}
+
+	[ "$auth_pap" = "1" ] && {
+		echo "require pap = yes" >> "$CONFIG"
+		echo "require-pap" >> "$OPTIONS"
+	} || {
+		echo "refuse pap = yes" >> "$CONFIG"
+		echo "refuse-pap" >> "$OPTIONS"
+	}
+
+	[ "$auth_mschap2" = "1" ] && {
+		echo "require-mschap-v2" >> "$OPTIONS"
+	} || {
+		echo "refuse-mschap-v2" >> "$OPTIONS"
+	}
+
+	[ "$chap" = "1" ] && echo "challenge = yes" >> "$CONFIG"
+	[ -n "$auth" ] && echo "* * $auth" >> ${TMP_DIR}/xl2tp-secrets
+	[ -n "$port" ] && sed -i "s/^port *= *[0-9]\+/port = ${port}/" "$CONFIG"
+
+	config_list_foreach "$section" "pppd_options" add_pppd_opts
+}
+
+setup_login() {
+	local section="$1"
+	local username password remoteip
+
+	config_get username "$section" username
+	config_get password "$section" password
+	config_get remoteip "$section" remoteip
+
+	[ -n "$username" ] || return 0
+	[ -n "$password" ] || return 0
+
+	echo "\"$username\" xl2tp-server \"$password\" ${remoteip:-*}" >> ${TMP_DIR}/xl2tp-chap-secrets
+}
+
+count_clients(){
+	local section="$1"
+	local proto disabled
+
+	config_get proto "$section" proto
+	config_get disabled "$section" disabled 0
+
+	[ "$proto" = "l2tp" ] && [ "$disabled" = "0" ] && {
+		config_get auth "$section" auth;
+		[ -n "$auth" ] && echo "* * $auth" >> ${TMP_DIR}/xl2tp-secrets;
+		counter=$(( counter + 1 ));
+	}
+}
+
+start_service() {
+	local ip6="$1"
+	local counter=0
+	mkdir -p ${TMP_DIR}
+	config_load network
+	config_foreach count_clients interface
+	[ "$(uci -q get xl2tpd.@service[0].enabled)" != "1" ] && [ "$counter" -eq 0 ] && return
+
+	cp /etc/xl2tpd/xl2tpd.conf $CONFIG
+	cp /etc/ppp/options.xl2tpd $OPTIONS
+	config_load xl2tpd
+	config_foreach setup_config service
+	[ "$BIND_STOP" = "yes" ] && return 1
+
+	config_foreach setup_login login
+	[ "$(uci -q get xl2tpd.@service[0].use_ipv6)" = "1" ] && ip6=6
+
+	if [ "$ip6" = "6" ]; then
+		procd_open_instance
+		procd_set_param command $BIN6 -D -l -p ${TMP_DIR}/xl2tpd6.pid ${SERVER:+-c $CONFIG} -C /var/run/xl2tpd/l2tp6-control
+		procd_set_param stdout 1
+		procd_set_param stderr 1
+		procd_set_param respawn
+		procd_set_param user xl2tpd
+		procd_close_instance
+
+		if [ "$counter" -gt 0 ]; then
+			procd_open_instance
+			procd_set_param command $BIN -D -l -p ${TMP_DIR}/xl2tpd.pid ${SERVER:+-c $CONFIG}
+			procd_set_param stdout 1
+			procd_set_param stderr 1
+			procd_set_param respawn
+			procd_set_param user xl2tpd
+			procd_close_instance
+		fi
+	else
+		procd_open_instance
+		procd_set_param command $BIN -D -l -p ${TMP_DIR}/xl2tpd.pid ${SERVER:+-c $CONFIG}
+		procd_set_param stdout 1 # forward stdout of the command to logd
+		procd_set_param stderr 1 # same for stderr
+		procd_set_param respawn
+		procd_set_param user xl2tpd
+		procd_close_instance
+	fi
+
+	mkdir -p /tmp/state/l2tp
+	[ -n "$SERVER" ] && date "+%s" > /tmp/state/l2tp/uptime
+
+}
+
+stop_service() {
+	rm -rf "/tmp/state/l2tp/uptime" "$TMP_DIR/xl2tp-chap-secrets" "$TMP_DIR/xl2tp-secrets"
+}
+
+reload_service() {
+        stop
+        start
+}

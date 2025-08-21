@@ -1,0 +1,18 @@
+{
+  "network/ports": {
+    "title": "Ports",
+    "index": 100
+  },
+  "network/ports/port_mirroring": {
+    "title": "Port Mirroring",
+    "index": 30,
+    "view": "network/PortMirroring",
+    "acls": ["network/ports/port_mirroring"],
+    "depends": {
+      "board": {
+        "allOf": ["has_soft_port_mirror"],
+        "notAllOf": ["is_switch"]
+      }
+    }
+  }
+}

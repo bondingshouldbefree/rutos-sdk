@@ -1,0 +1,1 @@
+{"services/wifi_scanner":{"description":"wifi_scanner config","read":{"api":{"/wifi_scanner/*":["*"]}},"write":{"api":["/wifi_scanner/*"]},"source":["/wifi_scanner/*"]}}

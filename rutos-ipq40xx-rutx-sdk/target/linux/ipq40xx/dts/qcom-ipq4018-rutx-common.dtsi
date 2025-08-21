@@ -1,0 +1,300 @@
+#include "qcom/qcom-ipq4019-ap.dk01.1.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+#include "platform_name.dtsi"
+#include "qcom-ipq4018-rutx-i2c.dtsi"
+
+#define BLOCK_4PIN "1"
+#define BLOCK_10PIN "2"
+#define BLOCK_16PIN "3"
+
+/ {
+	compatible = "teltonika,rutx", "qcom,ap-dk01.1-c2", "qcom,ipq4019";
+
+	memory {
+		device_type = "memory";
+		reg = <0x80000000 0x10000000>;
+	};
+
+	chosen {
+		bootargs = "console=ttyMSM0,115200";
+	};
+
+	soc {
+		mdio@90000 {
+			status = "ok";
+			pinctrl-0 = <&mdio_pins>;
+			pinctrl-names = "default";
+			reset-gpios = <&tlmm 62 GPIO_ACTIVE_LOW>;
+
+			ethernet-phy@0 {
+				leds {
+					eth_y0 {
+						reg = <0>;
+					};
+					eth_g0 {
+						reg = <1>;
+					};
+				};
+			};
+			ethernet-phy@1 {
+				leds {
+					eth_y1 {
+						reg = <0>;
+					};
+					eth_g1 {
+						reg = <1>;
+					};
+				};
+			};
+			ethernet-phy@2 {
+				leds {
+					eth_y2 {
+						reg = <0>;
+					};
+					eth_g2 {
+						reg = <1>;
+					};
+				};
+			};
+			ethernet-phy@3 {
+				leds {
+					eth_y3 {
+						reg = <0>;
+					};
+					eth_g3 {
+						reg = <1>;
+					};
+				};
+			};
+			ethernet-phy@4 {
+				leds {
+					eth_y4 {
+						reg = <0>;
+					};
+					eth_g4 {
+						reg = <1>;
+					};
+				};
+			};
+		};
+
+		ess-switch@c000000 {
+				resets = <&gcc ESS_RESET>, <&gcc ESS_MAC1_ARES>,
+						 <&gcc ESS_MAC2_ARES>, <&gcc ESS_MAC3_ARES>,
+						 <&gcc ESS_MAC4_ARES>, <&gcc ESS_MAC5_ARES>;
+				reset-names = "ess_rst", "ess_mac1_rst",
+							  "ess_mac2_rst", "ess_mac3_rst",
+							  "ess_mac4_rst", "ess_mac5_rst";
+		};
+
+		pinctrl@1000000 {
+			mdio_pins: mdio_pinmux {
+				mux_1 {
+					pins = "gpio53";
+					function = "mdio";
+					bias-pull-up;
+				};
+				mux_2 {
+					pins = "gpio52";
+					function = "mdc";
+					bias-pull-up;
+				};
+			};
+		};
+
+		spi_0: spi@78b5000 {
+			cs-gpios = <&tlmm 54 0>, <&tlmm 63 0>;
+			num-cs = <2>;
+
+			mx25l25635f@0 {
+				compatible = "n25q128a11", "mx25l25635f", "jedec,spi-nor";
+				#address-cells = <1>;
+				#size-cells = <1>;
+				reg = <0>;
+				spi-max-frequency = <24000000>;
+			};
+
+			mt29f@1 {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				compatible = "spi-nand","spinand,mt29f";
+				reg = <1>;
+				spi-max-frequency = <24000000>;
+			};
+		};
+
+		gpio_keys {
+			compatible = "gpio-keys";
+
+			reset {
+				label = "reset";
+				gpios = <&tlmm 4 1>;
+				linux,code = <0x198>;
+			};
+		};
+	};
+
+	boot: boot_partition {
+		label = "0:APPSBL";
+	};
+
+	config: config_partition {
+		label = "0:CONFIG";
+	};
+
+	config_rw: config_rw_partition {
+		label = "0:CONFIG_RW";
+	};
+
+	mnfinfo: mnfinfo {
+		compatible = "sysfs-mnfinfo";
+		status = "okay";
+
+		mac {
+			reg = <&config 0x0 0x6>;
+			min-res-len = <0xc>;
+			type = "mac";
+			default = "001E42013370";
+			log;
+		};
+
+		name {
+			reg = <&config 0x10 0xc>;
+			type = "ascii";
+			default = "UNKNOWNXXXXX";
+			log;
+		};
+
+		wps {
+			reg = <&config 0x20 0x8>;
+			type = "digit";
+			sec;
+		};
+
+		serial {
+			reg = <&config 0x30 0xa>;
+			type = "alnum";
+			default = "0000000000";
+			log;
+		};
+
+		batch {
+			reg = <&config 0x40 0x4>;
+			type = "digit";
+			default = "0000";
+			log;
+		};
+
+		hwver {
+			reg = <&config 0x50 0x4>;
+			type = "digit";
+			default = "0000";
+			log;
+		};
+
+		hwver_lo {
+			reg = <&config 0x54 0x4>;
+			type = "digit";
+			default = "0000";
+			log;
+		};
+
+		branch {
+			reg = <&config 0x58 0x4>;
+			type = "ascii";
+			default = "";
+			log;
+		};
+
+		wpass {
+			reg = <&config 0x90 0x10>;
+			type = "ascii";
+			sec;
+		};
+
+		pass {
+			reg = <&config 0xa0 0x6a>;
+			type = "ascii";
+			sec;
+		};
+
+		sim_cfg {
+			reg = <&config 0x120 0x20>;
+			default = "";
+			type = "simcfg";
+			log;
+		};
+
+		profiles {
+			reg = <&config 0x140 0x80>;
+			type = "ascii";
+			default = "";
+		};
+
+		blver {
+			reg = <&boot 0xa0000 0xa>;
+			trailling-data;
+			strip-whitespaces;
+			type = "ascii";
+			log;
+		};
+
+		simpin1 {
+			reg = <&config_rw 0x0 0x8>;
+			type = "digit";
+			default = "";
+			sec;
+		};
+
+		simpin2 {
+			reg = <&config_rw 0x10 0x8>;
+			type = "digit";
+			default = "";
+			sec;
+		};
+
+		sim_count {
+			default =  "2";
+			log;
+		};
+
+		mob_cfg {
+			reg = <&config 0x76 0x4>;
+			type = "digit";
+			default = "0000";
+			sec;
+		};
+	};
+
+	ioman: ioman {
+		layout@0{
+			io@0 { // 4pin #3
+				label = "din1";
+				block_type = BLOCK_4PIN;
+				block_pin = "3";
+				gpio_in = "GPIO_IN_1";
+				io_param = "g0";
+			};
+			io@1 { // 4pin #4
+				label = "dout1";
+				block_type = BLOCK_4PIN;
+				block_pin = "4";
+				gpio_out = "GPIO_OUT_1";
+				io_param = "g1";
+			};
+		};
+	};
+};
+
+&usb3 {
+	usb@8a00000 {
+		snps,dis_u2_susphy_quirk;
+		snps,dis_u3_susphy_quirk;
+	};
+};
+
+&usb2 {
+	usb@6000000 {
+		snps,dis_u2_susphy_quirk;
+	};
+};

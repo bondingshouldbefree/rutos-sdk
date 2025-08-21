@@ -1,0 +1,189 @@
+# Copyright (C) 2006 OpenWrt.org
+# Copyright (C) 2010 Vertical Communications
+
+. /lib/functions.sh
+
+missing_lines() {
+	local file1 file2 out user data
+	file1="$1" # tmp
+	file2="$2" # etc
+	out="$3"
+
+	cp "$file1" "$out"
+
+	while IFS=":" read user data; do
+		grep -q "^$user:" "$file1" || echo "$user:$data" >> "$out"
+	done <"$file2"
+}
+
+merge_file() {
+	file1="$1"
+	file2="$2"
+	output_file="$3"
+
+	merge_col4() {
+		echo "$1,$2" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/^,//;s/,$//'
+	}
+
+	while IFS=: read -r col1 col2 col3 col4; do
+		file1_data="$file1_data\n$col1:$col2:$col3:$col4"
+	done <"$file1"
+
+	while IFS=: read -r col1 col2 col3 col4; do
+		file2_data="$file2_data\n$col1:$col2:$col3:$col4"
+	done <"$file2"
+
+	for line1 in $(echo -e "$file1_data"); do
+		col1=$(echo "$line1" | cut -d: -f1)
+		col2=$(echo "$line1" | cut -d: -f2)
+		col3=$(echo "$line1" | cut -d: -f3)
+		col4=$(echo "$line1" | cut -d: -f4)
+
+		line2=$(echo -e "$file2_data" | grep "^$col1:")
+		[ -z "$line2" ] && {
+			echo "$line1" >>"$output_file"
+			continue
+		}
+		col4_2=$(echo "$line2" | cut -d: -f4)
+		merged_col4=$(merge_col4 "$col4" "$col4_2")
+		echo "$col1:$col2:$col3:$merged_col4" >>"$output_file"
+		file2_data=$(echo -e "$file2_data" | grep -v "^$col1:")
+	done
+
+	for line2 in $(echo -e "$file2_data"); do
+		grep -q "$line2" "$output_file" && continue
+		echo "$line2" >>"$output_file"
+	done
+
+	sed -i '/^:::/d' "$output_file"
+}
+
+check_modbus_register_file() {
+	local tar_file="$1"
+	local temp_dir="$2"
+	local exclude_file="$3"
+	local cfg="etc/config/modbus_server"
+	local regfile=""
+
+	tar -C /tmp -xzf "$tar_file" "$cfg" 2>/dev/null
+	[ ! -f "/tmp/$cfg" ] && return
+
+	regfile="$(uci -q -c "$(dirname /tmp/"$cfg")" get modbus_server.modbus.regfile)"
+
+	[ -z "$regfile" ] && return
+
+	case "$regfile" in
+		/mnt/* | /usr/local/share/modbus/* | /tmp/* | /var/*) return ;;
+	esac
+
+	NEW_REGFILE="/usr/local/share/modbus$regfile"
+	echo "NEW_REGFILE: $NEW_REGFILE"
+	echo "$regfile" >> "$exclude_file"
+	tar -xzf "${tar_file}" -C "${temp_dir}" "${regfile:1}"
+	mkdir -p "$(dirname "$NEW_REGFILE")"
+	cp -a "$temp_dir/$regfile" "$NEW_REGFILE"
+	rm -f "/tmp/$cfg"
+}
+
+update_modbus_register_file_config() {
+	[ -z "$NEW_REGFILE" ] && return
+	uci -q set "modbus_server.modbus.regfile=${NEW_REGFILE}"
+	uci -q commit modbus_server
+}
+
+handle_extraction() {
+	local TAR_FILE="$1"
+	local EXCLUDE_FILE="/tmp/exclusions"
+	local REMAP_FILE="/lib/upgrade/remap.conf"
+	local TEMP_DIR="/tmp/kstemp"
+
+	cat > "${EXCLUDE_FILE}" << EOF
+etc/rc.d/*
+etc/profile
+EOF
+
+	mkdir -p "${TEMP_DIR}"
+	check_modbus_register_file "$TAR_FILE" "$TEMP_DIR" "$EXCLUDE_FILE"
+
+	if [ -f "${REMAP_FILE}" ]; then
+		while IFS=: read -r src_path dst_path; do
+			[ -z "$src_path" ] || [ "${src_path#\#}" != "$src_path" ] && continue
+
+			echo "$src_path" >> "${EXCLUDE_FILE}"
+			echo " added to exclusions: $src_path -> $dst_path"
+
+			target_dir=$(dirname "$dst_path")
+			mkdir -p "$target_dir"
+
+			if ! touch "$target_dir/.write_test" 2>/dev/null; then
+				echo "WARNING: $target_dir is not writable, skipping remap of $src_path"
+				continue
+			fi
+
+			rm -f "$target_dir/.write_test"
+			rm -rf "${TEMP_DIR}"/*
+
+			if ! tar -xzf "${TAR_FILE}" -C "${TEMP_DIR}" "$src_path" 2>/dev/null; then
+				continue
+			fi
+
+			if [ -d "$dst_path" ]; then
+				if [ -d "$TEMP_DIR/$src_path" ]; then
+					cp -a "$TEMP_DIR/$src_path"/* "$dst_path/"
+				else
+					cp -a "$TEMP_DIR/$src_path" "$dst_path/"
+				fi
+			else
+				mkdir -p "$(dirname "$dst_path")"
+				cp -a "$TEMP_DIR/$src_path" "$dst_path"
+			fi
+		done < "${REMAP_FILE}"
+	fi
+
+	tar -C / -xzf "${TAR_FILE}" -X "${EXCLUDE_FILE}"
+	rm -f "${TAR_FILE}" "${EXCLUDE_FILE}"
+	update_modbus_register_file_config
+
+	# place old version & renew device_fw_version
+	local oldver="$(uci -q get system.system.device_fw_version)"
+	[ -n "$oldver" ] && echo "$oldver" > /etc/last_version
+	uci set system.system.device_fw_version="$(cat /etc/version)"
+}
+
+do_mount_root() {
+	mount_root
+	boot_run_hook preinit_mount_root
+	if [ -f /overlay/user_defaults.tgz ]; then
+		echo "- restoring user config -"
+		tar -C / -xzf /overlay/user_defaults.tgz
+		mkdir -p /etc/default-config
+		mv /overlay/user_defaults.tgz /etc/default-config/config.tar.gz
+		# Prevent configuration corruption on a power loss
+		sync
+		[ -x /bin/sme.sh ] && { sme.sh --preboot || echo "- sme.sh failed with code $? -"; }
+
+	elif [ -f /overlay/sysupgrade.tgz ] || [ -f /tmp/sysupgrade.tgz ]; then
+		echo "- config restore -"
+		[ -f /overlay/sysupgrade.tgz ] && mv /overlay/sysupgrade.tgz /tmp/
+		cp /etc/passwd /etc/group /etc/shadow /tmp
+		handle_extraction /tmp/sysupgrade.tgz
+		missing_lines /tmp/passwd /etc/passwd /tmp/passwd_merged
+		merge_file /tmp/group /etc/group /tmp/group_merged
+		missing_lines /etc/shadow /tmp/shadow /tmp/shadow_merged
+		cp /tmp/passwd_merged /etc/passwd
+		cp /tmp/group_merged /etc/group
+		cp /tmp/shadow_merged /etc/shadow
+		rm /tmp/passwd /tmp/group /tmp/shadow /tmp/*_merged
+		# Indicate that firmware was uploaded with keep-settings
+		touch /tmp/.ksrestored
+		# Prevent configuration corruption on a power loss
+		sync_permissions_and_ownerships
+		fix_permissions 660 "/etc/config/network" "network:network"
+		fix_permissions 660 "/etc/config/wireless" "network:network"
+		sync
+		[ -x /bin/sme.sh ] && { sme.sh --preboot || echo "- sme.sh failed with code $? -"; }
+	fi
+	[ -f /etc/last_version ] || cat /etc/version > /etc/last_version
+}
+
+[ "$INITRAMFS" = "1" ] || boot_hook_add preinit_main do_mount_root

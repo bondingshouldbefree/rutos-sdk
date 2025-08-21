@@ -1,0 +1,1 @@
+{"serial":{"description":"Serial status","read":{"api":{"/serial/*":["*"]}}}}

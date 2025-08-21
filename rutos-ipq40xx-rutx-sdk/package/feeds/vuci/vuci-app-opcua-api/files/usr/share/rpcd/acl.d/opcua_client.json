@@ -1,0 +1,1 @@
+{"services/opcua/opcua_client":{"read":{"api":{"/opcua/*":["*"]}},"write":{"api":["/opcua/*"]},"exception":["/opcua/destination_server/config/opcua_server/*"]}}

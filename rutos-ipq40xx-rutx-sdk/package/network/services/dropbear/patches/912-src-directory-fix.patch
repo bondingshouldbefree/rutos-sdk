@@ -1,0 +1,11 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -107,6 +107,8 @@ AC_ARG_ENABLE(werror,
+ # large file support is useful for scp
+ AC_SYS_LARGEFILE
+ 
++AC_CONFIG_AUX_DIR([src])
++
+ # Host specific options
+ # this isn't a definitive list of hosts, they are just added as required
+ AC_CANONICAL_HOST

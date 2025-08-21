@@ -1,0 +1,186 @@
+Index: ubox-2020-10-25-9ef88681/log/logread.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/logread.c
++++ ubox-2020-10-25-9ef88681/log/logread.c
+@@ -23,6 +23,10 @@
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <string.h>
++#include <zlib.h>
++#include <glob.h>
++#include <libgen.h>
++#include <sys/statvfs.h>
+ 
+ #define SYSLOG_NAMES
+ #include <syslog.h>
+@@ -94,7 +98,7 @@ static struct uloop_fd sender;
+ static regex_t regexp_preg;
+ static const char *log_file, *log_ip, *log_port, *log_prefix, *pid_file, *hostname, *regexp_pattern;
+ static int log_type = LOG_STDOUT;
+-static int log_size, log_udp, log_follow, log_db_init, log_trailer_null = 0;
++static int log_size, log_udp, log_follow, log_db_init, log_file_compress, log_trailer_null = 0;
+ static int log_timestamp;
+ static int logd_conn_tries = LOGD_CONNECT_RETRY;
+ static int facility_include;
+@@ -155,6 +159,105 @@ static int find_action(char *buffer){
+ 	}
+ 	return action;
+ }
++
++static long get_free_space(const char *path) {
++	struct statvfs stat;
++	if (statvfs(path, &stat) != 0) {
++		return -1;
++	}
++	return stat.f_bavail * stat.f_frsize;
++}
++
++static int extract_log_index(const char *base_name) {
++	char *base_name_copy = strdup(base_name);
++	if (!base_name_copy)
++		return -1;
++
++	char *token = strtok(base_name_copy, ".");
++	int index = -1;
++
++	while (token) {
++		char *next_token = strtok(NULL, ".");
++		if (next_token && strcmp(next_token, "gz") != 0) {
++			index = strtol(next_token, NULL, 10);
++			if (index > 0) {
++				free(base_name_copy);
++				return index;
++			}
++		}
++		token = next_token;
++	}
++	free(base_name_copy);
++	return index;
++}
++
++static void get_log_indexes(const char *full_log_path, int *lowest_index, int *next_index) {
++	glob_t globbuf;
++	int min_index = -1;
++	int max_index = -1;
++
++	char pattern[256] = {0};
++	snprintf(pattern, sizeof(pattern), "%s.[0-9]*", full_log_path);
++
++	if (glob(pattern, 0, NULL, &globbuf) != 0) {
++		*lowest_index = 0;
++		*next_index = 1;
++		return;
++	}
++
++	for (size_t i = 0; i < globbuf.gl_pathc; i++) {
++		char *file_name = globbuf.gl_pathv[i];
++		int index = extract_log_index(basename(file_name));
++
++		if (index != -1) {
++			if (min_index == -1 || index < min_index) min_index = index;
++			if (index > max_index) max_index = index;
++		}
++	}
++
++	globfree(&globbuf);
++	*lowest_index = (min_index == -1) ? 0 : min_index;
++	*next_index = (max_index == -1) ? 0 : max_index + 1;
++}
++
++static void compress_log_file(const char *log_file, const char *compressed_file) {
++	gzFile out = gzopen(compressed_file, "wb");
++	if (!out) {
++		syslog(LOG_ERR, "Failed to open compressed file %s: %s", compressed_file, gzerror(out, NULL));
++		return;
++	}
++
++	int in = open(log_file, O_RDONLY);
++	if (in < 0) {
++		syslog(LOG_ERR, "Failed to open log file %s: %m", log_file);
++		gzclose(out);
++		return;
++	}
++
++	char buf[4096] = {0};
++	ssize_t len;
++	while ((len = read(in, buf, sizeof(buf))) > 0) {
++		gzwrite(out, buf, len);
++	}
++	close(in);
++	gzclose(out);
++}
++
++static void rotate_log_file(const char *log_file, int next_index) {
++	char *old = calloc(strlen(log_file) + 10, sizeof(char));
++	if (old) {
++		if (log_file_compress) {
++			snprintf(old, strlen(log_file) + 10, "%s.%d.gz", log_file, next_index);
++			compress_log_file(log_file, old);
++			remove(log_file);
++		} else {
++			snprintf(old, strlen(log_file) + 10, "%s.%d", log_file, next_index);
++			rename(log_file, old);
++		}
++		free(old);
++	}
++}
++
+ static int log_notify(struct blob_attr *msg)
+ {
+ 	struct blob_attr *tb[__LOG_MAX];
+@@ -187,16 +290,36 @@ static int log_notify(struct blob_attr *
+ 
+ 	id = blobmsg_get_u32(tb[LOG_ID]);
+ 
+-	if ((log_type == LOG_FILE) && log_size && (!stat(log_file, &s)) && (s.st_size > log_size)) {
+-		char *old = malloc(strlen(log_file) + 5);
+-
+-		close(sender.fd);
+-		if (old) {
+-			sprintf(old, "%s.old", log_file);
+-			rename(log_file, old);
+-			free(old);
++	// Rotate log file
++	if ((log_type == LOG_FILE) && log_size && (!stat(log_file, &s)) && (s.st_size + blob_len(msg) > log_size)) {
++		int next_index, oldest_index;
++		get_log_indexes(log_file, &oldest_index, &next_index);
++		char *log_file_copy = strdup(log_file);
++		char *dir_name = dirname(log_file_copy);
++		long free_space = get_free_space(dir_name);
++		long required_space = log_size + 500000; // 0.5MB for safety
++
++		while (free_space < required_space) {
++			char *oldest = calloc(strlen(log_file) + 10, sizeof(char));
++			if (oldest) {
++				char *ext = log_file_compress ? ".gz" : "";
++				snprintf(oldest, strlen(log_file) + 10, "%s.%d%s", log_file, oldest_index, ext);
++
++				if (access(oldest, F_OK) == 0) {
++					remove(oldest);
++				} else {
++					break;
++				}
++				free(oldest);
++			}
++			free_space = get_free_space(dir_name);
++		}
++		free(log_file_copy);
++		if (next_index) {
++			close(sender.fd);
++			rotate_log_file(log_file, next_index);
++			sender.fd = open(log_file, O_CREAT | O_WRONLY | O_APPEND, 0600);
+ 		}
+-		sender.fd = open(log_file, O_CREAT | O_WRONLY | O_APPEND, 0600);
+ 		if (sender.fd < 0) {
+ 			fprintf(stderr, "failed to open %s: %m\n", log_file);
+ 			exit(-1);
+@@ -466,6 +589,9 @@ int main(int argc, char **argv)
+ 		case 't':
+ 			log_timestamp = 1;
+ 			break;
++		case 'c':
++			log_file_compress = 1;
++			break;
+ 		default:
+ 			return usage(*argv);
+ 		}

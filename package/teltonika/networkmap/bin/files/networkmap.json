@@ -1,0 +1,17 @@
+{
+  "user": "networkmap",
+  "access": {
+    "dnsmasq": {
+      "methods": ["ipv4leases"]
+    },
+    "network.rrdns": {
+      "methods": ["lookup"]
+    },
+    "tswconfig.l2": {
+      "methods": ["get_addr"]
+    },
+    "port_events": {
+      "methods": ["show"]
+    }
+  }
+}

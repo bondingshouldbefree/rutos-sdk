@@ -1,0 +1,12 @@
+#!/bin/sh
+
+CERTIFICATE_STORE="/etc/certificates/status/info"
+PACKAGE_FILE="/etc/package_restore.txt"
+
+[ -f "$CERTIFICATE_STORE" ] || exit 0
+[ -f "/usr/lib/opkg/info/letsencrypt.control" ] && exit 0
+
+grep -q "\"cert_type\":\"letsencrypt\"" "$CERTIFICATE_STORE" && \
+	echo "letsencrypt - Let's encrypt" >> "$PACKAGE_FILE"
+
+exit 0

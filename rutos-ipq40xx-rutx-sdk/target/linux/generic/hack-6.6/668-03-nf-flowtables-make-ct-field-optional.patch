@@ -1,0 +1,134 @@
+net: netfilter: flowtables: handle 'ct' field being NULL
+
+With XFRM flow type, 'ct' field is no longer guaranteed to be non-null.
+Adjust users to check whether it is non-null. 'ct' field is still 
+guaranteed to be non-null for route type flows.
+
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -235,6 +235,7 @@ static void flow_offload_route_release(s
+ {
+ 	flow_offload_route_tuple_release(&flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].tuple);
+ 	flow_offload_route_tuple_release(&flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].tuple);
++	nf_ct_put(flow->ct);
+ }
+ 
+ void flow_offload_free(struct flow_offload *flow)
+@@ -246,7 +247,6 @@ void flow_offload_free(struct flow_offlo
+ 	default:
+ 		break;
+ 	}
+-	nf_ct_put(flow->ct);
+ 	kfree(flow);
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_free);
+@@ -289,7 +289,14 @@ unsigned long flow_offload_get_timeout(s
+ {
+ 	unsigned long timeout = NF_FLOW_TIMEOUT;
+ 	struct net *net = flow_offload_net(flow);
+-	int l4num = nf_ct_protonum(flow->ct);
++	int l4num;
++
++	if (!flow->ct) {
++		struct nf_generic_net *tn = nf_generic_pernet(net);
++		return tn->timeout;
++	}
++
++	l4num = nf_ct_protonum(flow->ct);
+ 
+ 	if (l4num == IPPROTO_TCP) {
+ 		struct nf_tcp_net *tn = nf_tcp_pernet(net);
+@@ -461,10 +468,18 @@ static void flow_offload_del(struct nf_f
+ 	call_rcu(&flow->rcu_head, flow_offload_free_rcu);
+ }
+ 
+-void flow_offload_teardown(struct flow_offload *flow)
++void flow_offload_teardown_route(struct flow_offload *flow)
+ {
+ 	struct nf_conn_flow *flow_ext;
+ 
++	flow_ext = nf_ct_ext_find(flow->ct, NF_CT_EXT_FLOW_OFFLOAD);
++	if (flow_ext)
++		RCU_INIT_POINTER(flow_ext->flow, NULL);
++}
++
++void flow_offload_teardown(struct flow_offload *flow)
++{
++
+ 	flow_offload_lock(flow);
+ 
+ 	if (test_and_set_bit(NF_FLOW_TEARDOWN, &flow->flags)) {
+@@ -472,12 +487,18 @@ void flow_offload_teardown(struct flow_o
+ 		return;
+ 	}
+ 
+-	flow_ext = nf_ct_ext_find(flow->ct, NF_CT_EXT_FLOW_OFFLOAD);
+-	if (flow_ext)
+-		RCU_INIT_POINTER(flow_ext->flow, NULL);
++	switch (flow->type) {
++	case NF_FLOW_OFFLOAD_ROUTE:
++		flow_offload_teardown_route(flow);
++		break;
++	default:
++		break;
++	}
+ 
+-	flow_offload_fixup_ct(flow->ct);
+-	clear_bit(IPS_OFFLOAD_BIT, &flow->ct->status);
++	if (flow->ct) {
++		flow_offload_fixup_ct(flow->ct);
++		clear_bit(IPS_OFFLOAD_BIT, &flow->ct->status);
++	}
+ 
+ 	flow_offload_unlock(flow);
+ }
+@@ -501,7 +522,7 @@ flow_offload_lookup(struct nf_flowtable
+ 	if (test_bit(NF_FLOW_TEARDOWN, &flow->flags))
+ 		return NULL;
+ 
+-	if (unlikely(nf_ct_is_dying(flow->ct)))
++	if (unlikely(flow->ct && nf_ct_is_dying(flow->ct)))
+ 		return NULL;
+ 
+ 	return tuplehash;
+@@ -532,7 +553,7 @@ static void nf_flow_offload_gc_step(stru
+ 				    struct flow_offload *flow, void *data)
+ {
+ 	if (nf_flow_has_expired(flow) ||
+-	    nf_ct_is_dying(flow->ct) ||
++	    (flow->ct && nf_ct_is_dying(flow->ct)) ||
+ 	    flow_offload_route_xfrm_expired(flow) ||
+ 	    nf_flow_custom_gc(flow_table, flow))
+ 		flow_offload_teardown(flow);
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -924,7 +924,8 @@ static void flow_offload_work_add(struct
+ 	if (err < 0)
+ 		goto out;
+ 
+-	set_bit(IPS_HW_OFFLOAD_BIT, &offload->flow->ct->status);
++	if (offload->flow->ct)
++		set_bit(IPS_HW_OFFLOAD_BIT, &offload->flow->ct->status);
+ 
+ out:
+ 	nf_flow_offload_destroy(flow_rule);
+@@ -932,7 +933,9 @@ out:
+ 
+ static void flow_offload_work_del(struct flow_offload_work *offload)
+ {
+-	clear_bit(IPS_HW_OFFLOAD_BIT, &offload->flow->ct->status);
++	if (offload->flow->ct)
++		clear_bit(IPS_HW_OFFLOAD_BIT, &offload->flow->ct->status);
++
+ 	flow_offload_tuple_del(offload, FLOW_OFFLOAD_DIR_ORIGINAL);
+ 	flow_offload_tuple_del(offload, FLOW_OFFLOAD_DIR_REPLY);
+ 	set_bit(NF_FLOW_HW_DEAD, &offload->flow->flags);
+@@ -981,7 +984,7 @@ static void flow_offload_work_stats(stru
+ 		flow_offload_update_timeout(flow, stats[1].lastused);
+ 	}
+ 
+-	if (offload->flowtable->flags & NF_FLOWTABLE_COUNTER) {
++	if (flow->ct && offload->flowtable->flags & NF_FLOWTABLE_COUNTER) {
+ 		if (stats[0].pkts)
+ 			nf_ct_acct_add(offload->flow->ct,
+ 				       FLOW_OFFLOAD_DIR_ORIGINAL,

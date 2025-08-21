@@ -1,0 +1,1 @@
+{"services/vpn/openvpn":{"description":"openvpn configuration","read":{"api":{"/openvpn/*":["*"],"/interfaces/config/*":["area_type","name","id"],"/basic/network/devices/status/*":["type"],"/interfaces/basic/status/*":["device","ip6addrs"],"/ddns/config/*":["interface"]}},"write":{"api":["/openvpn/*"]},"source":["/openvpn/*"],"exception":["openvpn/status/*"]}}

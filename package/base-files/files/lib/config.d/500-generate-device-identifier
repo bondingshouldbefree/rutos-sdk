@@ -1,0 +1,9 @@
+#!/bin/sh
+
+generate_device_identifier() {
+	if [ ! "$(uci -q get vuci.main.device_identifier)" ]; then
+		uci -q set vuci.main.device_identifier=$(openssl rand -hex 16)
+	fi
+}
+
+conf_register_hook generate_device_identifier

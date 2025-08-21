@@ -1,0 +1,112 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=98
+STOP=02
+
+CONFIG=modbus_server
+APP=/usr/sbin/modbus_server
+
+if [ ! -x "$APP" ]; then
+	APP="/usr/local$APP"
+fi
+
+. /lib/functions.sh
+
+rename_custom_regfile() {
+	REGFILE_ON=$1
+	SECTION=$2
+
+	REGFILE=$(uci -q get modbus_server.$SECTION.regfile)
+
+	if [ "$REGFILE_ON" == "1" ]; then
+		fix_permissions 666 "$REGFILE" "modbus_server:modbus_server"
+		# Check legacy reg format
+		OLD_REGFILE="$(grep '# REGISTER_BLOCK_FILE$' /etc/sysupgrade.conf 2>/dev/null | head -n1 | sed 's/ #.*//')"
+		if [ -n "$OLD_REGFILE" ] && [ "$OLD_REGFILE" != "$REGFILE" ]
+		then
+			rm -f "$OLD_REGFILE"
+			sed -i '/# REGISTER_BLOCK_FILE/d' /etc/sysupgrade.conf 2>/dev/null
+		fi
+
+		OLD_REGFILE="$(grep '# REGISTER_BLOCK_FILE_'${SECTION}'' /etc/sysupgrade.conf 2>/dev/null | head -n1 | sed 's/ #.*//')"
+		if [ "$OLD_REGFILE" != "$REGFILE" ]
+		then
+			rm -f "$OLD_REGFILE"
+			sed -i '/# REGISTER_BLOCK_FILE_'"${SECTION}"'/d' /etc/sysupgrade.conf 2>/dev/null
+			echo "${REGFILE} # REGISTER_BLOCK_FILE_${SECTION}" >> /etc/sysupgrade.conf
+		fi
+	fi
+}
+
+calculate_combined_hash() {
+	local main_section=$1
+	local combined_config=""
+
+	combined_config=$(uci show "modbus_server.$main_section")
+
+	append_tag_config() {
+		local tag_section=$1
+		local dev_config
+
+		config_get dev_config "$tag_section" modbus_dev_config ""
+		if [ "$dev_config" = "$main_section" ]; then
+			local tag_config
+			tag_config=$(uci show "modbus_server.$tag_section")
+			combined_config="${combined_config}${tag_config}"
+		fi
+	}
+
+	config_foreach append_tag_config tag
+
+	echo -n "$combined_config" | md5sum | head -c 32
+}
+
+set_tcp_service() {
+	local SECTION=$1
+	ENABLED=$(uci -q get modbus_server.modbus.enabled)
+
+	if [ "$ENABLED" == "1" ]; then
+		procd_open_instance "$SECTION"
+		section_hash=$(calculate_combined_hash "$SECTION")
+		procd_set_param data hash="$section_hash"
+		procd_set_param command "$APP" -s "modbus" -H "$section_hash"
+		procd_set_param respawn
+		procd_set_param user modbus_server
+		procd_close_instance
+	fi
+}
+
+set_serial_service() {
+	local SECTION=$1
+
+	config_get ENABLED $SECTION enabled
+
+	if [ -n "$ENABLED" ] && [ "$ENABLED" -eq 1 ]; then
+		REGFILE_ON=$(uci -q get modbus_server.$SECTION.clientregs)
+		rename_custom_regfile "$REGFILE_ON" "$SECTION"
+
+		procd_open_instance "$SECTION"
+		section_hash=$(calculate_combined_hash "$SECTION")
+		procd_set_param data hash="$section_hash"
+		procd_set_param command "$APP" -s "$SECTION" -H "$section_hash"
+		procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-60} ${respawn_retry:-0}
+		procd_set_param user modbus_server
+		procd_close_instance
+	fi
+}
+
+start_service() {
+	config_load "$CONFIG"
+
+	REGFILE_ON=$(uci -q get modbus_server.modbus.clientregs)
+	rename_custom_regfile "$REGFILE_ON" "modbus"
+
+	set_tcp_service modbus
+
+	config_foreach set_serial_service rtu_device
+}
+
+service_triggers() {
+	procd_add_reload_trigger "modbus_server"
+}

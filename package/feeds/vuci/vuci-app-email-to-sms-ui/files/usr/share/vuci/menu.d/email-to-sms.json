@@ -1,0 +1,17 @@
+{
+  "services/mobile_utilities": {
+    "title": "Mobile Utilities",
+    "index": 30
+  },
+  "services/mobile_utilities/sms_gateway": {
+    "index": 2,
+    "title": "SMS Gateway"
+  },
+  "services/mobile_utilities/sms_gateway/email_to_sms": {
+    "view": "services/EmailToSMS",
+    "title": "Email to SMS",
+    "index": 4,
+    "acls": ["services/mobile_utilities/sms_gateway/email_to_sms"],
+    "main_page": true
+  }
+}

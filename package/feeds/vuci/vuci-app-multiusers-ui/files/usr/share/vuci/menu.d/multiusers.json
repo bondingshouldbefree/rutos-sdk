@@ -1,0 +1,19 @@
+{
+	"system/admin/multiusers": {
+		"title": "User Settings",
+		"index": 30
+	},
+		"system/admin/multiusers/change_password": {
+			"title": "Change Password",
+			"index": 1,
+			"acls": [ "system/admin/multiusers/change_password" ],
+			"view": "system/UserEdit"
+		},
+
+		"system/admin/multiusers/users_configuration": {
+			"title": "System Users",
+			"index": 3,
+			"acls": [ "system/admin/multiusers/users_configuration" ],
+			"view": "system/Users"
+		}
+}

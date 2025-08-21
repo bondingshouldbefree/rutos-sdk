@@ -1,0 +1,72 @@
+From 620e988509fbd8cedec51b64029fc965304b11c1 Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Mon, 13 Jan 2025 13:08:33 +0200
+Subject: [PATCH 1/1] copy security.capability with -a flag
+
+---
+ include/libbb.h   |  1 +
+ libbb/copy_file.c | 22 ++++++++++++++++++++++
+ 2 files changed, 23 insertions(+)
+
+diff --git a/include/libbb.h b/include/libbb.h
+index 47bdb7b..1ea5d04 100644
+--- a/include/libbb.h
++++ b/include/libbb.h
+@@ -455,6 +455,7 @@ enum {	/* cp.c, mv.c, install.c depend on these values. CAREFUL when changing th
+ 	FILEUTILS_MAKE_SOFTLINK   = 1 << 7, /* -s */
+ 	FILEUTILS_DEREF_SOFTLINK  = 1 << 8, /* -L */
+ 	FILEUTILS_DEREFERENCE_L0  = 1 << 9, /* -H */
++	FILEUTILS_ARCHIVE  = 1 << 10, /* -a copy security.capability xattr */
+ 	/* -a = -pdR (mapped in cp.c) */
+ 	/* -r = -dR  (mapped in cp.c) */
+ 	/* -P = -d   (mapped in cp.c) */
+diff --git a/libbb/copy_file.c b/libbb/copy_file.c
+index 044bc3c..814420d 100644
+--- a/libbb/copy_file.c
++++ b/libbb/copy_file.c
+@@ -8,6 +8,7 @@
+  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
+  */
+ #include "libbb.h"
++#include <sys/xattr.h>
+ 
+ // FEATURE_NON_POSIX_CP:
+ //
+@@ -72,6 +73,24 @@ static int ask_and_unlink(const char *dest, int flags)
+ 	return 1; /* ok (to try again) */
+ }
+ 
++void copy_file_xattr(const char* src, const char* dst, const char* attr) {
++	void *buffer = NULL;
++	ssize_t size = lgetxattr(src, attr, NULL, 0);
++	if (size < 0)
++		return;
++	buffer = malloc(size);
++	if (buffer == NULL)
++		return;
++	size = lgetxattr(src, attr, buffer, size);
++	if (size < 0) {
++		free(buffer);
++		return;
++	}
++	size = lsetxattr(dst, attr, buffer, size, 0);
++	free(buffer);
++	return;
++}
++
+ /* Return:
+  * -1 error, copy not made
+  *  0 copy is made or user answered "no" in interactive mode
+@@ -440,6 +459,9 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
+ 			bb_perror_msg("can't preserve %s of '%s'", "permissions", dest);
+ 	}
+ 
++	if (flags & FILEUTILS_ARCHIVE)
++		copy_file_xattr(source, dest, "security.capability");
++
+  verb_and_exit:
+ 	if (flags & FILEUTILS_VERBOSE) {
+ 		printf("'%s' -> '%s'\n", source, dest);
+-- 
+2.47.0
+

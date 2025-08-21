@@ -1,0 +1,30 @@
+# Config override for Vuci SCEP page
+
+# Directory where the certificates and keys will be stored
+: ${CERTDIR=/etc/certificates/cert-enroll}
+
+# Fully Qualified Domain Name and Distinguished Name
+: ${FQDN=$(uci get system.system.hostname)}
+: ${DN="CN=$FQDN"}
+
+# Key and certificate names
+: ${HOSTKEY=$FQDN-key.pem}
+: ${HOSTCERT=$FQDN-cert.pem}
+: ${CERTREQ=$FQDN-req.pem}
+: ${CAOUT=$FQDN-cacert}
+: ${ROOTCA=$CAOUT.pem}
+: ${OLDROOTCA=$CAOUT-old.pem}
+: ${SUBCA=$CAOUT-1.pem}
+: ${OLDSUBCA=$CAOUT-1-old.pem}
+: ${RAOUT=$FQDN-racert}
+: ${RACERT=$RAOUT.pem}
+: ${SUBRA=$RAOUT-2.pem}
+
+# Optional additional Subject Alternative Names (fill in and uncomment)
+: ${ADD_SANS=""}
+
+# Enrollment protocol (either "EST" or "SCEP")
+: ${PROTOCOL=SCEP}
+
+# Maximum poll time in seconds for SCEP enrollment process
+: ${SCEP_MAX_POLL_TIME=28800}

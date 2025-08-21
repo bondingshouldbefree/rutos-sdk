@@ -1,0 +1,16 @@
+{
+	"user": "wifi_scanner",
+	"publish": [],
+	"subscribe": [ "hostapd.*", "wpa_supplicant.*" ],
+	"send": [],
+	"listen": ["wireless.state", "ubus.object.add", "ubus.object.remove"],
+	"access": {
+		"network.wireless": {
+			"methods": ["status"]
+		},
+		"iwinfo": {
+			"methods": ["info", "assoclist", "scan"]
+		}
+	}
+}
+

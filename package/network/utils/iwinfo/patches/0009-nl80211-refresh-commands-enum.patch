@@ -1,0 +1,71 @@
+Index: libiwinfo-2023-05-17-c9f5c3f7/api/nl80211.h
+===================================================================
+--- libiwinfo-2023-05-17-c9f5c3f7/api/nl80211.h
++++ libiwinfo-2023-05-17-c9f5c3f7/api/nl80211.h
+@@ -1200,6 +1200,42 @@
+  * @NL80211_CMD_COLOR_CHANGE_COMPLETED: Notify userland that the color change
+  *	has completed
+  *
++ * @NL80211_CMD_SET_FILS_AAD: Set FILS AAD data to the driver using -
++ *	&NL80211_ATTR_MAC - for STA MAC address
++ *	&NL80211_ATTR_FILS_KEK - for KEK
++ *	&NL80211_ATTR_FILS_NONCES - for FILS Nonces
++ *		(STA Nonce 16 bytes followed by AP Nonce 16 bytes)
++ *
++ * @NL80211_CMD_ASSOC_COMEBACK: notification about an association
++ *      temporal rejection with comeback. The event includes %NL80211_ATTR_MAC
++ *      to describe the BSSID address of the AP and %NL80211_ATTR_TIMEOUT to
++ *      specify the timeout value.
++ *
++ * @NL80211_CMD_ADD_LINK: Add a new link to an interface. The
++ *	%NL80211_ATTR_MLO_LINK_ID attribute is used for the new link.
++ * @NL80211_CMD_REMOVE_LINK: Remove a link from an interface. This may come
++ *	without %NL80211_ATTR_MLO_LINK_ID as an easy way to remove all links
++ *	in preparation for e.g. roaming to a regular (non-MLO) AP.
++ *
++ * @NL80211_CMD_ADD_LINK_STA: Add a link to an MLD station
++ * @NL80211_CMD_MODIFY_LINK_STA: Modify a link of an MLD station
++ * @NL80211_CMD_REMOVE_LINK_STA: Remove a link of an MLD station
++ *
++ * @NL80211_CMD_SET_HW_TIMESTAMP: Enable/disable HW timestamping of Timing
++ *	measurement and Fine timing measurement frames. If %NL80211_ATTR_MAC
++ *	is included, enable/disable HW timestamping only for frames to/from the
++ *	specified MAC address. Otherwise enable/disable HW timestamping for
++ *	all TM/FTM frames (including ones that were enabled with specific MAC
++ *	address). If %NL80211_ATTR_HW_TIMESTAMP_ENABLED is not included, disable
++ *	HW timestamping.
++ *	The number of peers that HW timestamping can be enabled for concurrently
++ *	is indicated by %NL80211_ATTR_MAX_HW_TIMESTAMP_PEERS.
++ *
++ * @NL80211_CMD_LINKS_REMOVED: Notify userspace about the removal of STA MLD
++ *	setup links due to AP MLD removing the corresponding affiliated APs with
++ *	Multi-Link reconfiguration. %NL80211_ATTR_MLO_LINKS is used to provide
++ *	information about the removed STA MLD setup links.
++ *
+  * @NL80211_CMD_MAX: highest used command number
+  * @__NL80211_CMD_AFTER_LAST: internal use
+  */
+@@ -1440,6 +1476,23 @@ enum nl80211_commands {
+ 	NL80211_CMD_COLOR_CHANGE_ABORTED,
+ 	NL80211_CMD_COLOR_CHANGE_COMPLETED,
+ 
++	NL80211_CMD_SET_FILS_AAD,
++
++	NL80211_CMD_ASSOC_COMEBACK,
++
++	NL80211_CMD_ADD_LINK,
++	NL80211_CMD_REMOVE_LINK,
++
++	NL80211_CMD_ADD_LINK_STA,
++	NL80211_CMD_MODIFY_LINK_STA,
++	NL80211_CMD_REMOVE_LINK_STA,
++
++	NL80211_CMD_SET_HW_TIMESTAMP,
++
++	NL80211_CMD_LINKS_REMOVED,
++
++	NL80211_CMD_UNREGISTER_FRAME,
++
+ 	/* add new commands above here */
+ 
+ 	/* used to define NL80211_CMD_MAX below */
