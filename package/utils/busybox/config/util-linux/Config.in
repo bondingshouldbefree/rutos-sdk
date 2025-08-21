@@ -378,14 +378,6 @@ config BUSYBOX_CONFIG_LSPCI
 	system and devices connected to them.
 
 	This version uses sysfs (/sys/bus/pci/devices) only.
-config BUSYBOX_CONFIG_LSUSB
-	bool "lsusb (4.2 kb)"
-	default BUSYBOX_DEFAULT_LSUSB
-	help
-	lsusb is a utility for displaying information about USB buses in the
-	system and devices connected to them.
-
-	This version uses sysfs (/sys/bus/usb/devices) only.
 config BUSYBOX_CONFIG_MDEV
 	bool "mdev (17 kb)"
 	default BUSYBOX_DEFAULT_MDEV
