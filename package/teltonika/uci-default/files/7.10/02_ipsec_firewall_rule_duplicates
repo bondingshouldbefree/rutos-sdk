@@ -1,0 +1,26 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+remove_duplicates() {
+	local section="$1"
+	local vpn_type
+
+	config_get vpn_type "$section" vpn_type
+
+	[ "$vpn_type" = "IPsec" ] || return 0
+	config_get name "$section" name
+	case $name in
+		"Allow-IPsec-NAT-T")
+			uci_remove_list "firewall" "$section" "dest_port" "4500"
+			uci_add_list "firewall" "$section" "dest_port" "4500"
+			;;
+		"Allow-IPsec-IKE")
+			uci_remove_list "firewall" "$section" "dest_port" "500"
+			uci_add_list "firewall" "$section" "dest_port" "500"
+			;;
+	esac
+}
+config_load "firewall"
+config_foreach remove_duplicates "rule"
+uci_commit "firewall"

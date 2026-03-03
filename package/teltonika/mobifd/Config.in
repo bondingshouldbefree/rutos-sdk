@@ -1,0 +1,7 @@
+config MOBIFD_DEBUG
+	bool "Enable debuging"
+	depends on PACKAGE_mobifd
+	default n
+    help
+        Enables deep debuging
+

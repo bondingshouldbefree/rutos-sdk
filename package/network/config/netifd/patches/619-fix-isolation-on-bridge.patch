@@ -1,0 +1,12 @@
+--- a/system-linux.c
++++ b/system-linux.c
+@@ -1009,6 +1009,9 @@ int system_bridge_addif(struct device *b
+ 	    dev->settings.isolate)
+ 		system_bridge_set_isolated(dev, "1");
+ 
++	if (dev->wireless && dev->wireless_isolate)
++		system_bridge_set_isolated(dev, dev->wireless_isolate ? "1" : "0");
++
+ 	if (dev->bpdu_filter)
+ 		system_bridge_set_bpdu_filter(dev, dev->bpdu_filter ? "1" : "0");
+ 

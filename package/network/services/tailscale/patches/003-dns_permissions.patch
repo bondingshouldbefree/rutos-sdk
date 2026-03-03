@@ -1,0 +1,72 @@
+Index: tailscale-1.86.2/net/dns/direct.go
+===================================================================
+--- tailscale-1.86.2.orig/net/dns/direct.go
++++ tailscale-1.86.2/net/dns/direct.go
+@@ -241,9 +241,13 @@ func (m *directManager) restoreBackup()
+ 		return false, nil
+ 	}
+ 
+-	// We own resolv.conf, and a backup exists.
+-	if err := m.rename(backupConf, resolvConf); err != nil {
+-		return false, err
++	data, err := m.fs.ReadFile(backupConf)
++	if err != nil {
++		return false, fmt.Errorf("reading backup %q: %w", backupConf, err)
++	}
++
++	if err := m.DirectWrite(m.fs, resolvConf, data); err != nil {
++		return false, fmt.Errorf("restoring backup: %w", err)
+ 	}
+ 
+ 	return true, nil
+@@ -330,9 +334,10 @@ func (m *directManager) SetDNS(config OS
+ 			return err
+ 		}
+ 
++		// Write the new configuration to /etc/resolv.conf.
+ 		buf := new(bytes.Buffer)
+ 		writeResolvConf(buf, config.Nameservers, config.SearchDomains)
+-		if err := m.atomicWriteFile(m.fs, resolvConf, buf.Bytes(), 0644); err != nil {
++		if err := m.DirectWrite(m.fs, resolvConf, buf.Bytes()); err != nil {
+ 			return err
+ 		}
+ 
+@@ -448,9 +453,10 @@ func (m *directManager) Close() error {
+ 		return nil
+ 	}
+ 
+-	// We own resolv.conf, and a backup exists.
+-	if err := m.rename(backupConf, resolvConf); err != nil {
+-		return err
++	// We don't own resolve.conf, so we just write to it instead of atomic replacing it.
++	backupBytes, err := m.fs.ReadFile(backupConf)
++	if err := m.DirectWrite(m.fs, resolvConf, backupBytes); err != nil {
++		return fmt.Errorf("clearing %q: %w", resolvConf, err)
+ 	}
+ 
+ 	if isResolvedRunning() && !runningAsGUIDesktopUser() {
+@@ -465,6 +471,13 @@ func (m *directManager) Close() error {
+ 	return nil
+ }
+ 
++func (m *directManager) DirectWrite(fs wholeFileFS, filename string, data []byte) error {
++	if err := fs.WriteFile(filename, data, 0); err != nil {
++		return fmt.Errorf("DirectWrite: WriteFile %q: %w", filename, err)
++	}
++	return nil
++}
++
+ func (m *directManager) atomicWriteFile(fs wholeFileFS, filename string, data []byte, perm os.FileMode) error {
+ 	var randBytes [12]byte
+ 	if _, err := rand.Read(randBytes[:]); err != nil {
+Index: tailscale-1.86.2/net/dns/resolvconfpath_default.go
+===================================================================
+--- tailscale-1.86.2.orig/net/dns/resolvconfpath_default.go
++++ tailscale-1.86.2/net/dns/resolvconfpath_default.go
+@@ -7,5 +7,5 @@ package dns
+ 
+ const (
+ 	resolvConf = "/etc/resolv.conf"
+-	backupConf = "/etc/resolv.pre-tailscale-backup.conf"
++	backupConf = "/etc/tailscale/resolv.pre-tailscale-backup.conf"
+ )

@@ -1,0 +1,4 @@
+/etc/tailscale	tailscale:tailscale	-	cd
+/etc/tailscale	tailscale:tailscale	-	r
+/var/lib/tailscale	tailscale:tailscale	-	cd
+/etc/config/tailscale	tailscale:tailscale	660	-

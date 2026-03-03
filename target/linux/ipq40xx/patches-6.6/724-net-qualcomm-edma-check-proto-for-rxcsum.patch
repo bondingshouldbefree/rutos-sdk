@@ -1,0 +1,83 @@
+Author: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date:   Tue Feb 18 16:12:03 2025 +0200
+
+    essedma: check packet protocol when using RX csum offload
+    
+    EDMA hardware sets one bit for bad L3 csum, one bit for bad L4 csum.
+    In case L3/L4 proto is not supported by hardware csum, it never sets
+    any of EDMA_RRD_CSUM_FAIL_MASK bits, leading to incorrect assumption
+    that packet checksums are good.
+    
+    Seems like supported protocols are IPv4/v6 + TCP/UDP, that would be
+    consistent with RSS support flags.
+
+---
+ drivers/net/ethernet/qualcomm/essedma/edma.c |   40 ++++++++++++++++++++++++---
+ 1 file changed, 37 insertions(+), 3 deletions(-)
+
+--- a/drivers/net/ethernet/qualcomm/essedma/edma.c
++++ b/drivers/net/ethernet/qualcomm/essedma/edma.c
+@@ -349,11 +349,18 @@ static void edma_init_desc(struct edma_c
+ /* edma_receive_checksum
+  *	Api to check checksum on receive packets
+  */
+-static void edma_receive_checksum(struct edma_rx_return_desc *rd,
+-						 struct sk_buff *skb)
++static void edma_receive_checksum(struct net_device *dev,
++				  struct edma_rx_return_desc *rd,
++				  struct sk_buff *skb)
+ {
++	u8 l4proto;
++
+ 	skb_checksum_none_assert(skb);
+ 
++	/* Rx checksum disabled via ethtool */
++	if (!(dev->features & NETIF_F_RXCSUM))
++		return;
++
+ 	/* check the RRD IP/L4 checksum bit to see if
+ 	 * its set, which in turn indicates checksum
+ 	 * failure.
+@@ -361,6 +368,33 @@ static void edma_receive_checksum(struct
+ 	if (rd->rrd6 & EDMA_RRD_CSUM_FAIL_MASK)
+ 		return;
+ 
++	/* If EDMA_RRD_CSUM_FAIL_MASK is not set, dissect skb
++	 * to check if packet protocols are actually supported
++	 * by hardware csum (IPv4/v6 + TCP/UDP)
++	 */
++	switch (skb->protocol) {
++	case htons(ETH_P_IP): {
++		struct iphdr *ip = (struct iphdr *)skb->data;
++		l4proto = ip->protocol;
++		break;
++	}
++	case htons(ETH_P_IPV6): {
++		struct ipv6hdr *ip6 = (struct ipv6hdr *)skb->data;
++		l4proto = ip6->nexthdr;
++		break;
++	}
++	default:
++		return;
++	}
++
++	switch (l4proto) {
++	case IPPROTO_TCP:
++	case IPPROTO_UDP:
++		break;
++	default:
++		return;
++	}
++
+ 	skb->ip_summed = CHECKSUM_UNNECESSARY;
+ }
+ 
+@@ -688,7 +722,7 @@ static u16 edma_rx_complete(struct edma_
+ #ifdef CONFIG_NF_FLOW_COOKIE
+ 			skb->flow_cookie = rd->rrd3 & EDMA_RRD_FLOW_COOKIE_MASK;
+ #endif
+-			edma_receive_checksum(rd, skb);
++			edma_receive_checksum(netdev, rd, skb);
+ 
+ 			/* Process VLAN HW acceleration indication provided by HW */
+ 			if (unlikely(adapter->default_vlan_tag != rd->rrd4)) {

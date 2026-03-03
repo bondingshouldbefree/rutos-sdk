@@ -1,0 +1,1 @@
+{"status/wireless/channel_analysis":{"description":"wireless channel analysis","read":{"api":{}},"write":{"api":["/wireless/actions/scan/*"]}}}

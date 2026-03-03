@@ -1,0 +1,25 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+rm_user_group() {
+	local value="$1"
+	local sid="$2"
+	case "$value" in
+		user\ *| group\ *)
+			uci_remove_list "openvpn" "$sid" extra "$value"
+			;;
+	esac
+}
+
+fix_user_group() {
+	local sid="$1"
+	config_get extra "$sid" "extra" ""
+	[ -n "$extra" ] && config_list_foreach "$sid" extra rm_user_group "$sid"
+}
+
+config_load "openvpn"
+config_foreach "fix_user_group" "openvpn"
+uci_commit "openvpn"
+
+exit 0

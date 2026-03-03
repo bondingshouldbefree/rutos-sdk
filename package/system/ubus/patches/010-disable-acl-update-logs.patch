@@ -1,0 +1,19 @@
+--- a/ubusd_acl.c
++++ b/ubusd_acl.c
+@@ -537,7 +537,7 @@ ubusd_acl_load_file(const char *filename
+ 	INIT_LIST_HEAD(&file->acl);
+ 
+ 	vlist_add(&ubusd_acl_files, &file->avl, file->avl_key);
+-	syslog(LOG_INFO, "loading %s\n", filename);
++	// syslog(LOG_INFO, "loading %s\n", filename);
+ 
+ 	return 0;
+ }
+@@ -563,6 +563,7 @@ ubusd_acl_load(void)
+ 		return;
+ 	}
+ 
++	syslog(LOG_INFO, "Loading ACLs\n");
+ 	vlist_update(&ubusd_acl_files);
+ 	for (j = 0; j < gl.gl_pathc; j++) {
+ 		if (stat(gl.gl_pathv[j], &st) || !S_ISREG(st.st_mode))

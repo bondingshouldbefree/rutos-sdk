@@ -1,0 +1,10 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+[ "$(uci_get "uhttpd" "defaults" "days")" = "730" ] || exit 0
+
+uci_set "uhttpd" "defaults" "days" "3650"
+uci_commit "uhttpd"
+
+exit 0

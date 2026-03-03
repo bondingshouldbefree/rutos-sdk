@@ -1,0 +1,23 @@
+#!/bin/sh
+
+section="${PLUTO_CONNECTION##*-}"
+
+ifname="$(uci -q get ipsec.$section.bind_to)"
+[ -z "$ifname" ] || [ "$ifname" = "-" ] && exit 0
+
+check_cl="$(uci -q get network.$ifname.proto)"
+[ "$check_cl" = "l2tp" ] || exit 0
+
+echo "Setting up L2TP $ifname over IPsec"
+
+case "$PLUTO_VERB" in
+	up-host | down-host)
+		action="${PLUTO_VERB%-host}"
+		;;
+	*)
+		exit 0
+		;;
+esac
+
+logger -t "ipsec" "Interface '$ifname' bringing $action L2TP over IPsec connection"
+"if$action" "$ifname"

@@ -1,0 +1,47 @@
+Index: odhcpd-2021-07-18-bc9d317f/src/config.c
+===================================================================
+--- odhcpd-2021-07-18-bc9d317f.orig/src/config.c
++++ odhcpd-2021-07-18-bc9d317f/src/config.c
+@@ -229,13 +229,12 @@ static void clean_interface(struct inter
+ 	set_interface_defaults(iface);
+ }
+ 
+-static void close_interface(struct interface *iface)
++static void stop_interface(struct interface *iface)
+ {
+-	avl_delete(&interfaces, &iface->avl);
+-
+ 	router_setup_interface(iface, false);
+ 	dhcpv6_setup_interface(iface, false);
+ 	ndp_setup_interface(iface, false);
++
+ #ifdef DHCPV4_SUPPORT
+ 	dhcpv4_setup_interface(iface, false);
+ #endif
+@@ -244,6 +243,14 @@ static void close_interface(struct inter
+ 	free(iface->addr4);
+ 	free(iface->addr6);
+ 	free(iface->ifname);
++}
++
++static void close_interface(struct interface *iface)
++{
++	avl_delete(&interfaces, &iface->avl);
++
++	stop_interface(iface);
++
+ 	free(iface);
+ }
+ 
+@@ -490,6 +497,11 @@ int config_parse_interface(void *data, s
+ 		ifname = ubus_get_ifname(name);
+ #endif
+ 
++	if(ifname && iface->ifname && strcmp(ifname, iface->ifname)) {
++		stop_interface(iface);
++		get_addrs = overwrite = true;
++	}
++
+ 	if (!iface->ifname && !ifname)
+ 		goto err;
+ 

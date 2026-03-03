@@ -1,0 +1,41 @@
+{
+	"user": "avl",
+	"publish": [ "avl" ],
+	"subscribe": [ "gpsd", "ioman.*" ],
+	"listen": [ "mwan3", "ubus.object.add" ],
+	"access": {
+		"network.interface": {
+			"methods": [
+				"dump"
+			]
+		},
+		"mwan3": {
+			"methods": [
+				"status"
+			]
+		},
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_signal_query",
+				"get_net_reg_stat"
+			]
+		},
+		"network.interface.*": {
+			"methods": [
+				"status"
+			]
+		},
+		"ioman.*": {
+			"methods": [
+				"status",
+				"location"
+			]
+		}
+	}
+}

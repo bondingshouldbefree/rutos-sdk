@@ -1,0 +1,12 @@
+--- a/Makefile  2024-11-08 10:05:09.545149408 +0200
++++ b/Makefile  2024-11-08 10:05:20.141623036 +0200
+Upstream-Status: Inappropriate [local build fix]
+@@ -1,7 +1,7 @@
+ WFLAGS=-Wall -Wextra -Wno-unused-parameter
+ DEFINES=-DREX_NOEMBEDDEDTEST -DPCRE2_CODE_UNIT_WIDTH=8  -D VERSION=\"2.9.1\" 
+ INCLUDES=-I$(STAGING_DIR)/usr/include/lua5.1 -I/usr/include/lua5.1 -I$(STAGING_DIR)/usr/include
+-LLUA=-llua
++LLUA=-llua5.1
+ 
+ LIBNAME=rex_pcre2.so
+ 

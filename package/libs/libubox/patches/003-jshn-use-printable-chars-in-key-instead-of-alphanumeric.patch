@@ -1,0 +1,52 @@
+--- a/jshn.c
++++ b/jshn.c
+@@ -99,7 +99,7 @@ static void add_json_string(const char *
+ static void write_key_string(const char *key)
+ {
+ 	while (*key) {
+-		putc(isalnum(*key) ? *key : '_', stdout);
++		putc(isprint(*key) ? *key : '_', stdout);
+ 		key++;
+ 	}
+ }
+--- a/sh/jshn.sh
++++ b/sh/jshn.sh
+@@ -66,6 +66,25 @@ _json_add_generic() {
+ 	_jshn_append "K_$4" "$var"
+ }
+ 
++_json_remove_generic() {
++	# type=$1
++	# name=$2
++	# cur=$3
++
++	local var
++	if [ "${3%%[0-9]*}" = "J_A" ]; then
++		_json_inc "S_$3" var
++	else
++		var="${2//[^a-zA-Z0-9_]/_}"
++		[[ "$var" == "$2" ]] || export -- "${JSON_PREFIX}N_${3}_${var}=$2"
++	fi
++
++	unset "${JSON_PREFIX}${3}_$var"
++	unset "${JSON_PREFIX}T_${3}_$var"
++	_jshn_append "JSON_UNSET" "${3}_$var"
++	_jshn_append "K_$3" "$var"
++}
++
+ _json_add_table() {
+ 	# name=$1
+ 	# type=$2
+@@ -162,6 +181,12 @@ json_add_boolean() {
+ 	_json_add_generic boolean "$1" "$2" "$cur"
+ }
+ 
++json_remove_boolean() {
++	local cur
++	_json_get_var cur JSON_CUR
++	_json_remove_generic "boolean" "$1" "$cur"
++}
++
+ json_add_double() {
+ 	local cur
+ 	_json_get_var cur JSON_CUR

@@ -1,0 +1,63 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+DMZ_ENABLED=""
+DMZ_SECTION=""
+DHCP_EXISTS=""
+DHCP_SECTION=""
+DHCP_SECTION="1"
+
+find_index() {
+        while uci_get "firewall" "$DHCP_SECTION" >/dev/null
+        do
+                DHCP_SECTION=$((DHCP_SECTION + 1))
+        done
+}
+
+check_dmz() {
+	local rule_name enabled
+	local section="$1"
+
+	config_get rule_name "$section" name ""
+
+	if [ "$rule_name" == "dmz_fw" ]; then
+		config_get enabled "$section" enabled ""
+		[ "$enabled" != "0" ] && DMZ_ENABLED=true
+		DMZ_SECTION="$section"
+	elif [ "$rule_name" == "dmz_dhcp" ]; then
+		DHCP_EXISTS="true"
+		DHCP_SECTION="$section"
+	fi
+}
+
+setup_dhcp() {
+	find_index
+
+	uci_add "firewall" "redirect" "$DHCP_SECTION"
+	uci_set "firewall" "$DHCP_SECTION" "enabled" "1"
+	uci_set "firewall" "$DHCP_SECTION" "name" "dmz_dhcp"
+	uci_set "firewall" "$DHCP_SECTION" "src_dport" "68"
+	uci_set "firewall" "$DHCP_SECTION" "src" "wan"
+	uci_set "firewall" "$DHCP_SECTION" "proto" "udp"
+
+	uci reorder firewall."$DHCP_SECTION"="$DMZ_SECTION"
+}
+
+fix_dhcp() {
+	local dest
+
+	dest="$(uci_get "firewall" "${DHCP_SECTION}" "dest")"
+	[ -n "$dest" ] && uci_remove "firewall" "$DHCP_SECTION" "dest"
+
+	uci_set "firewall" "$DHCP_SECTION" "src" "wan"
+}
+
+config_load "firewall"
+config_foreach check_dmz "redirect"
+if [ -n "$DMZ_ENABLED" ] && [ -z "$DHCP_EXISTS" ]; then
+	setup_dhcp
+elif [ -n "$DMZ_ENABLED" ] && [ -n "$DHCP_EXISTS" ]; then
+	fix_dhcp
+fi
+uci_commit "firewall"

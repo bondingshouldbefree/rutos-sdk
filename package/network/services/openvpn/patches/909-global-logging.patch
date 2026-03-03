@@ -1,0 +1,54 @@
+Index: openvpn-2.6.14/src/openvpn/error.c
+===================================================================
+--- openvpn-2.6.14.orig/src/openvpn/error.c
++++ openvpn-2.6.14/src/openvpn/error.c
+@@ -41,6 +41,7 @@
+ #include "ps.h"
+ #include "mstats.h"
+ 
++#include <tlt_logger.h>
+ 
+ #if SYSLOG_CAPABILITY
+ #ifndef LOG_OPENVPN
+@@ -334,7 +335,7 @@ x_msg_va(const unsigned int flags, const
+         if (use_syslog && !std_redir && !forked)
+         {
+ #if SYSLOG_CAPABILITY
+-            syslog(level, "%s%s%s",
++            _log(level, "%s%s%s",
+                    prefix,
+                    prefix_sep,
+                    m1);
+@@ -472,7 +473,9 @@ open_syslog(const char *pgmname, bool st
+         if (!use_syslog)
+         {
+             pgmname_syslog = string_alloc(pgmname ? pgmname : PACKAGE, NULL);
+-            openlog(pgmname_syslog, LOG_PID, LOG_OPENVPN);
++			if (logger_init_ext(L_SYSTEM, L_TYPE_SYSLOG | L_SYSLOG_LEVELS, pgmname_syslog, LOG_PID, LOG_OPENVPN)) {
++				msg(M_WARN, "Failed to initialize syslog logger");
++			}
+             use_syslog = true;
+ 
+             /* Better idea: somehow pipe stdout/stderr output to msg() */
+Index: openvpn-2.6.14/src/openvpn/Makefile.am
+===================================================================
+--- openvpn-2.6.14.orig/src/openvpn/Makefile.am
++++ openvpn-2.6.14/src/openvpn/Makefile.am
+@@ -12,6 +12,7 @@
+ include $(top_srcdir)/build/ltrc.inc
+ 
+ UBUS_LIBS = -lubus -lubox
++LOGGING_LIBS = -ltlt_logger
+ 
+ MAINTAINERCLEANFILES = \
+ 	$(srcdir)/Makefile.in
+@@ -157,7 +158,8 @@ openvpn_LDADD = \
+ 	$(OPTIONAL_SYSTEMD_LIBS) \
+ 	$(OPTIONAL_DL_LIBS) \
+ 	$(OPTIONAL_INOTIFY_LIBS) \
+-	$(UBUS_LIBS)
++	$(UBUS_LIBS) \
++	$(LOGGING_LIBS)
+ 
+ if WIN32
+ openvpn_SOURCES += openvpn_win32_resources.rc block_dns.c block_dns.h ring_buffer.h

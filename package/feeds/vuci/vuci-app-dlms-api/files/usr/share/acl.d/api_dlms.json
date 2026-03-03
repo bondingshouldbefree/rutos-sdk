@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"dlms_client*":{"methods":["status","scan_status","scan_start","scan_stop","test_device","test_cosem_group"]}}}

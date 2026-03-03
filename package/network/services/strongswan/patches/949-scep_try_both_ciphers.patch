@@ -1,0 +1,88 @@
+--- a/src/pki/commands/scep.c
++++ b/src/pki/commands/scep.c
+@@ -137,23 +137,6 @@ static int scep()
+ 			case 'k':       /* --key */
+ 				client_key_file = arg;
+ 				continue;
+-			case 'E':       /* --cipher */
+-				if (strcaseeq(arg, "des3"))
+-				{
+-					cipher = ENCR_3DES;
+-					key_size = 0;
+-				}
+-				else if (strcaseeq(arg, "aes"))
+-				{
+-					cipher = ENCR_AES_CBC;
+-					key_size = 128;
+-				}
+-				else
+-				{
+-					error = "invalid --cipher type";
+-					goto usage;
+-				}
+-				continue;
+ 			case 'g':       /* --digest */
+ 				if (!enum_from_name(hash_algorithm_short_names, arg, &digest_alg))
+ 				{
+@@ -301,17 +284,33 @@ static int scep()
+ 	}
+ 
+ 	/* check support of selected encryption algorithm */
+-	switch (cipher)
+-	{
+-		case ENCR_AES_CBC:
+-			ok = (caps_flags & SCEP_CAPS_AES) ||
+-				 (caps_flags & SCEP_CAPS_SCEPSTANDARD);
+-			break;
+-		case ENCR_3DES:
+-			ok = (caps_flags & SCEP_CAPS_DES3);
++	int algos[] = { ENCR_AES_CBC, ENCR_3DES };
++	int i;
++	ok = FALSE;
++
++	for (i = 0; i < sizeof(algos)/sizeof(algos[0]); i++) {
++		switch (algos[i]) {
++			case ENCR_AES_CBC:
++				DBG1(DBG_APP, "trying AES encryption");
++				if ((caps_flags & SCEP_CAPS_AES) ||
++					(caps_flags & SCEP_CAPS_SCEPSTANDARD)) {
++					encryption_algorithm_t cipher = ENCR_AES_CBC;
++					ok = TRUE;
++				}
++				break;
++
++			case ENCR_3DES:
++				DBG1(DBG_APP, "trying 3DES encryption");
++				if (caps_flags & SCEP_CAPS_DES3) {
++					encryption_algorithm_t cipher = ENCR_3DES;
++					ok = TRUE;
++				}
++				break;
++		}
++
++		if (ok) {
+ 			break;
+-		default:
+-			ok = FALSE;
++		}
+ 	}
+ 	if (!ok)
+ 	{
+@@ -633,7 +632,7 @@ static void __attribute__ ((constructor)
+ 		{"--url url [--in file] [--dn distinguished-name] [--san subjectAltName]+",
+ 		 "[--profile profile] [--password password]",
+ 		 " --cacert-enc file --cacert-sig file [--cacert file]+",
+-		 " --cert file --key file] [--cipher aes|des3]",
++		 " --cert file --key file] ",
+ 		 "[--digest sha256|sha384|sha512|sha224|sha1] [--rsa-padding pkcs1|pss]",
+ 		 "[--interval time] [--maxpolltime time] [--outform der|pem]"},
+ 		{
+@@ -649,7 +648,7 @@ static void __attribute__ ((constructor)
+ 			{"cacert",      'C', 1, "Additional CA certificates"},
+ 			{"cert",        'c', 1, "Old certificate about to be renewed"},
+ 			{"key",         'k', 1, "Old RSA private key about to be replaced"},
+-			{"cipher",      'E', 1, "encryption cipher, default: aes"},
++			{"cipher",      'E', 1, "encryption cipher, default: aes DEPRECATED: now both AES and 3DES are tried regardless of set cipher"},
+ 			{"digest",      'g', 1, "digest for signature creation, default: sha256"},
+ 			{"rsa-padding", 'R', 1, "padding for RSA signatures, default: pkcs1"},
+ 			{"interval",    't', 1, "poll interval, default: 60s"},

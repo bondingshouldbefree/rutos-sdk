@@ -1,0 +1,21 @@
+Index: lua-5.1.5/src/luaconf.h
+===================================================================
+--- lua-5.1.5.orig/src/luaconf.h
++++ lua-5.1.5/src/luaconf.h
+@@ -98,9 +98,15 @@
+ #define LUA_ROOT	"/usr/"
+ #define LUA_LDIR	LUA_ROOT "share/lua/"
+ #define LUA_CDIR	LUA_ROOT "lib/lua/"
++#define LUA_LOCAL_ROOT	"/usr/local"
+ #define LUA_PATH_DEFAULT  \
+ 		"./?.lua;"  LUA_LDIR"?.lua;"  LUA_LDIR"?/init.lua;" \
+-		            LUA_CDIR"?.lua;"  LUA_CDIR"?/init.lua"
++		            LUA_CDIR"?.lua;"  LUA_CDIR"?/init.lua;" \
++		            LUA_LOCAL_ROOT LUA_LDIR"?.lua;" \
++		            LUA_LOCAL_ROOT LUA_LDIR"?/init.lua;" \
++		            LUA_LOCAL_ROOT LUA_CDIR"?.lua;" \
++		            LUA_LOCAL_ROOT LUA_CDIR"?/init.lua"
++
+ #define LUA_CPATH_DEFAULT \
+ 	"./?.so;"  LUA_CDIR"?.so;" LUA_CDIR"loadall.so"
+ #endif

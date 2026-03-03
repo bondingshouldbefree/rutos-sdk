@@ -1,0 +1,19 @@
+{
+  "services/cloud_solutions": {
+    "title": "Cloud Solutions",
+    "index": 10
+  },
+  "services/cloud_solutions/rms": {
+    "title": "RMS",
+    "index": 10,
+    "view": "services/RMS",
+    "acls": ["services/cloud_solutions/rms"],
+    "main_page": true
+  },
+  "system/wizard/step_rms": {
+    "title": "RMS",
+    "view": "system/StepRms",
+    "acls": ["system/wizard/step_rms"],
+    "index": 50
+  }
+}

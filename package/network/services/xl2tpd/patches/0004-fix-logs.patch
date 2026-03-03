@@ -1,0 +1,154 @@
+Index: xl2tpd-1.3.16/control.c
+===================================================================
+--- xl2tpd-1.3.16.orig/control.c
++++ xl2tpd-1.3.16/control.c
+@@ -1969,6 +1969,12 @@ inline int handle_packet (struct buffer
+     struct timeval tv;
+ #endif
+ */
++    if (t->lns && t->lns->authname[0]) {
++        l2tp_log_set_id(t->lns->authname);
++    } else if (t->lac && t->lac->entname[0]) {
++        l2tp_log_set_id(t->lac->entname);
++    }
++
+     if (CTBIT (*((_u16 *) buf->start)))
+         return handle_control(buf, t, c);
+ 
+Index: xl2tpd-1.3.16/misc.c
+===================================================================
+--- xl2tpd-1.3.16.orig/misc.c
++++ xl2tpd-1.3.16/misc.c
+@@ -22,13 +22,19 @@
+ #include <stdlib.h>
+ #include <errno.h>
+ #include <string.h>
+-#include <syslog.h>
++#include <tlt_logger.h>
++#undef DEBUG
+ #if defined(SOLARIS)
+ # include <varargs.h>
+ #endif
+ #include <netinet/in.h>
+ #include "l2tp.h"
+ 
++static char log_id_buf[32];
++const char *instance_id = NULL;
++static int logopen = 0;
++static char xl2tpd_log_id[64];
++
+ /* prevent deadlock that occurs when a signal handler, which interrupted a
+  * call to syslog(), attempts to call syslog(). */
+ static int syslog_nesting = 0;
+@@ -41,13 +47,40 @@ static int syslog_nesting = 0;
+ 
+ #define UNUSED(x) (void)(x)
+ 
++void l2tp_log_set_id(const char *entname)
++{
++    if (!entname) {
++        instance_id = NULL;
++        if (logopen) {
++            closelog();
++            logopen=0;
++        }
++        return;
++    }
++    const char *name = entname;
++    if (strncmp(name, "l2tp-", 5) == 0)
++        name += 5;
++    strncpy(log_id_buf, name, sizeof(log_id_buf) - 1);
++    log_id_buf[sizeof(log_id_buf) - 1] = '\0';
++    instance_id = log_id_buf;
++    if (logopen) {
++        closelog();
++        logopen=0;
++    }
++}
++
+ void init_log()
+ {
+-    static int logopen=0;
+-    
+     if(!logopen) {
+-	SYSLOG_CALL( openlog (BINARY, LOG_PID, LOG_DAEMON) );
+-	logopen=1;
++        if (instance_id) {
++            snprintf(xl2tpd_log_id, sizeof(xl2tpd_log_id), BINARY "(%s)", instance_id);
++            SYSLOG_CALL( logger_init_ext(L_SYSTEM,  L_TYPE_SYSLOG | L_SYSLOG_LEVELS, xl2tpd_log_id, LOG_PID, LOG_DAEMON) );
++
++        } else {
++            SYSLOG_CALL( logger_init_ext(L_SYSTEM,  L_TYPE_SYSLOG | L_SYSLOG_LEVELS, BINARY, LOG_PID, LOG_DAEMON) );
++
++        }
++    logopen=1;
+     }
+ }
+ 
+@@ -60,10 +93,13 @@ void l2tp_log (int level, const char *fm
+     va_end (args);
+     
+     if(gconfig.syslog) {
+-	init_log();
+-	SYSLOG_CALL( syslog (level, "%s", buf) );
++    init_log();
++    SYSLOG_CALL( _log(level, "%s", buf) );
+     } else {
+-	fprintf(stderr, "xl2tpd[%d]: %s", getpid(), buf);
++        if (instance_id)
++            fprintf(stderr, "xl2tpd(%s)[%d]: %s", instance_id, getpid(), buf);
++        else
++            fprintf(stderr, "xl2tpd[%d]: %s", getpid(), buf);
+     }
+ }
+ 
+Index: xl2tpd-1.3.16/misc.h
+===================================================================
+--- xl2tpd-1.3.16.orig/misc.h
++++ xl2tpd-1.3.16/misc.h
+@@ -44,7 +44,7 @@ struct ppp_opts
+ 
+ #define IPADDY(a) inet_ntoa(*((struct in_addr *)&(a)))
+ 
+-#define DEBUG c ? c->debug || t->debug : t->debug
++#define DEBUG 1
+ 
+ #ifdef USE_SWAPS_INSTEAD
+ #define SWAPS(a) ((((a) & 0xFF) << 8 ) | (((a) >> 8) & 0xFF))
+@@ -61,6 +61,7 @@ struct ppp_opts
+ #define halt() printf("Halted.\n") ; for(;;)
+ 
+ extern char hostname[];
++void l2tp_log_set_id(const char *entname);
+ extern void l2tp_log (int level, const char *fmt, ...);
+ extern struct buffer *new_buf (int);
+ extern void udppush_handler (int);
+Index: xl2tpd-1.3.16/xl2tpd.c
+===================================================================
+--- xl2tpd-1.3.16.orig/xl2tpd.c
++++ xl2tpd-1.3.16/xl2tpd.c
+@@ -739,6 +739,11 @@ static struct tunnel *l2tp_call (char *h
+     /*
+      * Since our state is 0, we will establish a tunnel now
+      */
++    if (lns && lns->authname[0]) {
++        l2tp_log_set_id(lns->authname);
++    } else if (lac && lac->entname[0]) {
++        l2tp_log_set_id(lac->entname);
++    }
+     l2tp_log (LOG_NOTICE, "Connecting to host %s, port %d\n", host,
+          ntohs (port));
+     control_finish (tmp->container, tmp);
+Index: xl2tpd-1.3.16/Makefile
+===================================================================
+--- xl2tpd-1.3.16.orig/Makefile
++++ xl2tpd-1.3.16/Makefile
+@@ -121,7 +121,7 @@ clean:
+ 	rm -f $(OBJS) $(EXEC) $(CONTROL_EXEC)
+ 
+ $(EXEC): $(OBJS) $(HDRS)
+-	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
++	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS) -ltlt_logger
+ 
+ $(CONTROL_EXEC): $(CONTROL_SRCS)
+ 	$(CC) $(CFLAGS) $(LDFLAGS) $(CONTROL_SRCS) -o $@

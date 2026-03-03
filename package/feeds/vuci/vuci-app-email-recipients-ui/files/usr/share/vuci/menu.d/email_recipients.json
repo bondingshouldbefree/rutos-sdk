@@ -1,0 +1,12 @@
+{
+    "system/admin/group": {
+        "title": "Recipients",
+        "index": 50
+    },
+    "system/admin/group/email": {
+        "title": "Email Users",
+        "acls": ["system/admin/group/email"],
+        "view": "system/EmailGroups",
+        "index": 20
+    }
+}

@@ -1,0 +1,125 @@
+#include "qcom-ipq4018-rutx-shiftreg.dtsi"
+#include "qcom-ipq4018-rutx-i2c.dtsi" // SFP
+
+/ {
+	model = "RUTXR1";
+
+	soc {
+		mdio@90000 {
+			ethphy4: ethernet-phy@4 {
+				qcom,fiber-enable;
+			};
+		};
+
+		gpio-export {
+			compatible = "gpio-export";
+			#size-cells = <0>;
+
+			gpio_modem_reset {
+				gpio-export,name = "modem_reset";
+				gpio-export,output = <0>;
+				gpios = <&shift_io 1 GPIO_ACTIVE_HIGH>;
+			};
+
+			gpio_modem_power {
+				gpio-export,name = "modem_power";
+				gpio-export,output = <0>;
+				gpios = <&shift_io 2 GPIO_ACTIVE_HIGH>;
+			};
+
+			gpio_sim_select {
+				gpio-export,name = "sim_sel";
+				gpio-export,output = <0>;
+				gpios = <&shift_io 3 GPIO_ACTIVE_HIGH>;
+			};
+		};
+
+		leds {
+			compatible = "gpio-leds";
+
+			led_wan_sim1 {
+				label = "wan_sim_1";
+				gpios = <&shift_io 4 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_sim2 {
+				label = "wan_sim_2";
+				gpios = <&shift_io 5 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_eth {
+				label = "wan_eth_3";
+				gpios = <&shift_io 11 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_wan_mob {
+				label = "wan_mob_5";
+				gpios = <&shift_io 0 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_3 {
+				label = "mob_gen_3";
+				gpios = <&shift_io 6 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_gen_4 {
+				label = "mob_gen_4";
+				gpios = <&shift_io 7 GPIO_ACTIVE_HIGH>;
+			};
+
+			led_ssid_1 {
+				label = "mob_ssid_1";
+				gpios = <&shift_io 8 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_ssid_3 {
+				label = "mob_ssid_3";
+				gpios = <&shift_io 9 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+
+			led_ssid_5 {
+				label = "mob_ssid_5";
+				gpios = <&shift_io 10 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "timer";
+			};
+		};
+	};
+
+	tlt_gpios { // Modify according to wiki page "DTS syntax with Libgpiod changes"
+		gpiochip_info {
+			hw_6 {
+				hwver = <6>;
+				gpiochip_count = <2>;
+
+				gpiochip_0 = <100>; // Built-in
+				gpiochip_1 = <24>;  // Shift Register
+			};
+		};
+
+		misc {
+			GPIO_101 {
+				compatible_versions = <6 99>;
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_102 {
+				compatible_versions = <6 99>;
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_103 {
+				compatible_versions = <6 99>;
+				line_name = "GPIO_SIM_SELECT";
+				active_low;
+			};
+		};
+	};
+
+	/delete-node/ ioman;
+};
+
+&mnfinfo {
+	sim_cfg {
+		default = "2112000_2111000";
+	};
+};

@@ -1,0 +1,1 @@
+{"status/services":{"description":"services status","read":{"api":{"/services/*":["*"]}},"write":{"api":["/services/*"]}}}

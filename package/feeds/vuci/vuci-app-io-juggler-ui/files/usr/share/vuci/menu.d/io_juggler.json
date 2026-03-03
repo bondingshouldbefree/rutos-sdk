@@ -1,0 +1,34 @@
+{
+  "services/io": {
+    "index": 50,
+    "title": "Input/Output",
+    "depends": {
+      "board": {
+        "allOf": ["has_ios"]
+      }
+    }
+  },
+  "services/io/juggler": {
+    "index": 15,
+    "title": "I/O Juggler"
+  },
+  "services/io/juggler/input": {
+    "view": "services/IoJugglerGeneral",
+    "title": "General",
+    "index": 10,
+    "acls": ["services/io/juggler/input"],
+    "main_page": true
+  },
+  "services/io/juggler/action": {
+    "view": "services/IoJugglerActions",
+    "title": "Actions",
+    "index": 20,
+    "acls": ["services/io/juggler/action"]
+  },
+  "services/io/juggler/condition": {
+    "view": "services/IoJugglerConditions",
+    "title": "Conditions",
+    "index": 30,
+    "acls": ["services/io/juggler/condition"]
+  }
+}

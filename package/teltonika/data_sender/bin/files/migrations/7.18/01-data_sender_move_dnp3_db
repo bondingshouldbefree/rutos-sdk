@@ -1,0 +1,25 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+migrate_dnp3_db() {
+	local section="$1"
+	local dnp3_db
+
+	config_get dnp3_db "$section" dnp3_db
+
+	if [ "$dnp3_db" == "/usr/share/dnp3.db" ]; then
+		uci_set data_sender "$section" dnp3_db "/usr/local/share/dnp3_client/dnp3.db"
+	fi
+
+	if [ "$dnp3_db" == "/tmp/dnp3.db" ]; then
+		uci_set data_sender "$section" dnp3_db "/var/run/dnp3_client/dnp3.db"
+	fi
+}
+
+config_load data_sender
+config_foreach migrate_dnp3_db input
+
+uci_commit data_sender
+
+exit 0

@@ -1,0 +1,55 @@
+#!/bin/sh
+
+# Loop through each modem listed by ubus
+for mdm in $(ubus list | grep "gsm.modem"); do
+	# Initialize index for sim_config_list
+	idx=-1
+	# Extract modem identifier
+	modem=${mdm##*.}
+	# Extract modem number
+	modem_no=${modem:5:1}
+	# Get modem information
+	resp=$(ubus call gsm."$modem" info)
+	while true; do
+		# Increment index
+		idx=$((idx + 1))
+		# Get SIM configuration
+		sim_config="$(jsonfilter -s "$resp" -e '@.sim_config_list['$idx']')"
+		if [ -z "$sim_config" ]; then
+			break
+		fi
+		# Get SIM type
+		type="$(jsonfilter -s "$sim_config" -e '@.type')"
+		if [ "$type" != "2" ]; then
+			continue
+		fi
+		# Get SIM slot
+		sim_slot="$(jsonfilter -s "$sim_config" -e '@.sim')"
+		while true; do
+			# Get current SIM slot
+			slot=$(gsmctl -N "$modem_no" -T)
+			if [ "$?" -ne 0 ]; then
+				break
+			fi
+			if [ "$slot" = "$sim_slot" ]; then
+				break
+			fi
+			# Switch eSIM slot
+			echo "Switching $modem eSIM from slot $slot to slot $sim_slot."
+			if ! gsmctl -N "$modem_no" -Y; then
+				break
+			fi
+			# Wait for modem to switch
+			sleep 5
+		done
+		if [ "$slot" != "$sim_slot" ]; then
+			echo "eSIM unable to switch to slot $sim_slot. Skipping." 1>&2
+			continue
+		fi
+		# Delete eSIM profiles
+		echo "Deleting $modem slot $sim_slot eSIM profiles."
+		if ! lpac "$modem" reset-settings 2>/dev/null; then
+			echo "Unable to reset settings for $modem." 1>&2
+		fi
+	done
+done

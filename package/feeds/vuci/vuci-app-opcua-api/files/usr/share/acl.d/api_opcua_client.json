@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"opcua_client.*":{"methods":["status","test_server","test_server_node","test_value","test_value_group"]}}}

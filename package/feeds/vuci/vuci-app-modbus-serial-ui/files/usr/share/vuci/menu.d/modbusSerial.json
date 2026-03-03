@@ -1,0 +1,17 @@
+{
+	"services/modbus": {
+		"title": "Modbus",
+		"index": 120
+	},
+	"services/modbus/modbus_serial_client": {
+		"title": "Modbus Serial Client",
+		"index": 30,
+		"view": "services/ModbusSerial",
+		"acls": [ "services/modbus/modbus_serial_client" ],
+		"depends": {
+			"board": {
+				"anyOf": ["has_usb", "has_rs232", "has_rs485", "has_console"]
+			}
+		}
+	}
+}

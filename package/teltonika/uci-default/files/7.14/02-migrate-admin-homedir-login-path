@@ -1,0 +1,18 @@
+recreate=0
+
+if grep -q "^root.*:/root:/bin/ash$" /etc/passwd; then
+	sed -i '/^root:/ s|:/root:|:/usr/local/home/root:|' /etc/passwd
+	recreate=1
+fi
+
+if grep -q "^admin.*:/user:/bin/false$" /etc/passwd; then
+	sed -i '/^admin:/ s|:/user:|:/usr/local/home/admin:|' /etc/passwd
+	recreate=1
+fi
+
+if [ $recreate -eq 1 ]; then
+	# re-create user directories
+	boot_hook_add () { return 0; }
+	. /lib/preinit/82_setup_homedir
+	setup_homedir
+fi

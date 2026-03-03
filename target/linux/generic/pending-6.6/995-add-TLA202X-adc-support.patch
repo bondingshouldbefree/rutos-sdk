@@ -1,0 +1,31 @@
+--- a/drivers/hwmon/Kconfig
++++ b/drivers/hwmon/Kconfig
+@@ -38,6 +38,18 @@ config HWMON_DEBUG_CHIP
+ 
+ comment "Native drivers"
+ 
++config SENSORS_TLA2021
++	tristate "Texas Instruments TLA2024/TLA2022/TLA2021 ADC driver"
++	depends on OF
++	depends on I2C
++	help
++	  If you say yes here you get support for the sensor part of
++	  Texas Instruments TLA2024, TLA2022 or TLA2021 I2C Analog to
++	  Digital Converters.
++
++	  This driver can also be built as a module. If so, the module
++	  will be called tla202X.
++
+ config SENSORS_ABITUGURU
+ 	tristate "Abit uGuru (rev 1 & 2)"
+ 	depends on X86 && DMI
+--- a/drivers/hwmon/Makefile
++++ b/drivers/hwmon/Makefile
+@@ -209,6 +209,7 @@ obj-$(CONFIG_SENSORS_TMP401)	+= tmp401.o
+ obj-$(CONFIG_SENSORS_TMP421)	+= tmp421.o
+ obj-$(CONFIG_SENSORS_TMP464)	+= tmp464.o
+ obj-$(CONFIG_SENSORS_TMP513)	+= tmp513.o
++obj-$(CONFIG_SENSORS_TLA2021)	+= tla202X.o
+ obj-$(CONFIG_SENSORS_VEXPRESS)	+= vexpress-hwmon.o
+ obj-$(CONFIG_SENSORS_VIA_CPUTEMP)+= via-cputemp.o
+ obj-$(CONFIG_SENSORS_VIA686A)	+= via686a.o

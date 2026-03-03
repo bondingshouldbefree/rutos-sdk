@@ -1,0 +1,13 @@
+Index: sstp-client-1.0.19/src/libsstp-log/sstp-log-syslog.c
+===================================================================
+--- sstp-client-1.0.19.orig/src/libsstp-log/sstp-log-syslog.c
++++ sstp-client-1.0.19/src/libsstp-log/sstp-log-syslog.c
+@@ -69,7 +69,7 @@ static void sstp_syslog_write(log_ctx_st
+     }
+ 
+     /* Configure the log-level of the message */
+-    len += sprintf(buf + len, "<%d>", LOG_LOCAL0 | ((7 - msg->msg_level) & 0x07));
++    len += sprintf(buf + len, "<%d>", LOG_DAEMON | ((7 - msg->msg_level) & 0x07));
+ 
+     /* Get the time stamp */
+     attr = table[LOG_ATTR_TIME];

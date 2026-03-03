@@ -1,0 +1,3304 @@
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/.gitignore src/.gitignore
+--- upstream/.gitignore	2016-11-09 19:40:33.000000000 +0000
++++ src/.gitignore	1970-01-01 00:00:00.000000000 +0000
+@@ -1,62 +0,0 @@
+-*.o
+-*.la
+-*.lo
+-*~
+-.libs
+-.deps
+-.dirstamp
+-aclocal.m4
+-autom4te.cache
+-certificate.pem
+-compile
+-config.cache
+-config.guess
+-config.h
+-config.h.in
+-config.log
+-config.status
+-config.sub
+-configure
+-debian/autoreconf.after
+-debian/autoreconf.before
+-debian/files
+-debian/*.debhelper.log
+-debian/*.debhelper
+-debian/*.substvars
+-debian/shellinabox/
+-debian/tmp/
+-demo/beep.wav
+-demo/demo.js
+-demo/enabled.gif
+-demo/favicon.ico
+-demo/keyboard.png
+-demo/print-styles.css
+-demo/styles.css
+-demo/usercss-*.css
+-demo/vt100.js
+-depcomp
+-INSTALL
+-install-sh
+-libtool
+-ltmain.sh
+-Makefile
+-Makefile.in
+-missing
+-m4/
+-shellinabox/beep.h
+-shellinabox/cgi_root.h
+-shellinabox/enabled.h
+-shellinabox/favicon.h
+-shellinabox/keyboard.h
+-shellinabox/keyboard-layout.h
+-shellinabox/print-styles.h
+-shellinabox/root_page.h
+-shellinabox/shell_in_a_box.h
+-shellinabox/shell_in_a_box.js
+-shellinabox/styles.h
+-shellinabox/vt100.h
+-shellinabox/vt100.js
+-shellinaboxd
+-shellinaboxd.1
+-shellinaboxd.ps
+-stamp-h1
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/.gitlab-ci.yml src/.gitlab-ci.yml
+--- upstream/.gitlab-ci.yml	1970-01-01 00:00:00.000000000 +0000
++++ src/.gitlab-ci.yml	2025-02-05 12:54:15.000000000 +0000
+@@ -0,0 +1,20 @@
++include:
++  - project: teltonika/ci-templates
++    file:
++      - /templates/semgrep.yml
++
++workflow:
++  rules:
++    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
++    - if: $CI_PIPELINE_SOURCE == "web"
++    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
++      when: never
++    - if: $CI_COMMIT_BRANCH
++
++semgrep_errors:
++  extends: .semgrep_errors
++
++semgrep_info:
++  extends: .semgrep_info
++  needs:
++    - job: semgrep_errors
+\ No newline at end of file
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/Makefile.am src/Makefile.am
+--- upstream/Makefile.am	2016-11-09 19:40:33.000000000 +0000
++++ src/Makefile.am	2025-02-05 12:54:15.000000000 +0000
+@@ -1,7 +1,7 @@
+ AM_CPPFLAGS          =
+-AM_CFLAGS            = -g -std=gnu99 -Wall
+-AM_LDFLAGS           = -g -lm
+-ACLOCAL_AMFLAGS      = -I m4
++AM_CFLAGS    = -Os -std=gnu99 -Wall -ffunction-sections -fdata-sections -fomit-frame-pointer
++AM_LDFLAGS   = -Os -lm --gc-sections -s
++ACLOCAL_AMFLAGS = -I m4
+ 
+ noinst_LTLIBRARIES   = libhttp.la                                             \
+                        liblogging.la
+@@ -43,6 +43,10 @@
+                        shellinabox/black-on-white.css                         \
+                        shellinabox/monochrome.css                             \
+                        shellinabox/color.css                                  \
++                       shellinabox/keyboard.png                               \
++                       shellinabox/keyboard-layout.html                       \
++                       shellinabox/beep.wav                                   \
++                       shellinabox/favicon.ico                                \
+                        debian/README                                          \
+                        debian/README.available                                \
+                        debian/README.enabled                                  \
+@@ -104,17 +108,9 @@
+                        shellinabox/styles.css                                 \
+                        shellinabox/print-styles.css                           \
+                        shellinabox/enabled.gif                                \
+-                       shellinabox/favicon.ico                                \
+-                       shellinabox/keyboard.png                               \
+-                       shellinabox/keyboard-layout.html                       \
+-                       shellinabox/beep.wav                                   \
+                        config.h
+-BUILT_SOURCES        = shellinabox/beep.h                                     \
+-                       shellinabox/cgi_root.h                                 \
++BUILT_SOURCES        = shellinabox/cgi_root.h                                 \
+                        shellinabox/enabled.h                                  \
+-                       shellinabox/favicon.h                                  \
+-                       shellinabox/keyboard.h                                 \
+-                       shellinabox/keyboard-layout.h                          \
+                        shellinabox/print-styles.h                             \
+                        shellinabox/root_page.h                                \
+                        shellinabox/shell_in_a_box.h                           \
+@@ -248,12 +244,8 @@
+ 	        debian/shellinabox*.debhelper*                                \
+ 	        debian/shellinabox.substvars                                  \
+ 	        debian/tmp
+-	-rm -rf shellinabox/beep.h                                            \
+-	        shellinabox/cgi_root.h      				      \
++	-rm -rf shellinabox/cgi_root.h      				      \
+ 	        shellinabox/enabled.h       				      \
+-	        shellinabox/favicon.h       				      \
+-	        shellinabox/keyboard.h      				      \
+-	        shellinabox/keyboard-layout.h				      \
+ 	        shellinabox/print-styles.h  				      \
+ 	        shellinabox/root_page.h     				      \
+ 	        shellinabox/shell_in_a_box.js				      \
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/cli.conf src/cli.conf
+--- upstream/cli.conf	1970-01-01 00:00:00.000000000 +0000
++++ src/cli.conf	2025-02-05 12:54:15.000000000 +0000
+@@ -0,0 +1,6 @@
++config status 'status'
++	option enable '1'
++	option port '4200-4220'
++	option shell_limit '5'
++
++config cli
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/config.h src/config.h
+--- upstream/config.h	1970-01-01 00:00:00.000000000 +0000
++++ src/config.h	2025-02-05 12:54:15.000000000 +0000
+@@ -0,0 +1,189 @@
++/* config.h.  Generated from config.h.in by configure.  */
++/* config.h.in.  Generated from configure.ac by autoheader.  */
++
++/* Define to 1 if you have support for symbol aliasing */
++#define HAVE_ATTRIBUTE_ALIAS 1
++
++/* Define to 1 if you have support for the "unused" attribute */
++#define HAVE_ATTRIBUTE_UNUSED 1
++
++/* Set if you want support for calling /bin/login */
++#define HAVE_BIN_LOGIN 1
++
++/* Define to 1 if you have the <dlfcn.h> header file. */
++#define HAVE_DLFCN_H 1
++
++/* Define to 1 if you have the `dlopen' function. */
++#define HAVE_DLOPEN 1
++
++/* Define to 1 if you have the `getgrgid_r' function. */
++#define HAVE_GETGRGID_R 1
++
++/* Define to 1 if you have the `getgrnam_r' function. */
++#define HAVE_GETGRNAM_R 1
++
++/* Define to 1 if getgrouplist() takes ints as arguments */
++/* #undef HAVE_GETGROUPLIST_TAKES_INTS */
++
++/* Define to 1 if you have the `gethostbyname_r' function. */
++/* #undef HAVE_GETHOSTBYNAME_R */
++
++/* Define to 1 if you have the `getpwnam_r' function. */
++#define HAVE_GETPWNAM_R 1
++
++/* Define to 1 if you have the `getpwuid_r' function. */
++#define HAVE_GETPWUID_R 1
++
++/* Define to 1 if you have the `getresgid' function. */
++#define HAVE_GETRESGID 1
++
++/* Define to 1 if you have the `getresuid' function. */
++#define HAVE_GETRESUID 1
++
++/* Define to 1 if you have the <inttypes.h> header file. */
++#define HAVE_INTTYPES_H 1
++
++/* Define to 1 if you have support for isnan */
++#define HAVE_ISNAN 1
++
++/* Define to 1 if you have the <libutil.h> header file. */
++/* #undef HAVE_LIBUTIL_H */
++
++/* Define to 1 if you have the `login_tty' function. */
++#define HAVE_LOGIN_TTY 1
++
++/* Define to 1 if you have the <memory.h> header file. */
++#define HAVE_MEMORY_H 1
++
++/* Define to 1 if you have the `openpty' function. */
++#define HAVE_OPENPTY 1
++
++/* Define to 1 if you have the <openssl/bio.h> header file. */
++#define HAVE_OPENSSL_BIO_H 1
++
++/* Define to 1 if you have the <openssl/err.h> header file. */
++#define HAVE_OPENSSL_ERR_H 1
++
++/* Define to 1 if you have the <openssl/ssl.h> header file. */
++#define HAVE_OPENSSL_SSL_H 1
++
++/* Define to 1 if you have the <pthread.h> header file. */
++#define HAVE_PTHREAD_H 1
++
++/* Define to 1 if you have a re-entrant version of ptsname */
++#define HAVE_PTSNAME_R 1
++
++/* Define to 1 if you have the <pty.h> header file. */
++#define HAVE_PTY_H 1
++
++/* Define to 1 if you have the <security/pam_appl.h> header file. */
++/* #undef HAVE_SECURITY_PAM_APPL_H */
++
++/* Define to 1 if you have the <security/pam_client.h> header file. */
++/* #undef HAVE_SECURITY_PAM_CLIENT_H */
++
++/* Define to 1 if you have the <security/pam_misc.h> header file. */
++/* #undef HAVE_SECURITY_PAM_MISC_H */
++
++/* Define to 1 if you have the `setresgid' function. */
++#define HAVE_SETRESGID 1
++
++/* Define to 1 if you have the `setresuid' function. */
++/* #undef HAVE_SETRESUID */
++
++/* Define to 1 if you have a working sigwait */
++#define HAVE_SIGWAIT 1
++
++/* Define to 1 if you have the <stdint.h> header file. */
++#define HAVE_STDINT_H 1
++
++/* Define to 1 if you have the <stdlib.h> header file. */
++#define HAVE_STDLIB_H 1
++
++/* Define to 1 if you have the `strcasestr' function. */
++#define HAVE_STRCASESTR 1
++
++/* Define to 1 if you have the <strings.h> header file. */
++#define HAVE_STRINGS_H 1
++
++/* Define to 1 if you have the <string.h> header file. */
++#define HAVE_STRING_H 1
++
++/* Define to 1 if you have the `strlcat' function. */
++#define HAVE_STRLCAT 1
++
++/* Define to 1 if you have the <syslog.h> header file. */
++#define HAVE_SYSLOG_H 1
++
++/* Define to 1 if you have the <sys/prctl.h> header file. */
++#define HAVE_SYS_PRCTL_H 1
++
++/* Define to 1 if you have the <sys/stat.h> header file. */
++#define HAVE_SYS_STAT_H 1
++
++/* Define to 1 if you have the <sys/types.h> header file. */
++#define HAVE_SYS_TYPES_H 1
++
++/* Define to 1 if you have the <sys/uio.h> header file. */
++#define HAVE_SYS_UIO_H 1
++
++/* Define to 1 if you have the <unistd.h> header file. */
++#define HAVE_UNISTD_H 1
++
++/* Define to 1 if you have support for updwtmp */
++#define HAVE_UPDWTMP 1
++
++/* Define to 1 if you have support for updwtmpx */
++/* #undef HAVE_UPDWTMPX */
++
++/* Define to 1 if you have the <util.h> header file. */
++/* #undef HAVE_UTIL_H */
++
++/* Define to 1 if you have the <utmpx.h> header file. */
++#define HAVE_UTMPX_H 1
++
++/* Define to 1 if you have the <utmp.h> header file. */
++#define HAVE_UTMP_H 1
++
++/* Define to 1 if you have the `vsyslog' function. */
++#define HAVE_VSYSLOG 1
++
++/* Define to 1 if zlib development files are installed */
++#define HAVE_ZLIB 1
++
++/* Define to the sub-directory in which libtool stores uninstalled libraries.
++   */
++#define LT_OBJDIR ".libs/"
++
++/* Name of package */
++#define PACKAGE "shellinabox"
++
++/* Define to the address where bug reports for this package should be sent. */
++#define PACKAGE_BUGREPORT "markus@shellinabox.com"
++
++/* Define to the full name of this package. */
++#define PACKAGE_NAME "shellinabox"
++
++/* Define to the full name and version of this package. */
++#define PACKAGE_STRING "shellinabox 2.20"
++
++/* Define to the one symbol short name of this package. */
++#define PACKAGE_TARNAME "shellinabox"
++
++/* Define to the home page for this package. */
++#define PACKAGE_URL ""
++
++/* Define to the version of this package. */
++#define PACKAGE_VERSION "2.20"
++
++/* Define to 1 if you have the ANSI C header files. */
++#define STDC_HEADERS 1
++
++/* Most recent revision number in the version control system */
++#define VCS_REVISION ""
++
++/* Version number of package */
++#define VERSION "2.20"
++
++/* Define to empty if `const' does not conform to ANSI C. */
++/* #undef const */
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/configure.ac src/configure.ac
+--- upstream/configure.ac	2016-11-09 19:40:33.000000000 +0000
++++ src/configure.ac	2025-02-05 12:54:15.000000000 +0000
+@@ -34,6 +34,9 @@
+ AC_CHECK_HEADERS([libutil.h pthread.h pty.h strings.h syslog.h sys/prctl.h \
+                   sys/uio.h util.h])
+ 
++dnl Ubus support
++AC_CHECK_HEADERS(libubus.h, [LIBS="-lubus $LIBS"])
++
+ dnl Most systems require linking against libutil.so in order to get login_tty()
+ AC_CHECK_FUNCS(login_tty, [],
+                [AC_CHECK_LIB(util, login_tty,
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/libhttp/httpconnection.c src/libhttp/httpconnection.c
+--- upstream/libhttp/httpconnection.c	2016-11-09 19:40:33.000000000 +0000
++++ src/libhttp/httpconnection.c	2025-02-05 12:54:15.000000000 +0000
+@@ -288,33 +288,38 @@
+ }
+ 
+ static char *getPeerName(int fd, int *port, int numericHosts) {
+-  struct sockaddr peerAddr;
++  struct sockaddr_storage peerAddr;
+   socklen_t sockLen = sizeof(peerAddr);
+-  if (getpeername(fd, &peerAddr, &sockLen)) {
++  if (getpeername(fd, (struct sockaddr*)&peerAddr, &sockLen)) {
+     if (port) {
+       *port         = -1;
+     }
+     return NULL;
+   }
++  char ipaddr[INET6_ADDRSTRLEN];
+   char *ret;
+-  if (peerAddr.sa_family == AF_UNIX) {
++  if (peerAddr.ss_family == AF_INET) {
++    struct sockaddr_in *s = (struct sockaddr_in *)&peerAddr;
++    *port = ntohs(s->sin_port);
++    inet_ntop(AF_INET, &s->sin_addr, ipaddr, sizeof ipaddr);
++  } else if (peerAddr.ss_family == AF_INET6) {
++    struct sockaddr_in6 *s = (struct sockaddr_in6 *)&peerAddr;
++    *port = ntohs(s->sin6_port);
++    inet_ntop(AF_INET6, &s->sin6_addr, ipaddr, sizeof ipaddr);
++  } else {
+     if (port) {
+       *port         = 0;
+     }
+     check(ret       = strdup("localhost"));
+     return ret;
+   }
+-  char host[256];
+-  if (numericHosts ||
+-      getnameinfo(&peerAddr, sockLen, host, sizeof(host), NULL, 0, NI_NOFQDN)){
+-    check(inet_ntop(peerAddr.sa_family,
+-                    &((struct sockaddr_in *)&peerAddr)->sin_addr,
+-                    host, sizeof(host)));
+-  }
+-  if (port) {
+-    *port           = ntohs(((struct sockaddr_in *)&peerAddr)->sin_port);
++
++  char host[1024];
++  if (numericHosts || getnameinfo((struct sockaddr *)&peerAddr, sockLen, host, sizeof(host), 0, 0, NI_NOFQDN)) {
++    check(ret         = strdup(ipaddr));
++  } else {
++    check(ret         = strdup(host));
+   }
+-  check(ret         = strdup(host));
+   return ret;
+ }
+ 
+@@ -841,9 +846,9 @@
+         *ptr                                 = '\000';
+         break;
+       }
+-      if (ch != '-' && ch != '.' &&
+-          (ch < '0' ||(ch > '9' && ch < 'A') ||
+-          (ch > 'Z' && ch < 'a')||(ch > 'z' && ch <= 0x7E))) {
++      if (ch != '[' && ch != ']' && ch != '-' && ch != '.' &&
++          (ch < '0' || (ch > '9' && ch < 'A') ||
++          (ch > 'Z' && ch < 'a') || (ch > 'z' && ch <= 0x7E))) {
+         httpSendReply(http, 400, "Bad Request", NO_MSG);
+         return HTTP_DONE;
+       }
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/libhttp/server.c src/libhttp/server.c
+--- upstream/libhttp/server.c	2016-11-09 19:40:33.000000000 +0000
++++ src/libhttp/server.c	2025-02-05 12:54:15.000000000 +0000
+@@ -171,7 +171,7 @@
+                                                  "content-length");
+   if (!contentLength ||
+       (payload->bytes &&
+-       ((contentLength && atoi(contentLength) <= payload->len) || !buf))) {
++       ((contentLength && strtol(contentLength, NULL, 0) <= payload->len) || !buf))) {
+     rc = payload->handler(http, payload->arg,
+                           payload->bytes ? payload->bytes : "", payload->len);
+     free(payload->bytes);
+@@ -333,14 +333,14 @@
+     return;
+   }
+ 
+-  server->serverFd              = socket(PF_INET, SOCK_STREAM, 0);
++  server->serverFd              = socket(PF_INET6, SOCK_STREAM, 0);
+   check(server->serverFd >= 0);
+   check(!setsockopt(server->serverFd, SOL_SOCKET, SO_REUSEADDR,
+                     &true, sizeof(true)));
+-  struct sockaddr_in serverAddr = { 0 };
+-  serverAddr.sin_family         = AF_INET;
+-  serverAddr.sin_addr.s_addr    = htonl(localhostOnly
+-                                        ? INADDR_LOOPBACK : INADDR_ANY);
++  struct sockaddr_in6 serverAddr = { 0 };
++  serverAddr.sin6_family         = AF_INET6;
++  serverAddr.sin6_addr    = localhostOnly
++                                        ? in6addr_loopback : in6addr_any;
+ 
+   // Linux unlike BSD does not have support for picking a local port range.
+   // So, we have to randomly pick a port from our allowed port range, and then
+@@ -355,14 +355,14 @@
+     int portStart               = rand() % (portMax - portMin + 1) + portMin;
+     for (int p = 0; p <= portMax-portMin; p++) {
+       int port                  = (p+portStart)%(portMax-portMin+1)+ portMin;
+-      serverAddr.sin_port       = htons(port);
++      serverAddr.sin6_port       = htons(port);
+       if (!bind(server->serverFd, (struct sockaddr *)&serverAddr,
+                 sizeof(serverAddr))) {
+         break;
+       }
+-      serverAddr.sin_port       = 0;
++      serverAddr.sin6_port       = 0;
+     }
+-    if (!serverAddr.sin_port) {
++    if (!serverAddr.sin6_port) {
+       fatal("[server] Failed to find any available port!");
+     }
+   }
+@@ -372,7 +372,7 @@
+   check(!getsockname(server->serverFd, (struct sockaddr *)&serverAddr,
+                      &socklen));
+   check(socklen == sizeof(serverAddr));
+-  server->port                  = ntohs(serverAddr.sin_port);
++  server->port                  = ntohs(serverAddr.sin6_port);
+   info("[server] Listening on port %d...", server->port);
+ 
+   check(server->pollFds         = malloc(sizeof(struct pollfd)));
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/libhttp/ssl.c src/libhttp/ssl.c
+--- upstream/libhttp/ssl.c	2016-11-09 19:40:33.000000000 +0000
++++ src/libhttp/ssl.c	2025-02-05 12:54:15.000000000 +0000
+@@ -117,6 +117,9 @@
+ int           (*SSL_CTX_set_cipher_list)(SSL_CTX *, const char *);
+ void          (*SSL_CTX_set_info_callback)(SSL_CTX *,
+                                            void (*)(const SSL *, int, int));
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L
++unsigned long (*SSL_CTX_set_options)(SSL_CTX *, unsigned long);
++#endif
+ int           (*SSL_CTX_use_PrivateKey_file)(SSL_CTX *, const char *, int);
+ int           (*SSL_CTX_use_PrivateKey_ASN1)(int, SSL_CTX *,
+                                              const unsigned char *, long);
+@@ -130,7 +133,9 @@
+ BIO *         (*SSL_get_rbio)(const SSL *);
+ const char *  (*SSL_get_servername)(const SSL *, int);
+ BIO *         (*SSL_get_wbio)(const SSL *);
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ int           (*SSL_library_init)(void);
++#endif
+ SSL *         (*SSL_new)(SSL_CTX *);
+ int           (*SSL_read)(SSL *, void *, int);
+ SSL_CTX *     (*SSL_set_SSL_CTX)(SSL *, SSL_CTX *);
+@@ -139,10 +144,16 @@
+ int           (*SSL_set_ex_data)(SSL *, int, void *);
+ int           (*SSL_shutdown)(SSL *);
+ int           (*SSL_write)(SSL *, const void *, int);
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ SSL_METHOD *  (*SSLv23_server_method)(void);
++#else
++SSL_METHOD *  (*TLS_server_method)(void);
++#endif
+ X509 *        (*d2i_X509)(X509 **px, const unsigned char **in, int len);
+ void          (*X509_free)(X509 *a);
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ void          (*x_sk_zero)(void *st);
++#endif
+ void *        (*x_SSL_COMP_get_compression_methods)(void);
+ #endif
+ 
+@@ -208,7 +219,7 @@
+   // The feature is currently disabled.
+   const char* path_libcrypto = NULL; // getenv ("SHELLINABOX_LIBCRYPTO_SO");
+   if (path_libcrypto == NULL)
+-    path_libcrypto = "libcrypto.so";
++    path_libcrypto = "/usr/lib/libcrypto.so.1.0.0";
+ 
+   if (!crypto++) {
+ #ifdef RTLD_NOLOAD
+@@ -267,8 +278,8 @@
+   // The feature is currently disabled.
+   const char* path_libssl = NULL; // = getenv ("SHELLINABOX_LIBSSL_SO");
+   if (path_libssl == NULL)
+-    path_libssl = "libssl.so";
+-  check(!SSL_library_init);
++    path_libssl = "/usr/lib/libssl.so.1.0.0";
++  check(!SSL_CTX_new);
+   struct {
+     union {
+       void *avoid_gcc_warning_about_type_punning;
+@@ -299,6 +310,9 @@
+     { { &SSL_CTX_new },                 "SSL_CTX_new" },
+     { { &SSL_CTX_set_cipher_list },     "SSL_CTX_set_cipher_list" },
+     { { &SSL_CTX_set_info_callback },   "SSL_CTX_set_info_callback" },
++#if OPENSSL_VERSION_NUMBER > 0x10100000L
++    { { &SSL_CTX_set_options },         "SSL_CTX_set_options" },
++#endif
+     { { &SSL_CTX_use_PrivateKey_file }, "SSL_CTX_use_PrivateKey_file" },
+     { { &SSL_CTX_use_PrivateKey_ASN1 }, "SSL_CTX_use_PrivateKey_ASN1" },
+     { { &SSL_CTX_use_certificate_file },"SSL_CTX_use_certificate_file"},
+@@ -312,7 +326,9 @@
+     { { &SSL_get_servername },          "SSL_get_servername" },
+ #endif
+     { { &SSL_get_wbio },                "SSL_get_wbio" },
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+     { { &SSL_library_init },            "SSL_library_init" },
++#endif
+     { { &SSL_new },                     "SSL_new" },
+     { { &SSL_read },                    "SSL_read" },
+ #ifdef HAVE_TLSEXT
+@@ -323,10 +339,16 @@
+     { { &SSL_set_ex_data },             "SSL_set_ex_data" },
+     { { &SSL_shutdown },                "SSL_shutdown" },
+     { { &SSL_write },                   "SSL_write" },
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+     { { &SSLv23_server_method },        "SSLv23_server_method" },
++#else
++    { { &TLS_server_method },           "TLS_server_method" },
++#endif
+     { { &d2i_X509 },                    "d2i_X509" },
+     { { &X509_free },                   "X509_free" },
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+     { { &x_sk_zero },                   "sk_zero" }
++#endif
+   };
+   for (unsigned i = 0; i < sizeof(symbols)/sizeof(symbols[0]); i++) {
+     if (!(*symbols[i].var = loadSymbol(path_libssl, symbols[i].fn))) {
+@@ -343,7 +365,9 @@
+   // ends
+ 
+ 
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+   SSL_library_init();
++#endif
+   dcheck(!ERR_peek_error());
+   debug("[ssl] Loaded SSL suppport...");
+ }
+@@ -351,8 +375,12 @@
+ 
+ int serverSupportsSSL(void) {
+ #if defined(HAVE_OPENSSL) && !defined(HAVE_DLOPEN)
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+   return SSL_library_init();
+ #else
++  return 1;
++#endif
++#else
+ #if defined(HAVE_OPENSSL)
+   // We want to call loadSSL() exactly once. For single-threaded applications,
+   // this is straight-forward. For threaded applications, we need to call
+@@ -372,8 +400,12 @@
+       loadSSL();
+     }
+   }
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+   return !!SSL_library_init;
+ #else
++  return 1;
++#endif
++#else
+   return 0;
+ #endif
+ #endif
+@@ -623,7 +655,11 @@
+ static SSL_CTX *sslMakeContext(void) {
+ 
+   SSL_CTX *context;
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+   check(context = SSL_CTX_new(SSLv23_server_method()));
++#else
++  check(context = SSL_CTX_new(TLS_server_method()));
++#endif
+ 
+   long options  = SSL_OP_ALL;
+   options      |= SSL_OP_NO_SSLv2;
+@@ -641,6 +677,7 @@
+   // Set default SSL options.
+   SSL_CTX_set_options(context, options);
+ 
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+   // Workaround for SSL_OP_NO_COMPRESSION with older OpenSSL versions.
+ #ifdef HAVE_DLOPEN
+   if (SSL_COMP_get_compression_methods) {
+@@ -649,6 +686,7 @@
+ #elif OPENSSL_VERSION_NUMBER >= 0x00908000L
+   sk_SSL_COMP_zero(SSL_COMP_get_compression_methods());
+ #endif
++#endif
+ 
+   // For Perfect Forward Secrecy (PFS) support we need to enable some additional
+   // SSL options, provide eliptic curve key object for handshake and add chipers
+@@ -657,23 +695,18 @@
+   SSL_CTX_set_options(context, SSL_OP_SINGLE_ECDH_USE);
+   SSL_CTX_set_options(context, SSL_OP_CIPHER_SERVER_PREFERENCE);
+ 
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+   EC_KEY *ecKey;
+   check(ecKey   = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1));
+   SSL_CTX_set_tmp_ecdh(context, ecKey);
+   EC_KEY_free(ecKey);
++#endif
+ 
+   debug("[ssl] Support for PFS enabled...");
+ #endif
+ 
+   check(SSL_CTX_set_cipher_list(context,
+-    "ECDHE-RSA-AES256-GCM-SHA384:"
+-    "ECDHE-RSA-AES128-GCM-SHA256:"
+-    "ECDHE-RSA-AES256-SHA384:"
+-    "ECDHE-RSA-AES128-SHA256:"
+-    "ECDHE-RSA-AES256-SHA:"
+-    "ECDHE-RSA-AES128-SHA:"
+-    "ECDHE-RSA-DES-CBC3-SHA:"
+-    "HIGH:MEDIUM:!RC4:!aNULL:!MD5"));
++	"AES256+EECDH:AES256+EDH:AES128+EECDH:AES128+EDH:!RC4:!aNULL:!MD5:!DSS"));
+ 
+   SSL_CTX_set_info_callback(context, sslInfoCallback);
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/libhttp/ssl.h src/libhttp/ssl.h
+--- upstream/libhttp/ssl.h	2016-11-09 19:40:33.000000000 +0000
++++ src/libhttp/ssl.h	2025-02-05 12:54:15.000000000 +0000
+@@ -99,6 +99,9 @@
+ extern int     (*x_SSL_CTX_set_cipher_list)(SSL_CTX *, const char *);
+ extern void    (*x_SSL_CTX_set_info_callback)(SSL_CTX *,
+                                               void (*)(const SSL *, int, int));
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L
++extern unsigned long (*x_SSL_CTX_set_options)(SSL_CTX *, unsigned long);
++#endif
+ extern int     (*x_SSL_CTX_use_PrivateKey_file)(SSL_CTX *, const char *, int);
+ extern int     (*x_SSL_CTX_use_PrivateKey_ASN1)(int, SSL_CTX *,
+                                                 const unsigned char *, long);
+@@ -112,7 +115,9 @@
+ extern BIO    *(*x_SSL_get_rbio)(const SSL *);
+ extern const char *(*x_SSL_get_servername)(const SSL *, int);
+ extern BIO    *(*x_SSL_get_wbio)(const SSL *);
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ extern int     (*x_SSL_library_init)(void);
++#endif
+ extern SSL    *(*x_SSL_new)(SSL_CTX *);
+ extern int     (*x_SSL_read)(SSL *, void *, int);
+ extern SSL_CTX*(*x_SSL_set_SSL_CTX)(SSL *, SSL_CTX *);
+@@ -121,10 +126,16 @@
+ extern int     (*x_SSL_set_ex_data)(SSL *, int, void *);
+ extern int     (*x_SSL_shutdown)(SSL *);
+ extern int     (*x_SSL_write)(SSL *, const void *, int);
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ extern SSL_METHOD *(*x_SSLv23_server_method)(void);
++#else
++extern SSL_METHOD *(*x_TLS_server_method)(void);
++#endif
+ extern X509 *  (*x_d2i_X509)(X509 **px, const unsigned char **in, int len);
+ extern void    (*x_X509_free)(X509 *a);
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ extern void    (*x_sk_zero)(void *st);
++#endif
+ extern void   *(*x_SSL_COMP_get_compression_methods)(void);
+ 
+ #define BIO_ctrl                     x_BIO_ctrl
+@@ -146,6 +157,9 @@
+ #define SSL_CTX_new                  x_SSL_CTX_new
+ #define SSL_CTX_set_cipher_list      x_SSL_CTX_set_cipher_list
+ #define SSL_CTX_set_info_callback    x_SSL_CTX_set_info_callback
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L
++#define SSL_CTX_set_options          x_SSL_CTX_set_options
++#endif
+ #define SSL_CTX_use_PrivateKey_file  x_SSL_CTX_use_PrivateKey_file
+ #define SSL_CTX_use_PrivateKey_ASN1  x_SSL_CTX_use_PrivateKey_ASN1
+ #define SSL_CTX_use_certificate_file x_SSL_CTX_use_certificate_file
+@@ -157,7 +171,9 @@
+ #define SSL_get_rbio                 x_SSL_get_rbio
+ #define SSL_get_servername           x_SSL_get_servername
+ #define SSL_get_wbio                 x_SSL_get_wbio
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ #define SSL_library_init             x_SSL_library_init
++#endif
+ #define SSL_new                      x_SSL_new
+ #define SSL_read                     x_SSL_read
+ #define SSL_set_SSL_CTX              x_SSL_set_SSL_CTX
+@@ -166,10 +182,16 @@
+ #define SSL_set_ex_data              x_SSL_set_ex_data
+ #define SSL_shutdown                 x_SSL_shutdown
+ #define SSL_write                    x_SSL_write
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ #define SSLv23_server_method         x_SSLv23_server_method
++#else
++#define TLS_server_method            x_TLS_server_method
++#endif
+ #define d2i_X509                     x_d2i_X509
+ #define X509_free                    x_X509_free
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ #define sk_zero                      x_sk_zero
++#endif
+ #define SSL_COMP_get_compression_methods    x_SSL_COMP_get_compression_methods
+ 
+ #undef  BIO_set_buffer_read_data
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/libhttp/url.c src/libhttp/url.c
+--- upstream/libhttp/url.c	2016-11-09 19:40:33.000000000 +0000
++++ src/libhttp/url.c	2025-02-05 12:54:15.000000000 +0000
+@@ -313,6 +313,19 @@
+             }
+           }
+         }
++        /* elf-2018.09.09: Detection of broken multipart/form-data
++           fixes DoS vulnerability.
++           On 9/9/18 10:43 AM, Imre Rad wrote:
++           Hi Markus, Marc!
++           I identified a vulnerability today in Shellinabox, it is
++           remote a denial of service, shellinaboxd eating up 100% cpu
++           and not processing subsequent requests after the attack was
++           mounted.
++        */
++        else {
++          warn("[http] Ignorning broken multipart/form-data");
++          break;
++        }
+       }
+       if (lastPart) {
+         warn("[http] Missing final \"boundary\" for \"multipart/form-data\"!");
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/logging/logging.c src/logging/logging.c
+--- upstream/logging/logging.c	2016-11-09 19:40:33.000000000 +0000
++++ src/logging/logging.c	2025-02-05 12:54:15.000000000 +0000
+@@ -74,6 +74,7 @@
+   }
+ }
+ 
++#ifdef HAS_DEBUG
+ void debug(const char *fmt, ...) {
+   va_list ap;
+   va_start(ap, fmt);
+@@ -95,6 +96,30 @@
+   va_end(ap);
+ }
+ 
++void message(const char *fmt, ...) {
++  va_list ap;
++  va_start(ap, fmt);
++  debugMsg(MSG_MESSAGE, fmt, ap);
++  va_end(ap);
++}
++
++int logIsDebug(void) {
++  return verbosity >= MSG_DEBUG;
++}
++
++int logIsInfo(void) {
++  return verbosity >= MSG_INFO;
++}
++
++int logIsWarn(void) {
++  return verbosity >= MSG_WARN;
++}
++
++int logIsMessage(void) {
++  return verbosity >= MSG_MESSAGE;
++}
++#endif
++
+ void error(const char *fmt, ...) {
+   va_list ap;
+   va_start(ap, fmt);
+@@ -109,13 +134,6 @@
+   va_end(ap);
+ }
+ 
+-void message(const char *fmt, ...) {
+-  va_list ap;
+-  va_start(ap, fmt);
+-  debugMsg(MSG_MESSAGE, fmt, ap);
+-  va_end(ap);
+-}
+-
+ void fatal(const char *fmt, ...) {
+   va_list ap;
+   va_start(ap, fmt);
+@@ -132,26 +150,10 @@
+   _exit(1);
+ }
+ 
+-int logIsDebug(void) {
+-  return verbosity >= MSG_DEBUG;
+-}
+-
+-int logIsInfo(void) {
+-  return verbosity >= MSG_INFO;
+-}
+-
+-int logIsWarn(void) {
+-  return verbosity >= MSG_WARN;
+-}
+-
+ int logIsError(void) {
+   return verbosity >= MSG_ERROR;
+ }
+ 
+-int logIsMessage(void) {
+-  return verbosity >= MSG_MESSAGE;
+-}
+-
+ int logIsQuiet(void) {
+   return verbosity <= MSG_QUIET;
+ }
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/logging/logging.h src/logging/logging.h
+--- upstream/logging/logging.h	2016-11-09 19:40:33.000000000 +0000
++++ src/logging/logging.h	2025-02-05 12:54:15.000000000 +0000
+@@ -56,11 +56,11 @@
+ #define MSG_DEBUG   4
+ #define MSG_DEFAULT MSG_ERROR
+ 
+-#define check(x)  do {                                                        \
+-                    if (!(x))                                                 \
+-                      fatal("Check failed at "__FILE__":%d in %s(): %s",      \
+-                             __LINE__, __func__, #x);                         \
+-                  } while (0)
++#ifdef HAS_DEBUG
++void debug(const char *fmt, ...)   __attribute__((format(printf, 1, 2)));
++void info(const char *fmt, ...)    __attribute__((format(printf, 1, 2)));
++void warn(const char *fmt, ...)    __attribute__((format(printf, 1, 2)));
++void message(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+ 
+ #define dcheck(x) do {                                                        \
+                     if (!(x))                                                 \
+@@ -69,18 +69,38 @@
+                              __LINE__, __func__, #x);                         \
+                   } while (0)
+ 
+-void debug(const char *fmt, ...)   __attribute__((format(printf, 1, 2)));
+-void info(const char *fmt, ...)    __attribute__((format(printf, 1, 2)));
+-void warn(const char *fmt, ...)    __attribute__((format(printf, 1, 2)));
+-void error(const char *fmt, ...)   __attribute__((format(printf, 1, 2)));
+-void message(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+-void fatal(const char *fmt, ...)   __attribute__((format(printf, 1, 2),
+-                                                  noreturn));
+ int logIsDebug(void);
+ int logIsInfo(void);
+ int logIsWarn(void);
+-int logIsError(void);
+ int logIsMessage(void);
++#else
++#define debug(fmt, ...)   do {} while (0)
++#define info(fmt, ...)    do {} while (0)
++#define warn(fmt, ...)    do {} while (0)
++#define message(fmt, ...)   do {} while (0)
++
++#define dcheck(x) do {                                                        \
++                    if (!(x))                                                 \
++                      error("Check failed at "__FILE__":%d in %s(): %s",      \
++                             __LINE__, __func__, #x);                         \
++                  } while (0)
++
++#define logIsDebug() (0)
++#define logIsInfo() (0)
++#define logIsWarn() (0)
++#define logIsMessage() (0)
++#endif
++
++void error(const char *fmt, ...)   __attribute__((format(printf, 1, 2)));
++void fatal(const char *fmt, ...) __attribute__((format(printf, 1, 2), noreturn));
++
++#define check(x)  do {                                                        \
++                    if (!(x))                                                 \
++                      fatal("Check failed at "__FILE__":%d in %s(): %s",      \
++                             __LINE__, __func__, #x);                         \
++                  } while (0)
++
++int logIsError(void);
+ int logIsQuiet(void);
+ int logIsDefault(void);
+ int logIsVerbose(void);
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/m4/.gitignore src/m4/.gitignore
+--- upstream/m4/.gitignore	2016-11-09 19:40:33.000000000 +0000
++++ src/m4/.gitignore	1970-01-01 00:00:00.000000000 +0000
+@@ -1,3 +0,0 @@
+-# This directory is used by autotools, so we ignore all files except this one.
+-*
+-!.gitignore
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox/cgi_root.html src/shellinabox/cgi_root.html
+--- upstream/shellinabox/cgi_root.html	2016-11-09 19:40:33.000000000 +0000
++++ src/shellinabox/cgi_root.html	2025-02-05 12:54:15.000000000 +0000
+@@ -1,77 +1 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xml:lang="en" lang="en">
+-  <head>
+-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+-    <!--
+-    ShellInABox - Make command line applications available as AJAX web applications
+-    Copyright (C) 2008-2009 Markus Gutschke markus@shellinabox.com
+-
+-    This program is free software; you can redistribute it and/or modify
+-    it under the terms of the GNU General Public License version 2 as
+-    published by the Free Software Foundation.
+-
+-    This program is distributed in the hope that it will be useful,
+-    but WITHOUT ANY WARRANTY; without even the implied warranty of
+-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-    GNU General Public License for more details.
+-
+-    You should have received a copy of the GNU General Public License along
+-    with this program; if not, write to the Free Software Foundation, Inc.,
+-    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+-
+-    In addition to these license terms, the author grants the following
+-    additional rights:
+-
+-    If you modify this program, or any covered work, by linking or
+-    combining it with the OpenSSL project's OpenSSL library (or a
+-    modified version of that library), containing parts covered by the
+-    terms of the OpenSSL or SSLeay licenses, the author
+-    grants you additional permission to convey the resulting work.
+-    Corresponding Source for a non-source form of such a combination
+-    shall include the source code for the parts of OpenSSL used as well
+-    as that of the covered work.
+-
+-    You may at your option choose to remove this additional permission from
+-    the work, or from any part of it.
+-
+-    It is possible to build this program in a way that it loads OpenSSL
+-    libraries at run-time. If doing so, the following notices are required
+-    by the OpenSSL and SSLeay licenses:
+-
+-    This product includes software developed by the OpenSSL Project
+-    for use in the OpenSSL Toolkit. (http://www.openssl.org/)
+-
+-    This product includes cryptographic software written by Eric Young
+-    (eay@cryptsoft.com)
+-
+-    The most up-to-date version of this program is always available from
+-    http://shellinabox.com
+-    -->
+-    <title>Shell In A Box</title>
+-    <script type="text/javascript"><!--
+-    (function() {
+-      var url   = document.location.protocol + '//' +
+-                  document.location.hostname + ':%d/';
+-      var head  = document.getElementsByTagName('head')[0];
+-      var link  = document.createElement('link');
+-      link.rel  = 'shortcut icon';
+-      link.type = 'image/x-icon';
+-      link.href = url + 'favicon.ico';
+-      head.appendChild(link);
+-      var query = document.location.search.split('&');
+-      for (var i = 0; i < query.length; i++) {
+-        if (query[i] == 'plain') {
+-          url  += '/plain';
+-          break;
+-        }
+-      }
+-      document.write('<frameset cols="*">\n' +
+-                       '<frame src="' + url + '#' +
+-                          encodeURIComponent(document.location.href) +
+-                          ',%s' + '">\n' +
+-                     '</frameset>');
+-    })();
+-    --></script>
+-  </head>
+-</html>
++<?xml version="1.0" encoding="utf-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xml:lang="en" lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>Shell In A Box</title><script nonce="%s" type="text/javascript">!function(){var e=document.location.protocol+"//"+document.location.hostname+":%d/";for(var o,a,i,c=document.location.search.split("&"),r=0;r<c.length;r++)if("plain"==c[r]){e+="/plain";break}document.write('<frameset cols="*">\n<frame id="cli_frame" src="'+e+"#"+encodeURIComponent(document.location.href)+',%s">\n</frameset>'),o=window,a="message",i=function(e){-1!==window.location.href.indexOf(e.origin.substring(0,e.origin.lastIndexOf(":")))&&"reconnect"===e.data&&window.location.reload(!0)},o.addEventListener?o.addEventListener(a,i,!1):o.attachEvent&&o.attachEvent("on"+a,i)}()</script></head></html>
+\ No newline at end of file
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox/launcher.c src/shellinabox/launcher.c
+--- upstream/shellinabox/launcher.c	2016-11-09 19:40:33.000000000 +0000
++++ src/shellinabox/launcher.c	2025-02-05 12:54:15.000000000 +0000
+@@ -86,10 +86,6 @@
+ #include <util.h>
+ #endif
+ 
+-#ifdef HAVE_UTMP_H
+-#include <utmp.h>
+-#endif
+-
+ #ifdef HAVE_UTMPX_H
+ #include <utmpx.h>
+ #endif
+@@ -639,7 +635,7 @@
+   return utmp;
+ }
+ 
+-#if defined(HAVE_UPDWTMP) && !defined(HAVE_UPDWTMPX)
++#if defined(HAVE_UTMPX) && defined(HAVE_UPDWTMP) && !defined(HAVE_UPDWTMPX)
+ #define min(a,b) ({ typeof(a) _a=(a); typeof(b) _b=(b); _a < _b ? _a : _b; })
+ #define updwtmpx x_updwtmpx
+ 
+@@ -1641,10 +1637,6 @@
+ #endif
+   }
+ 
+-  // Change user and group ids
+-  check(!setresgid(service->gid, service->gid, service->gid));
+-  check(!setresuid(service->uid, service->uid, service->uid));
+-
+   // Change working directory
+   if (service->useHomeDir) {
+     check(!service->useLogin);
+@@ -1678,14 +1670,27 @@
+     // At login service launch, we try to pass real IP in '-h' parameter. Real
+     // IP is provided in HTTP header field 'X-Real-IP', if ShellInABox is used
+     // behind properly configured HTTP proxy.
++
++    if (service->bannerContent) {
++      fputs(service->bannerContent, stdout);
++      fputs("\n", stdout);
++    }
++
+     char remoteHost[256];
+     snprintf(remoteHost, 256,
+              (*realIP) ? "%s, %s" : "%s%s", peerName,
+              (*realIP) ? realIP : "");
+-    execle("/bin/login", "login", "-p", "-h", remoteHost,
+-           (void *)0, environment);
+-    execle("/usr/bin/login", "login", "-p", "-h", remoteHost,
+-           (void *)0, environment);
++	if (service->portRange) {
++		execle("/bin/login", "login", "-p", "-h", remoteHost, "-P", service->portRange,
++			"-R", "CLI", (void *)0, environment);
++		execle("/usr/bin/login", "login", "-p", "-h", remoteHost, "-P", service->portRange,
++			"-R", "CLI", (void *)0, environment);
++	} else {
++		execle("/bin/login", "login", "-p", "-h", remoteHost,
++			"-R", "CLI", (void *)0, environment);
++		execle("/usr/bin/login", "login", "-p", "-h", remoteHost,
++			"-R", "CLI", (void *)0, environment);
++	}
+   } else {
+     // Launch user provied service
+     execService(width, height, service, peerName, realIP, environment, url);
+@@ -1786,7 +1791,7 @@
+       if (!((*s >= '0' && *s <= '9') ||
+             (*s >= 'A' && *s <= 'Z') ||
+             (*s >= 'a' && *s <= 'z') ||
+-             *s == '.' || *s == '-')) {
++             *s == '.' || *s == '-' || *s == ':')) {
+         *s                    = '-';
+       }
+     }
+@@ -1871,9 +1876,6 @@
+     uid_t tmp;
+     check(!getresuid(&restricted, &tmp, &tmp));
+ 
+-    // Temporarily drop most permissions. We still retain the ability to
+-    // switch back to root, which is necessary for launching "login".
+-    lowerPrivileges();
+     closeAllFds((int []){ pair[1], 2 }, 2);
+     launcherDaemon(pair[1]);
+     fatal("[server] Launcher exit() failed!");
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox/root_page.html src/shellinabox/root_page.html
+--- upstream/shellinabox/root_page.html	2016-11-09 19:40:33.000000000 +0000
++++ src/shellinabox/root_page.html	2025-02-05 12:54:15.000000000 +0000
+@@ -1,123 +1 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xml:lang="en" lang="en">
+-  <head>
+-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+-    <!--
+-    ShellInABox - Make command line applications available as AJAX web applications
+-    Copyright (C) 2008-2010 Markus Gutschke markus@shellinabox.com
+-
+-    This program is free software; you can redistribute it and/or modify
+-    it under the terms of the GNU General Public License version 2 as
+-    published by the Free Software Foundation.
+-
+-    This program is distributed in the hope that it will be useful,
+-    but WITHOUT ANY WARRANTY; without even the implied warranty of
+-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-    GNU General Public License for more details.
+-
+-    You should have received a copy of the GNU General Public License along
+-    with this program; if not, write to the Free Software Foundation, Inc.,
+-    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+-
+-    In addition to these license terms, the author grants the following
+-    additional rights:
+-
+-    If you modify this program, or any covered work, by linking or
+-    combining it with the OpenSSL project's OpenSSL library (or a
+-    modified version of that library), containing parts covered by the
+-    terms of the OpenSSL or SSLeay licenses, the author
+-    grants you additional permission to convey the resulting work.
+-    Corresponding Source for a non-source form of such a combination
+-    shall include the source code for the parts of OpenSSL used as well
+-    as that of the covered work.
+-
+-    You may at your option choose to remove this additional permission from
+-    the work, or from any part of it.
+-
+-    It is possible to build this program in a way that it loads OpenSSL
+-    libraries at run-time. If doing so, the following notices are required
+-    by the OpenSSL and SSLeay licenses:
+-
+-    This product includes software developed by the OpenSSL Project
+-    for use in the OpenSSL Toolkit. (http://www.openssl.org/)
+-
+-    This product includes cryptographic software written by Eric Young
+-    (eay@cryptsoft.com)
+-
+-    The most up-to-date version of this program is always available from
+-    http://shellinabox.com
+-    -->
+-    <title>Shell In A Box</title>
+-    <script type="text/javascript"><!--
+-      // Check that our URL is well-formed. Redirect to HTTPS if necessary
+-      (function() {
+-        var hasSSL = %s;
+-        var path   = document.location.pathname;
+-        var proto  = (hasSSL || (document.location.protocol == 'https:'))
+-                     ? 'https:' : 'http:';
+-        if (path.match(/plain/)) {
+-          proto   = 'http:';
+-        }
+-        path      = path.replace(/\/+/, '/').replace(/\/$/, '');
+-        if (!path.match(/(?:\/|\/plain)$/)) {
+-          path   += '/';
+-        }
+-        var url   = proto + '//' + document.location.host + path;
+-        if (document.location.search != '' &&
+-            document.location.search != '?') {
+-          url    += document.location.search;
+-        }
+-        if (document.location.hash != '' &&
+-            document.location.hash != '#') {
+-          url    += document.location.hash;
+-        }
+-        if (url != document.location.href) {
+-          document.location.replace(url);
+-        }
+-      })();
+-    --></script>
+-    <link rel="stylesheet" href="styles.css" type="text/css">
+-    <style type="text/css">
+-      body {
+-        margin: 0px;
+-      }
+-    </style>
+-    <script type="text/javascript"><!--
+-      (function() {
+-        // We would like to hide overflowing lines as this can lead to
+-        // visually jarring results if the browser substitutes oversized
+-        // Unicode characters from different fonts. Unfortunately, a bug
+-        // in Firefox prevents it from allowing multi-line text
+-        // selections whenever we change the "overflow" style. So, only
+-        // do so for non-Netscape browsers.
+-        if (typeof navigator.appName == 'undefined' ||
+-            navigator.appName != 'Netscape') {
+-          document.write('<style type="text/css">' +
+-                         '#vt100 #console div, #vt100 #alt_console div {' +
+-                         '  overflow: hidden;' +
+-                         '}' +
+-                         '</style>');
+-        }
+-      })();
+-
+-      // User warning on window close
+-      window.onbeforeunload = function(e) {
+-        if (typeof window.shellinabox.session != "undefined") {
+-          return "Are you sure you want to leave this page?";
+-        }
+-        // Don't use explicit return
+-      }
+-
+-    --></script>
+-    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+-    <script type="text/javascript" src="ShellInABox.js"></script>
+-  </head>
+-  <!-- Load ShellInABox from a timer as Konqueror sometimes fails to
+-       correctly deal with the enclosing frameset (if any), if we do not
+-       do this
+-   -->
+-  <body onload="setTimeout('window.shellinabox = new ShellInABox()', 100)"
+-        scroll="no"><noscript>JavaScript
+-    must be enabled for ShellInABox</noscript></body>
+-</html>
++<?xml version="1.0" encoding="utf-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xml:lang="en" lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>Shell In A Box</title><link rel="stylesheet" href="styles.css" type="text/css"><style type="text/css">body{margin:0}</style><script type="text/javascript">void 0!==navigator.appName&&"Netscape"==navigator.appName||document.write('<style type="text/css">#vt100 #console div, #vt100 #alt_console div {  overflow: hidden;}</style>'),window.onbeforeunload=function(e){if(void 0!==window.shellinabox.session)return"Are you sure you want to leave this page?"}</script><script>function bindEvent2(n,t,e){n.addEventListener?n.addEventListener(t,e,!1):n.attachEvent&&n.attachEvent("on"+t,e)}bindEvent2(window,"message",function(n){-1!==window.location.href.indexOf(n.origin.substring(0,n.origin.lastIndexOf(":")))&&"reconnect"===n.data&&window.location.reload(!0)})</script><script type="text/javascript" src="ShellInABox.js"></script></head><body onload='setTimeout("window.shellinabox = new ShellInABox()",100)' scroll="no"><noscript>JavaScript must be enabled for ShellInABox</noscript></body></html>
+\ No newline at end of file
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox/service.c src/shellinabox/service.c
+--- upstream/shellinabox/service.c	2016-11-09 19:40:33.000000000 +0000
++++ src/shellinabox/service.c	2025-02-05 12:54:15.000000000 +0000
+@@ -91,12 +91,7 @@
+   arg                                       = ptr + 1;
+ 
+ #ifdef HAVE_BIN_LOGIN
+-  // The next part of the argument is either the word 'LOGIN' or the
+-  // application definition.
+   if (!strcmp(arg, "LOGIN")) {
+-    if (geteuid()) {
+-      fatal("[config] Must be \"root\" to invoke LOGIN service!");
+-    }
+     service->useLogin                       = 1;
+     service->useHomeDir                     = 0;
+     service->authUser                       = 0;
+@@ -253,9 +248,11 @@
+   free(desc);
+ }
+ 
+-struct Service *newService(const char *arg) {
++struct Service *newService(const char *arg, const char *portRange, const char *bannerContent) {
+   struct Service *service;
+   check(service = malloc(sizeof(struct Service)));
++  service->portRange = portRange;
++  service->bannerContent = bannerContent;
+   initService(service, arg);
+   return service;
+ }
+@@ -267,6 +264,8 @@
+     free((char *)service->group);
+     free((char *)service->cwd);
+     free((char *)service->cmdline);
++	free((char *)service->portRange);
++  free((char *)service->bannerContent);
+   }
+ }
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox/service.h src/shellinabox/service.h
+--- upstream/shellinabox/service.h	2016-11-09 19:40:33.000000000 +0000
++++ src/shellinabox/service.h	2025-02-05 12:54:15.000000000 +0000
+@@ -61,13 +61,15 @@
+   const char *group;
+   const char *cwd;
+   const char *cmdline;
++  const char *portRange;
++  const char *bannerContent;
+ };
+ 
+ extern struct Service **services;
+ extern int            numServices;
+ 
+ void initService(struct Service *service, const char *arg);
+-struct Service *newService(const char *arg);
++struct Service *newService(const char *arg, const char *portRange, const char *bannerContent);
+ void destroyService(struct Service *service);
+ void deleteService(struct Service *service);
+ void destroyServiceHashEntry(void *arg, char *key, char *value);
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox/shell_in_a_box.jspp src/shellinabox/shell_in_a_box.jspp
+--- upstream/shellinabox/shell_in_a_box.jspp	2016-11-09 19:40:33.000000000 +0000
++++ src/shellinabox/shell_in_a_box.jspp	2025-02-05 12:54:15.000000000 +0000
+@@ -92,7 +92,7 @@
+ function ShellInABox(url, container) {
+   if (url == undefined) {
+     this.rooturl    = document.location.href;
+-    this.url        = document.location.href.replace(/[?#].*/, '');
++    this.url        = document.location.href;
+   } else {
+     this.rooturl    = url;
+     this.url        = url;
+@@ -146,12 +146,15 @@
+ ShellInABox.prototype.reconnect = function() {
+   this.showReconnect(false);
+   if (!this.session) {
+-    if (document.location.hash != '') {
++    var is_rms = document.location.hostname.match(/.*\.teltonika\.lt$/)
++    if (is_rms !== null) {
++      window.postMessage('reconnect', '*');
++    } else if (document.location.hash != '') {
+       // A shellinaboxd daemon launched from a CGI only allows a single
+       // session. In order to reconnect, we must reload the frame definition
+       // and obtain a new port number. As this is a different origin, we
+       // need to get enclosing page to help us.
+-      parent.location        = this.nextUrl;
++      window.parent.postMessage('reconnect', '*');
+     } else {
+       if (this.url != this.nextUrl) {
+         document.location.replace(this.nextUrl);
+@@ -170,7 +173,7 @@
+   if (request == undefined) {
+     request                  = new XMLHttpRequest();
+   }
+-  request.open('POST', this.url + '?', true);
++  request.open('POST', this.url, true);
+   request.timeout = 30000; // Don't leave POST pending forever: force 30s timeout to prevent HTTP Proxy thread hijack
+   request.setRequestHeader('Cache-Control', 'no-cache');
+   request.setRequestHeader('Content-Type',
+@@ -239,7 +242,7 @@
+     keys                       = this.pendingKeys + keys;
+     this.pendingKeys           = '';
+     var request                = new XMLHttpRequest();
+-    request.open('POST', this.url + '?', true);
++    request.open('POST', this.url, true);
+     request.setRequestHeader('Cache-Control', 'no-cache');
+     request.setRequestHeader('Content-Type',
+                            'application/x-www-form-urlencoded; charset=utf-8');
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox/shellinaboxd.c src/shellinabox/shellinaboxd.c
+--- upstream/shellinabox/shellinaboxd.c	2016-11-09 19:40:33.000000000 +0000
++++ src/shellinabox/shellinaboxd.c	2025-02-05 12:54:15.000000000 +0000
+@@ -65,6 +65,7 @@
+ #include <sys/un.h>
+ #include <time.h>
+ #include <unistd.h>
++#include <libubus.h>
+ 
+ #ifdef HAVE_SYS_PRCTL_H
+ #include <sys/prctl.h>
+@@ -89,12 +90,8 @@
+ #endif
+ 
+ // Embedded resources
+-#include "shellinabox/beep.h"
+ #include "shellinabox/cgi_root.h"
+ #include "shellinabox/enabled.h"
+-#include "shellinabox/favicon.h"
+-#include "shellinabox/keyboard.h"
+-#include "shellinabox/keyboard-layout.h"
+ #include "shellinabox/print-styles.h"
+ #include "shellinabox/root_page.h"
+ #include "shellinabox/shell_in_a_box.h"
+@@ -103,12 +100,13 @@
+ 
+ #define PORTNUM           4200
+ #define MAX_RESPONSE      2048
++#define NONCE_SIZE        128
+ 
+ static int            port;
+ static int            portMin;
+ static int            portMax;
++static char           *portRange;
+ static int            localhostOnly     = 0;
+-static int            noBeep            = 0;
+ static int            numericHosts      = 0;
+ static int            peerCheckEnabled  = 1;
+ static int            enableSSL         = 1;
+@@ -124,6 +122,7 @@
+ static char           *cgiSessionKey;
+ static int            cgiSessions;
+ static char           *cssStyleSheet;
++static char           *bannerContent;
+ static struct UserCSS *userCSSList;
+ static const char     *pidfile;
+ static sigjmp_buf     jmpenv;
+@@ -410,8 +409,8 @@
+ 
+   // Adjust window dimensions if provided by client
+   if (width && height) {
+-    session->width        = atoi(width);
+-    session->height       = atoi(height);
++    session->width        = strtol(width, NULL, 0);
++    session->height       = strtol(height, NULL, 0);
+   }
+ 
+   // Create a new session, if the client did not provide an existing one
+@@ -684,25 +683,10 @@
+                                          enableSSL ? "true" : "false");
+     serveStaticFile(http, "text/html", html, strrchr(html, '\000'));
+     free(html);
+-  } else if (pathInfoLength == 8 && !memcmp(pathInfo, "beep.wav", 8)) {
+-    // Serve the audio sample for the console bell.
+-    serveStaticFile(http, "audio/x-wav", beepStart, beepStart + beepSize - 1);
+   } else if (pathInfoLength == 11 && !memcmp(pathInfo, "enabled.gif", 11)) {
+     // Serve the checkmark icon used in the context menu
+     serveStaticFile(http, "image/gif", enabledStart,
+                     enabledStart + enabledSize - 1);
+-  } else if (pathInfoLength == 11 && !memcmp(pathInfo, "favicon.ico", 11)) {
+-    // Serve the favicon
+-    serveStaticFile(http, "image/x-icon", faviconStart,
+-                    faviconStart + faviconSize - 1);
+-  } else if (pathInfoLength == 13 && !memcmp(pathInfo, "keyboard.html", 13)) {
+-    // Serve the keyboard layout
+-    serveStaticFile(http, "text/html", keyboardLayoutStart,
+-                    keyboardLayoutStart + keyboardLayoutSize - 1);
+-  } else if (pathInfoLength == 12 && !memcmp(pathInfo, "keyboard.png", 12)) {
+-    // Serve the keyboard icon
+-    serveStaticFile(http, "image/png", keyboardStart,
+-                    keyboardStart + keyboardSize - 1);
+   } else if (pathInfoLength == 14 && !memcmp(pathInfo, "ShellInABox.js", 14)) {
+     // Serve both vt100.js and shell_in_a_box.js in the same transaction.
+     // Also, indicate to the client whether the server is SSL enabled.
+@@ -710,13 +694,11 @@
+     char *stateVars       = stringPrintf(NULL,
+                                          "serverSupportsSSL = %s;\n"
+                                          "disableSSLMenu    = %s;\n"
+-                                         "suppressAllAudio  = %s;\n"
+                                          "linkifyURLs       = %d;\n"
+                                          "userCSSList       = %s;\n"
+                                          "serverMessagesOrigin = %s%s%s;\n\n",
+                                          enableSSL      ? "true" : "false",
+                                          !enableSSLMenu ? "true" : "false",
+-                                         noBeep         ? "true" : "false",
+                                          linkifyURLs,
+                                          userCSSString,
+                                          messagesOrigin ? "'" : "",
+@@ -756,7 +738,7 @@
+   } else if (pathInfoLength > 8 && !memcmp(pathInfo, "usercss-", 8)) {
+     // Server user style sheets (if any)
+     struct UserCSS *css   = userCSSList;
+-    for (int idx          = atoi(pathInfo + 8);
++    for (int idx          = strtol(pathInfo + 8, NULL, 0);
+          idx-- > 0 && css; css = css->next ) {
+     }
+     if (css) {
+@@ -802,16 +784,18 @@
+           "\n"
+           "List of command line options:\n"
+           "  -b, --background[=PIDFILE]  run in background\n"
++          "      --banner=FILE           show banner before login\n"
+           "%s"
+           "      --css=FILE              attach contents to CSS style sheet\n"
+           "      --cgi[=PORTMIN-PORTMAX] run as CGI\n"
++#ifdef HAS_DEBUG
+           "  -d, --debug                 enable debug mode\n"
++#endif
+           "  -f, --static-file=URL:FILE  serve static file from URL path\n"
+           "  -g, --group=GID             switch to this group (default: %s)\n"
+           "  -h, --help                  print this message\n"
+           "      --linkify=[none|normal|aggressive] default is \"normal\"\n"
+           "      --localhost-only        only listen on 127.0.0.1\n"
+-          "      --no-beep               suppress all audio output\n"
+           "  -n, --numeric               do not resolve hostnames\n"
+           "  -m, --messages-origin=ORIGIN allow iframe message passing from origin\n"
+           "      --pidfile=PIDFILE       publish pid of daemon process\n"
+@@ -819,16 +803,22 @@
+           "  -s, --service=SERVICE       define one or more services\n"
+           "%s"
+           "      --disable-utmp-logging  disable logging to utmp and wtmp\n"
++#ifdef HAS_DEBUG
+           "  -q, --quiet                 turn off all messages\n"
++#endif
+           "      --unixdomain-only=PATH:USER:GROUP:CHMOD listen on unix socket\n"
+           "  -u, --user=UID              switch to this user (default: %s)\n"
+           "      --user-css=STYLES       defines user-selectable CSS options\n"
++#ifdef HAS_DEBUG
+           "  -v, --verbose               enable logging messages\n"
++#endif
+           "      --version               prints version information\n"
+           "      --disable-peer-check    disable peer check on a session\n"
+           "\n"
++#ifdef HAS_DEBUG
+           "Debug, quiet, and verbose are mutually exclusive.\n"
+           "\n"
++#endif
+           "One or more --service arguments define services that should "
+           "be made available\n"
+           "through the web interface:\n"
+@@ -912,16 +902,18 @@
+     static struct option options[] = {
+       { "help",                 0, 0, 'h' },
+       { "background",           2, 0, 'b' },
++      { "banner",               1, 0,  0  },
+       { "cert",                 1, 0, 'c' },
+       { "cert-fd",              1, 0,  0  },
+       { "css",                  1, 0,  0  },
+       { "cgi",                  2, 0,  0  },
++#ifdef HAS_DEBUG
+       { "debug",                0, 0, 'd' },
++#endif
+       { "static-file",          1, 0, 'f' },
+       { "group",                1, 0, 'g' },
+       { "linkify",              1, 0,  0  },
+       { "localhost-only",       0, 0,  0  },
+-      { "no-beep",              0, 0,  0  },
+       { "numeric",              0, 0, 'n' },
+       { "messages-origin",      1, 0, 'm' },
+       { "pidfile",              1, 0,  0  },
+@@ -930,11 +922,15 @@
+       { "disable-ssl",          0, 0, 't' },
+       { "disable-ssl-menu",     0, 0,  0  },
+       { "disable-utmp-logging", 0, 0,  0  },
++#ifdef HAS_DEBUG
+       { "quiet",                0, 0, 'q' },
++#endif
+       { "unixdomain-only",      1, 0,  0, },
+       { "user",                 1, 0, 'u' },
+       { "user-css",             1, 0,  0  },
++#ifdef HAS_DEBUG
+       { "verbose",              0, 0, 'v' },
++#endif
+       { "version",              0, 0,  0  },
+       { "disable-peer-check",   0, 0,  0  },
+       { 0,                  0, 0,  0  } };
+@@ -971,6 +967,22 @@
+         check(pidfile     = strdup(optarg));
+       }
+     } else if (!idx--) {
++      // Banner
++      struct stat st;
++      if (!optarg || !*optarg || stat(optarg, &st) || !S_ISREG(st.st_mode)) {
++        fatal("[config] Option --banner expects a file name!");
++      }
++      FILE *banner            = fopen(optarg, "r");
++      if (!banner) {
++        fatal("[config] Cannot read banner \"%s\"!", optarg);
++      } else {
++        check(bannerContent = calloc(st.st_size, sizeof(char)));
++        if (fread(bannerContent, st.st_size, 1, banner) != 1) {
++          fatal("[config] Failed to read banner \"%s\"!", optarg);
++        }
++        fclose(banner);
++      }
++    } else if (!idx--) {
+       // Certificate
+       if (!hasSSL) {
+         warn("[config] Ignoring certificate directory, as SSL support is unavailable.");
+@@ -1043,11 +1055,13 @@
+         if (!ptr) {
+           fatal("[config] Syntax error in port range specification!");
+         }
++		check(portRange = strdup(optarg));
+         *ptr               = '\000';
+         portMin            = strtoint(optarg, 1, 65535);
+         *ptr               = '-';
+         portMax            = strtoint(ptr + 1, portMin, 65535);
+       }
++#ifdef HAS_DEBUG
+     } else if (!idx--) {
+       // Debug
+       if (!logIsDefault() && !logIsDebug()) {
+@@ -1055,6 +1069,7 @@
+       }
+       verbosity            = MSG_DEBUG;
+       logSetLogLevel(verbosity);
++#endif
+     } else if (!idx--) {
+       // Static file
+       if (!optarg || !*optarg) {
+@@ -1101,9 +1116,6 @@
+       // Localhost Only
+       localhostOnly        = 1;
+     } else if (!idx--) {
+-      // No Beep
+-      noBeep               = 1;
+-    } else if (!idx--) {
+       // Numeric
+       numericHosts         = 1;
+     } else if (!idx--) {
+@@ -1145,7 +1157,7 @@
+         fatal("[config] Option \"--service\" expects an argument.");
+       }
+       struct Service *service;
+-      service              = newService(optarg);
++      service              = newService(optarg, NULL, bannerContent);
+       if (getRefFromHashMap(serviceTable, service->path)) {
+         fatal("[config] Duplicate service description for \"%s\".", service->path);
+       }
+@@ -1166,6 +1178,7 @@
+     } else if (!idx--) {
+       // Disable UTMP logging
+       enableUtmpLogging    = 0;
++#ifdef HAS_DEBUG
+     } else if (!idx--) {
+       // Quiet
+       if (!logIsDefault() && !logIsQuiet()) {
+@@ -1173,6 +1186,7 @@
+       }
+       verbosity            = MSG_QUIET;
+       logSetLogLevel(verbosity);
++#endif
+     } else if (!idx--) {
+       // Unix domain only
+       if (!optarg || !*optarg) {
+@@ -1235,6 +1249,7 @@
+               "and labels!");
+       }
+       parseUserCSS(&userCSSList, optarg);
++#ifdef HAS_DEBUG
+     } else if (!idx--) {
+       // Verbose
+       if (!logIsDefault() && (!logIsInfo() || logIsDebug())) {
+@@ -1242,6 +1257,7 @@
+       }
+       verbosity            = MSG_INFO;
+       logSetLogLevel(verbosity);
++#endif
+     } else if (!idx--) {
+       // Version
+       printf("ShellInABox version " VERSION VCS_REVISION "\n");
+@@ -1274,11 +1290,11 @@
+     addToHashMap(serviceTable, "/",
+                  (char *)newService(
+ #ifdef HAVE_BIN_LOGIN
+-                                    geteuid() ? ":SSH" : ":LOGIN"
++                                    ":LOGIN"
+ #else
+                                     ":SSH"
+ #endif
+-                                    ));
++                                    , portRange, bannerContent));
+   }
+   enumerateServices(serviceTable);
+   deleteHashMap(serviceTable);
+@@ -1359,6 +1375,38 @@
+   }
+ }
+ 
++static void receive_uhttpd_nonce_cb(struct ubus_request *req, int type, struct blob_attr *msg) {
++  char *buf = req->priv;
++  struct blob_attr *cur;
++  int rem;
++  blobmsg_for_each_attr (cur, msg, rem) {
++    if (!strcmp(blobmsg_name(cur), "nonce")) {
++      strncpy(buf, blobmsg_get_string(cur), NONCE_SIZE - 1);
++    }
++  }
++}
++
++static int receive_uhttpd_nonce(char *buffer) {
++  struct ubus_context *ubus;
++  uint32_t obj;
++
++  ubus = ubus_connect(NULL);
++  if (!ubus) {
++    fprintf(stderr, "failed to connect to ubus\n");
++    return 1;
++  }
++
++  if (ubus_lookup_id(ubus, "uhttpd", &obj) ||
++    ubus_invoke(ubus, obj, "nonce", NULL, receive_uhttpd_nonce_cb, buffer, 1000)) {
++      fprintf(stderr, "ubus request failed\n");
++      ubus_free(ubus);
++      return 1;
++  }
++
++  ubus_free(ubus);
++  return 0;
++}
++
+ int main(int argc, char * const argv[]) {
+ #ifdef HAVE_SYS_PRCTL_H
+   // Disable core files
+@@ -1382,14 +1430,13 @@
+   Server *server;
+   if (port) {
+     check(server  = newServer(localhostOnly, port));
+-    dropPrivileges();
+     setUpSSL(server);
+   } else {
+     // For CGI operation we fork the new server, so that it runs in the
+     // background.
+     pid_t pid;
+     int   fds[2];
+-    dropPrivileges();
++    char nonce_hash[NONCE_SIZE];
+     check(!pipe(fds));
+     check((pid    = fork()) >= 0);
+     if (pid) {
+@@ -1414,7 +1461,8 @@
+            "Content-type: text/html; charset=utf-8\r\n\r\n",
+            port, getpid(), cgiSessionKey);
+     UNUSED(cgiRootSize);
+-    printfUnchecked(cgiRootStart, port, cgiSessionKey);
++    receive_uhttpd_nonce(nonce_hash);
++    printfUnchecked(cgiRootStart, nonce_hash, port, cgiSessionKey);
+     fflush(stdout);
+     check(!NOINTR(close(fds[1])));
+     closeAllFds((int []){ launcherFd, serverGetFd(server) }, 2);
+@@ -1478,7 +1526,7 @@
+       NOINTR(close(fd));
+       if (sz > 0) {
+         buf[sz]   = '\000';
+-        if (atoi(buf) == getpid()) {
++        if (strtol(buf, NULL, 0) == getpid()) {
+           unlink(pidfile);
+         }
+       }
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox/styles.css src/shellinabox/styles.css
+--- upstream/shellinabox/styles.css	2016-11-09 19:40:33.000000000 +0000
++++ src/shellinabox/styles.css	2025-02-05 12:54:15.000000000 +0000
+@@ -1,780 +1 @@
+-#vt100 a {
+-  text-decoration:      none;
+-  color:                inherit;
+-}
+-
+-#vt100 a:hover {
+-  text-decoration:      underline;
+-}
+-
+-#vt100 #reconnect {
+-  position:             absolute;
+-  z-index:              2;
+-}
+-
+-#vt100 #reconnect input {
+-  padding:              1ex;
+-  font-weight:          bold;
+-  font-size:            x-large;
+-}
+-
+-#vt100 #cursize {
+-  background:           #EEEEEE;
+-  border:               1px solid black;
+-  font-family:          sans-serif;
+-  font-size:            large;
+-  font-weight:          bold;
+-  padding:              1ex;
+-  position:             absolute;
+-  z-index:              2;
+-}
+-
+-#vt100 pre {
+-  margin:               0px;
+-}
+-
+-#vt100 pre pre {
+-  overflow:             hidden;
+-}
+-
+-#vt100 #scrollable {
+-  overflow-x:           hidden;
+-  overflow-y:           scroll;
+-  position:             relative;
+-  padding:              1px;
+-}
+-
+-#vt100 #console, #vt100 #alt_console, #vt100 #cursor, #vt100 #lineheight, #vt100 .hidden pre {
+-  font-family:          "DejaVu Sans Mono", "Everson Mono", FreeMono, "Andale Mono", Consolas, monospace;
+-}
+-
+-#vt100 #lineheight {
+-  position:             absolute;
+-  visibility:           hidden;
+-}
+-
+-#vt100 #cursor {
+-  position:             absolute;
+-  left:                 0px;
+-  top:                  0px;
+-  overflow:             hidden;
+-  z-index:              1;
+-}
+-
+-#vt100 #cursor.bright {
+-  background-color:     black;
+-  color:                white;
+-}
+-
+-#vt100 #cursor.dim {
+-  background-color:     white;
+-  opacity:              0.2;
+-  -moz-opacity:         0.2;
+-  filter:               alpha(opacity=20);
+-}
+-
+-#vt100 #cursor.inactive {
+-  border:               1px solid;
+-  margin:               -1px;
+-}
+-
+-#vt100 #padding {
+-  visibility:           hidden;
+-  width:                1px;
+-  height:               0px;
+-  overflow:             hidden;
+-}
+-
+-#vt100 .hidden {
+-  position:             absolute;
+-  top:                  -10000px;
+-  left:                 -10000px;
+-  width:                0px;
+-  height:               0px;
+-}
+-
+-#vt100 #menu {
+-  overflow:             visible;
+-  position:             absolute;
+-  z-index:              3;
+-}
+-
+-#vt100 #menu .popup {
+-  background-color:     #EEEEEE;
+-  border:               1px solid black;
+-  font-family:          sans-serif;
+-  position:             absolute;
+-}
+-
+-#vt100 #menu .popup ul {
+-  list-style-type:      none;
+-  padding:              0px;
+-  margin:               0px;
+-  min-width:            10em;
+-}
+-
+-#vt100 #menu .popup li {
+-  padding:              3px 0.5ex 3px 0.5ex;
+-}
+-
+-#vt100 #menu .popup li.hover {
+-  background-color:     #444444;
+-  color:                white;
+-}
+-
+-#vt100 #menu .popup li.disabled {
+-  color:                #AAAAAA;
+-}
+-
+-#vt100 #menu .popup hr {
+-  margin:               0.5ex 0px 0.5ex 0px;
+-}
+-
+-#vt100 #menu img {
+-  margin-right:         0.5ex;
+-  width:                1ex;
+-  height:               1ex;
+-}
+-
+-#vt100 #scrollable.inverted {
+-  color:                #ffffff;
+-  background-color:     #000000;
+-}
+-
+-#vt100 #kbd_button {
+-  float:                left;
+-  position:             fixed;
+-  z-index:              0;
+-  visibility:           hidden;
+-}
+-
+-#vt100 #keyboard {
+-  z-index:              3;
+-  position:             absolute;
+-}
+-
+-#vt100 #keyboard .box {
+-  font-family:          sans-serif;
+-  background-color:     #cccccc;
+-  padding:              .8em;
+-  float:                left;
+-  position:             absolute;
+-  border-radius:        10px;
+-  -moz-border-radius:   10px;
+-  box-shadow:           4px 4px 6px #222222;
+-  -webkit-box-shadow:   4px 4px 6px #222222;
+-  /* Don't set the -moz-box-shadow. It doesn't properly scale when CSS
+-   * transforms are in effect. Once Firefox supports box-shadow, it should
+-   * automatically do the right thing. Until then, leave shadows disabled
+-   * for Firefox.
+-   */
+-  opacity:              0.85;
+-  -moz-opacity:         0.85;
+-  filter:               alpha(opacity=85);
+-}
+-
+-#vt100 #keyboard .box * {
+-  vertical-align:       top;
+-  display:              inline-block;
+-}
+-
+-#vt100 #keyboard b, #vt100 #keyboard i, #vt100 #keyboard s, #vt100 #keyboard u {
+-  font-style:           normal;
+-  font-weight:          bold;
+-  border-radius:        5px;
+-  -moz-border-radius:   5px;
+-  background-color:     #555555;
+-  color:                #eeeeee;
+-  box-shadow:           2px 2px 3px #222222;
+-  -webkit-box-shadow:   2px 2px 3px #222222;
+-  padding:              4px;
+-  margin:               2px;
+-  height:               2ex;
+-  display:              inline-block;
+-  text-align:           center;
+-  text-decoration:      none;
+-}
+-
+-#vt100 #keyboard b, #vt100 #keyboard s {
+-  width:                2ex;
+-}
+-
+-#vt100 #keyboard u, #vt100 #keyboard s {
+-  visibility:           hidden;
+-}
+-
+-#vt100 #keyboard .shifted {
+-  display:              none;
+-}
+-
+-#vt100 #keyboard .selected {
+-  color:                #888888;
+-  background-color:     #eeeeee;
+-  box-shadow:           0px 0px 3px #222222;
+-  -webkit-box-shadow:   0px 0px 3px #222222;
+-  position:             relative;
+-  top:                  1px;
+-  left:                 1px;
+-}
+-
+-@media print {
+-  #vt100 .scrollback {
+-    display:            none;
+-  }
+-
+-  #vt100 #reconnect, #vt100 #cursor, #vt100 #menu, #vt100 #kbd_button, #vt100 #keyboard {
+-    visibility:         hidden;
+-  }
+-
+-  #vt100 #scrollable {
+-    overflow:           hidden;
+-  }
+-
+-  #vt100 #console, #vt100 #alt_console {
+-    overflow:           hidden;
+-    width:              1000000ex;
+-  }
+-}
+-
+-[if DEFINES_COLORS]
+-/* IE cannot properly handle "inherit" properties. So, the monochrome.css/
+- * color.css style sheets cannot work, if we define colors in styles.css.
+- */
+-[else DEFINES_COLORS]
+-/* SYSTEM colors */
+-#vt100 .ansiDef   { color:            #000000; }
+-#vt100 .ansiDefR  { color:            #ffffff; }
+-
+-#vt100 #scrollable.inverted .ansiDef
+-                  { color:            #ffffff; }
+-#vt100 #scrollable.inverted .ansiDefR
+-                  { color:            #000000; }
+-
+-#vt100 .ansi0     { color:            #000000; }
+-#vt100 .ansi1     { color:            #cd0000; }
+-#vt100 .ansi2     { color:            #00cd00; }
+-#vt100 .ansi3     { color:            #cdcd00; }
+-#vt100 .ansi4     { color:            #0000ee; }
+-#vt100 .ansi5     { color:            #cd00cd; }
+-#vt100 .ansi6     { color:            #00cdcd; }
+-#vt100 .ansi7     { color:            #e5e5e5; }
+-#vt100 .ansi8     { color:            #7f7f7f; }
+-#vt100 .ansi9     { color:            #ff0000; }
+-#vt100 .ansi10    { color:            #00ff00; }
+-#vt100 .ansi11    { color:            #e8e8e0; }
+-#vt100 .ansi12    { color:            #5c5cff; }
+-#vt100 .ansi13    { color:            #ff00ff; }
+-#vt100 .ansi14    { color:            #00ffff; }
+-#vt100 .ansi15    { color:            #ffffff; }
+-
+-/* XTERM colors - 256 color mode */
+-#vt100 .ansi16    { color:            #000000; }
+-#vt100 .ansi17    { color:            #00005f; }
+-#vt100 .ansi18    { color:            #000087; }
+-#vt100 .ansi19    { color:            #0000af; }
+-#vt100 .ansi20    { color:            #0000d7; }
+-#vt100 .ansi21    { color:            #0000ff; }
+-#vt100 .ansi22    { color:            #005f00; }
+-#vt100 .ansi23    { color:            #005f5f; }
+-#vt100 .ansi24    { color:            #005f87; }
+-#vt100 .ansi25    { color:            #005faf; }
+-#vt100 .ansi26    { color:            #005fd7; }
+-#vt100 .ansi27    { color:            #005fff; }
+-#vt100 .ansi28    { color:            #008700; }
+-#vt100 .ansi29    { color:            #00875f; }
+-#vt100 .ansi30    { color:            #008787; }
+-#vt100 .ansi31    { color:            #0087af; }
+-#vt100 .ansi32    { color:            #0087d7; }
+-#vt100 .ansi33    { color:            #0087ff; }
+-#vt100 .ansi34    { color:            #00af00; }
+-#vt100 .ansi35    { color:            #00af5f; }
+-#vt100 .ansi36    { color:            #00af87; }
+-#vt100 .ansi37    { color:            #00afaf; }
+-#vt100 .ansi38    { color:            #00afd7; }
+-#vt100 .ansi39    { color:            #00afff; }
+-#vt100 .ansi40    { color:            #00d700; }
+-#vt100 .ansi41    { color:            #00d75f; }
+-#vt100 .ansi42    { color:            #00d787; }
+-#vt100 .ansi43    { color:            #00d7af; }
+-#vt100 .ansi44    { color:            #00d7d7; }
+-#vt100 .ansi45    { color:            #00d7ff; }
+-#vt100 .ansi46    { color:            #00ff00; }
+-#vt100 .ansi47    { color:            #00ff5f; }
+-#vt100 .ansi48    { color:            #00ff87; }
+-#vt100 .ansi49    { color:            #00ffaf; }
+-#vt100 .ansi50    { color:            #00ffd7; }
+-#vt100 .ansi51    { color:            #00ffff; }
+-#vt100 .ansi52    { color:            #5f0000; }
+-#vt100 .ansi53    { color:            #5f005f; }
+-#vt100 .ansi54    { color:            #5f0087; }
+-#vt100 .ansi55    { color:            #5f00af; }
+-#vt100 .ansi56    { color:            #5f00d7; }
+-#vt100 .ansi57    { color:            #5f00ff; }
+-#vt100 .ansi58    { color:            #5f5f00; }
+-#vt100 .ansi59    { color:            #5f5f5f; }
+-#vt100 .ansi60    { color:            #5f5f87; }
+-#vt100 .ansi61    { color:            #5f5faf; }
+-#vt100 .ansi62    { color:            #5f5fd7; }
+-#vt100 .ansi63    { color:            #5f5fff; }
+-#vt100 .ansi64    { color:            #5f8700; }
+-#vt100 .ansi65    { color:            #5f875f; }
+-#vt100 .ansi66    { color:            #5f8787; }
+-#vt100 .ansi67    { color:            #5f87af; }
+-#vt100 .ansi68    { color:            #5f87d7; }
+-#vt100 .ansi69    { color:            #5f87ff; }
+-#vt100 .ansi70    { color:            #5faf00; }
+-#vt100 .ansi71    { color:            #5faf5f; }
+-#vt100 .ansi72    { color:            #5faf87; }
+-#vt100 .ansi73    { color:            #5fafaf; }
+-#vt100 .ansi74    { color:            #5fafd7; }
+-#vt100 .ansi75    { color:            #5fafff; }
+-#vt100 .ansi76    { color:            #5fd700; }
+-#vt100 .ansi77    { color:            #5fd75f; }
+-#vt100 .ansi78    { color:            #5fd787; }
+-#vt100 .ansi79    { color:            #5fd7af; }
+-#vt100 .ansi80    { color:            #5fd7d7; }
+-#vt100 .ansi81    { color:            #5fd7ff; }
+-#vt100 .ansi82    { color:            #5fff00; }
+-#vt100 .ansi83    { color:            #5fff5f; }
+-#vt100 .ansi84    { color:            #5fff87; }
+-#vt100 .ansi85    { color:            #5fffaf; }
+-#vt100 .ansi86    { color:            #5fffd7; }
+-#vt100 .ansi87    { color:            #5fffff; }
+-#vt100 .ansi88    { color:            #870000; }
+-#vt100 .ansi89    { color:            #87005f; }
+-#vt100 .ansi90    { color:            #870087; }
+-#vt100 .ansi91    { color:            #8700af; }
+-#vt100 .ansi92    { color:            #8700d7; }
+-#vt100 .ansi93    { color:            #8700ff; }
+-#vt100 .ansi94    { color:            #875f00; }
+-#vt100 .ansi95    { color:            #875f5f; }
+-#vt100 .ansi96    { color:            #875f87; }
+-#vt100 .ansi97    { color:            #875faf; }
+-#vt100 .ansi98    { color:            #875fd7; }
+-#vt100 .ansi99    { color:            #875fff; }
+-#vt100 .ansi100   { color:            #878700; }
+-#vt100 .ansi101   { color:            #87875f; }
+-#vt100 .ansi102   { color:            #878787; }
+-#vt100 .ansi103   { color:            #8787af; }
+-#vt100 .ansi104   { color:            #8787d7; }
+-#vt100 .ansi105   { color:            #8787ff; }
+-#vt100 .ansi106   { color:            #87af00; }
+-#vt100 .ansi107   { color:            #87af5f; }
+-#vt100 .ansi108   { color:            #87af87; }
+-#vt100 .ansi109   { color:            #87afaf; }
+-#vt100 .ansi110   { color:            #87afd7; }
+-#vt100 .ansi111   { color:            #87afff; }
+-#vt100 .ansi112   { color:            #87d700; }
+-#vt100 .ansi113   { color:            #87d75f; }
+-#vt100 .ansi114   { color:            #87d787; }
+-#vt100 .ansi115   { color:            #87d7af; }
+-#vt100 .ansi116   { color:            #87d7d7; }
+-#vt100 .ansi117   { color:            #87d7ff; }
+-#vt100 .ansi118   { color:            #87ff00; }
+-#vt100 .ansi119   { color:            #87ff5f; }
+-#vt100 .ansi120   { color:            #87ff87; }
+-#vt100 .ansi121   { color:            #87ffaf; }
+-#vt100 .ansi122   { color:            #87ffd7; }
+-#vt100 .ansi123   { color:            #87ffff; }
+-#vt100 .ansi124   { color:            #af0000; }
+-#vt100 .ansi125   { color:            #af005f; }
+-#vt100 .ansi126   { color:            #af0087; }
+-#vt100 .ansi127   { color:            #af00af; }
+-#vt100 .ansi128   { color:            #af00d7; }
+-#vt100 .ansi129   { color:            #af00ff; }
+-#vt100 .ansi130   { color:            #af5f00; }
+-#vt100 .ansi131   { color:            #af5f5f; }
+-#vt100 .ansi132   { color:            #af5f87; }
+-#vt100 .ansi133   { color:            #af5faf; }
+-#vt100 .ansi134   { color:            #af5fd7; }
+-#vt100 .ansi135   { color:            #af5fff; }
+-#vt100 .ansi136   { color:            #af8700; }
+-#vt100 .ansi137   { color:            #af875f; }
+-#vt100 .ansi138   { color:            #af8787; }
+-#vt100 .ansi139   { color:            #af87af; }
+-#vt100 .ansi140   { color:            #af87d7; }
+-#vt100 .ansi141   { color:            #af87ff; }
+-#vt100 .ansi142   { color:            #afaf00; }
+-#vt100 .ansi143   { color:            #afaf5f; }
+-#vt100 .ansi144   { color:            #afaf87; }
+-#vt100 .ansi145   { color:            #afafaf; }
+-#vt100 .ansi146   { color:            #afafd7; }
+-#vt100 .ansi147   { color:            #afafff; }
+-#vt100 .ansi148   { color:            #afd700; }
+-#vt100 .ansi149   { color:            #afd75f; }
+-#vt100 .ansi150   { color:            #afd787; }
+-#vt100 .ansi151   { color:            #afd7af; }
+-#vt100 .ansi152   { color:            #afd7d7; }
+-#vt100 .ansi153   { color:            #afd7ff; }
+-#vt100 .ansi154   { color:            #afff00; }
+-#vt100 .ansi155   { color:            #afff5f; }
+-#vt100 .ansi156   { color:            #afff87; }
+-#vt100 .ansi157   { color:            #afffaf; }
+-#vt100 .ansi158   { color:            #afffd7; }
+-#vt100 .ansi159   { color:            #afffff; }
+-#vt100 .ansi160   { color:            #d70000; }
+-#vt100 .ansi161   { color:            #d7005f; }
+-#vt100 .ansi162   { color:            #d70087; }
+-#vt100 .ansi163   { color:            #d700af; }
+-#vt100 .ansi164   { color:            #d700d7; }
+-#vt100 .ansi165   { color:            #d700ff; }
+-#vt100 .ansi166   { color:            #d75f00; }
+-#vt100 .ansi167   { color:            #d75f5f; }
+-#vt100 .ansi168   { color:            #d75f87; }
+-#vt100 .ansi169   { color:            #d75faf; }
+-#vt100 .ansi170   { color:            #d75fd7; }
+-#vt100 .ansi171   { color:            #d75fff; }
+-#vt100 .ansi172   { color:            #d78700; }
+-#vt100 .ansi173   { color:            #d7875f; }
+-#vt100 .ansi174   { color:            #d78787; }
+-#vt100 .ansi175   { color:            #d787af; }
+-#vt100 .ansi176   { color:            #d787d7; }
+-#vt100 .ansi177   { color:            #d787ff; }
+-#vt100 .ansi178   { color:            #d7af00; }
+-#vt100 .ansi179   { color:            #d7af5f; }
+-#vt100 .ansi180   { color:            #d7af87; }
+-#vt100 .ansi181   { color:            #d7afaf; }
+-#vt100 .ansi182   { color:            #d7afd7; }
+-#vt100 .ansi183   { color:            #d7afff; }
+-#vt100 .ansi184   { color:            #d7d700; }
+-#vt100 .ansi185   { color:            #d7d75f; }
+-#vt100 .ansi186   { color:            #d7d787; }
+-#vt100 .ansi187   { color:            #d7d7af; }
+-#vt100 .ansi188   { color:            #d7d7d7; }
+-#vt100 .ansi189   { color:            #d7d7ff; }
+-#vt100 .ansi190   { color:            #d7ff00; }
+-#vt100 .ansi191   { color:            #d7ff5f; }
+-#vt100 .ansi192   { color:            #d7ff87; }
+-#vt100 .ansi193   { color:            #d7ffaf; }
+-#vt100 .ansi194   { color:            #d7ffd7; }
+-#vt100 .ansi195   { color:            #d7ffff; }
+-#vt100 .ansi196   { color:            #ff0000; }
+-#vt100 .ansi197   { color:            #ff005f; }
+-#vt100 .ansi198   { color:            #ff0087; }
+-#vt100 .ansi199   { color:            #ff00af; }
+-#vt100 .ansi200   { color:            #ff00d7; }
+-#vt100 .ansi201   { color:            #ff00ff; }
+-#vt100 .ansi202   { color:            #ff5f00; }
+-#vt100 .ansi203   { color:            #ff5f5f; }
+-#vt100 .ansi204   { color:            #ff5f87; }
+-#vt100 .ansi205   { color:            #ff5faf; }
+-#vt100 .ansi206   { color:            #ff5fd7; }
+-#vt100 .ansi207   { color:            #ff5fff; }
+-#vt100 .ansi208   { color:            #ff8700; }
+-#vt100 .ansi209   { color:            #ff875f; }
+-#vt100 .ansi210   { color:            #ff8787; }
+-#vt100 .ansi211   { color:            #ff87af; }
+-#vt100 .ansi212   { color:            #ff87d7; }
+-#vt100 .ansi213   { color:            #ff87ff; }
+-#vt100 .ansi214   { color:            #ffaf00; }
+-#vt100 .ansi215   { color:            #ffaf5f; }
+-#vt100 .ansi216   { color:            #ffaf87; }
+-#vt100 .ansi217   { color:            #ffafaf; }
+-#vt100 .ansi218   { color:            #ffafd7; }
+-#vt100 .ansi219   { color:            #ffafff; }
+-#vt100 .ansi220   { color:            #ffd700; }
+-#vt100 .ansi221   { color:            #ffd75f; }
+-#vt100 .ansi222   { color:            #ffd787; }
+-#vt100 .ansi223   { color:            #ffd7af; }
+-#vt100 .ansi224   { color:            #ffd7d7; }
+-#vt100 .ansi225   { color:            #ffd7ff; }
+-#vt100 .ansi226   { color:            #ffff00; }
+-#vt100 .ansi227   { color:            #ffff5f; }
+-#vt100 .ansi228   { color:            #ffff87; }
+-#vt100 .ansi229   { color:            #ffffaf; }
+-#vt100 .ansi230   { color:            #ffffd7; }
+-#vt100 .ansi231   { color:            #ffffff; }
+-#vt100 .ansi232   { color:            #080808; }
+-#vt100 .ansi233   { color:            #121212; }
+-#vt100 .ansi234   { color:            #1c1c1c; }
+-#vt100 .ansi235   { color:            #262626; }
+-#vt100 .ansi236   { color:            #303030; }
+-#vt100 .ansi237   { color:            #3a3a3a; }
+-#vt100 .ansi238   { color:            #444444; }
+-#vt100 .ansi239   { color:            #4e4e4e; }
+-#vt100 .ansi240   { color:            #585858; }
+-#vt100 .ansi241   { color:            #626262; }
+-#vt100 .ansi242   { color:            #6c6c6c; }
+-#vt100 .ansi243   { color:            #767676; }
+-#vt100 .ansi244   { color:            #808080; }
+-#vt100 .ansi245   { color:            #8a8a8a; }
+-#vt100 .ansi246   { color:            #949494; }
+-#vt100 .ansi247   { color:            #9e9e9e; }
+-#vt100 .ansi248   { color:            #a8a8a8; }
+-#vt100 .ansi249   { color:            #b2b2b2; }
+-#vt100 .ansi250   { color:            #bcbcbc; }
+-#vt100 .ansi251   { color:            #c6c6c6; }
+-#vt100 .ansi252   { color:            #d0d0d0; }
+-#vt100 .ansi253   { color:            #dadada; }
+-#vt100 .ansi254   { color:            #e4e4e4; }
+-#vt100 .ansi255   { color:            #eeeeee; }
+-
+-/* SYSTEM colors */
+-#vt100 .bgAnsiDef { background-color: #ffffff; }
+-#vt100 .bgAnsiDefR
+-                  { background-color: #000000; }
+-
+-#vt100 #scrollable.inverted .bgAnsiDef
+-                  { background-color: #000000; }
+-#vt100 #scrollable.inverted .bgAnsiDefR
+-                  { background-color: #ffffff; }
+-
+-#vt100 .bgAnsi0   { background-color: #000000; }
+-#vt100 .bgAnsi1   { background-color: #cd0000; }
+-#vt100 .bgAnsi2   { background-color: #00cd00; }
+-#vt100 .bgAnsi3   { background-color: #cdcd00; }
+-#vt100 .bgAnsi4   { background-color: #0000ee; }
+-#vt100 .bgAnsi5   { background-color: #cd00cd; }
+-#vt100 .bgAnsi6   { background-color: #00cdcd; }
+-#vt100 .bgAnsi7   { background-color: #e5e5e5; }
+-#vt100 .bgAnsi8   { background-color: #7f7f7f; }
+-#vt100 .bgAnsi9   { background-color: #ff0000; }
+-#vt100 .bgAnsi10  { background-color: #00ff00; }
+-#vt100 .bgAnsi11  { background-color: #e8e800; }
+-#vt100 .bgAnsi12  { background-color: #5c5cff; }
+-#vt100 .bgAnsi13  { background-color: #ff00ff; }
+-#vt100 .bgAnsi14  { background-color: #00ffff; }
+-#vt100 .bgAnsi15  { background-color: #ffffff; }
+-
+-/* XTERM colors - 256 color mode */
+-#vt100 .bgAnsi16  { background-color: #000000; }
+-#vt100 .bgAnsi17  { background-color: #00005f; }
+-#vt100 .bgAnsi18  { background-color: #000087; }
+-#vt100 .bgAnsi19  { background-color: #0000af; }
+-#vt100 .bgAnsi20  { background-color: #0000d7; }
+-#vt100 .bgAnsi21  { background-color: #0000ff; }
+-#vt100 .bgAnsi22  { background-color: #005f00; }
+-#vt100 .bgAnsi23  { background-color: #005f5f; }
+-#vt100 .bgAnsi24  { background-color: #005f87; }
+-#vt100 .bgAnsi25  { background-color: #005faf; }
+-#vt100 .bgAnsi26  { background-color: #005fd7; }
+-#vt100 .bgAnsi27  { background-color: #005fff; }
+-#vt100 .bgAnsi28  { background-color: #008700; }
+-#vt100 .bgAnsi29  { background-color: #00875f; }
+-#vt100 .bgAnsi30  { background-color: #008787; }
+-#vt100 .bgAnsi31  { background-color: #0087af; }
+-#vt100 .bgAnsi32  { background-color: #0087d7; }
+-#vt100 .bgAnsi33  { background-color: #0087ff; }
+-#vt100 .bgAnsi34  { background-color: #00af00; }
+-#vt100 .bgAnsi35  { background-color: #00af5f; }
+-#vt100 .bgAnsi36  { background-color: #00af87; }
+-#vt100 .bgAnsi37  { background-color: #00afaf; }
+-#vt100 .bgAnsi38  { background-color: #00afd7; }
+-#vt100 .bgAnsi39  { background-color: #00afff; }
+-#vt100 .bgAnsi40  { background-color: #00d700; }
+-#vt100 .bgAnsi41  { background-color: #00d75f; }
+-#vt100 .bgAnsi42  { background-color: #00d787; }
+-#vt100 .bgAnsi43  { background-color: #00d7af; }
+-#vt100 .bgAnsi44  { background-color: #00d7d7; }
+-#vt100 .bgAnsi45  { background-color: #00d7ff; }
+-#vt100 .bgAnsi46  { background-color: #00ff00; }
+-#vt100 .bgAnsi47  { background-color: #00ff5f; }
+-#vt100 .bgAnsi48  { background-color: #00ff87; }
+-#vt100 .bgAnsi49  { background-color: #00ffaf; }
+-#vt100 .bgAnsi50  { background-color: #00ffd7; }
+-#vt100 .bgAnsi51  { background-color: #00ffff; }
+-#vt100 .bgAnsi52  { background-color: #5f0000; }
+-#vt100 .bgAnsi53  { background-color: #5f005f; }
+-#vt100 .bgAnsi54  { background-color: #5f0087; }
+-#vt100 .bgAnsi55  { background-color: #5f00af; }
+-#vt100 .bgAnsi56  { background-color: #5f00d7; }
+-#vt100 .bgAnsi57  { background-color: #5f00ff; }
+-#vt100 .bgAnsi58  { background-color: #5f5f00; }
+-#vt100 .bgAnsi59  { background-color: #5f5f5f; }
+-#vt100 .bgAnsi60  { background-color: #5f5f87; }
+-#vt100 .bgAnsi61  { background-color: #5f5faf; }
+-#vt100 .bgAnsi62  { background-color: #5f5fd7; }
+-#vt100 .bgAnsi63  { background-color: #5f5fff; }
+-#vt100 .bgAnsi64  { background-color: #5f8700; }
+-#vt100 .bgAnsi65  { background-color: #5f875f; }
+-#vt100 .bgAnsi66  { background-color: #5f8787; }
+-#vt100 .bgAnsi67  { background-color: #5f87af; }
+-#vt100 .bgAnsi68  { background-color: #5f87d7; }
+-#vt100 .bgAnsi69  { background-color: #5f87ff; }
+-#vt100 .bgAnsi70  { background-color: #5faf00; }
+-#vt100 .bgAnsi71  { background-color: #5faf5f; }
+-#vt100 .bgAnsi72  { background-color: #5faf87; }
+-#vt100 .bgAnsi73  { background-color: #5fafaf; }
+-#vt100 .bgAnsi74  { background-color: #5fafd7; }
+-#vt100 .bgAnsi75  { background-color: #5fafff; }
+-#vt100 .bgAnsi76  { background-color: #5fd700; }
+-#vt100 .bgAnsi77  { background-color: #5fd75f; }
+-#vt100 .bgAnsi78  { background-color: #5fd787; }
+-#vt100 .bgAnsi79  { background-color: #5fd7af; }
+-#vt100 .bgAnsi80  { background-color: #5fd7d7; }
+-#vt100 .bgAnsi81  { background-color: #5fd7ff; }
+-#vt100 .bgAnsi82  { background-color: #5fff00; }
+-#vt100 .bgAnsi83  { background-color: #5fff5f; }
+-#vt100 .bgAnsi84  { background-color: #5fff87; }
+-#vt100 .bgAnsi85  { background-color: #5fffaf; }
+-#vt100 .bgAnsi86  { background-color: #5fffd7; }
+-#vt100 .bgAnsi87  { background-color: #5fffff; }
+-#vt100 .bgAnsi88  { background-color: #870000; }
+-#vt100 .bgAnsi89  { background-color: #87005f; }
+-#vt100 .bgAnsi90  { background-color: #870087; }
+-#vt100 .bgAnsi91  { background-color: #8700af; }
+-#vt100 .bgAnsi92  { background-color: #8700d7; }
+-#vt100 .bgAnsi93  { background-color: #8700ff; }
+-#vt100 .bgAnsi94  { background-color: #875f00; }
+-#vt100 .bgAnsi95  { background-color: #875f5f; }
+-#vt100 .bgAnsi96  { background-color: #875f87; }
+-#vt100 .bgAnsi97  { background-color: #875faf; }
+-#vt100 .bgAnsi98  { background-color: #875fd7; }
+-#vt100 .bgAnsi99  { background-color: #875fff; }
+-#vt100 .bgAnsi100 { background-color: #878700; }
+-#vt100 .bgAnsi101 { background-color: #87875f; }
+-#vt100 .bgAnsi102 { background-color: #878787; }
+-#vt100 .bgAnsi103 { background-color: #8787af; }
+-#vt100 .bgAnsi104 { background-color: #8787d7; }
+-#vt100 .bgAnsi105 { background-color: #8787ff; }
+-#vt100 .bgAnsi106 { background-color: #87af00; }
+-#vt100 .bgAnsi107 { background-color: #87af5f; }
+-#vt100 .bgAnsi108 { background-color: #87af87; }
+-#vt100 .bgAnsi109 { background-color: #87afaf; }
+-#vt100 .bgAnsi110 { background-color: #87afd7; }
+-#vt100 .bgAnsi111 { background-color: #87afff; }
+-#vt100 .bgAnsi112 { background-color: #87d700; }
+-#vt100 .bgAnsi113 { background-color: #87d75f; }
+-#vt100 .bgAnsi114 { background-color: #87d787; }
+-#vt100 .bgAnsi115 { background-color: #87d7af; }
+-#vt100 .bgAnsi116 { background-color: #87d7d7; }
+-#vt100 .bgAnsi117 { background-color: #87d7ff; }
+-#vt100 .bgAnsi118 { background-color: #87ff00; }
+-#vt100 .bgAnsi119 { background-color: #87ff5f; }
+-#vt100 .bgAnsi120 { background-color: #87ff87; }
+-#vt100 .bgAnsi121 { background-color: #87ffaf; }
+-#vt100 .bgAnsi122 { background-color: #87ffd7; }
+-#vt100 .bgAnsi123 { background-color: #87ffff; }
+-#vt100 .bgAnsi124 { background-color: #af0000; }
+-#vt100 .bgAnsi125 { background-color: #af005f; }
+-#vt100 .bgAnsi126 { background-color: #af0087; }
+-#vt100 .bgAnsi127 { background-color: #af00af; }
+-#vt100 .bgAnsi128 { background-color: #af00d7; }
+-#vt100 .bgAnsi129 { background-color: #af00ff; }
+-#vt100 .bgAnsi130 { background-color: #af5f00; }
+-#vt100 .bgAnsi131 { background-color: #af5f5f; }
+-#vt100 .bgAnsi132 { background-color: #af5f87; }
+-#vt100 .bgAnsi133 { background-color: #af5faf; }
+-#vt100 .bgAnsi134 { background-color: #af5fd7; }
+-#vt100 .bgAnsi135 { background-color: #af5fff; }
+-#vt100 .bgAnsi136 { background-color: #af8700; }
+-#vt100 .bgAnsi137 { background-color: #af875f; }
+-#vt100 .bgAnsi138 { background-color: #af8787; }
+-#vt100 .bgAnsi139 { background-color: #af87af; }
+-#vt100 .bgAnsi140 { background-color: #af87d7; }
+-#vt100 .bgAnsi141 { background-color: #af87ff; }
+-#vt100 .bgAnsi142 { background-color: #afaf00; }
+-#vt100 .bgAnsi143 { background-color: #afaf5f; }
+-#vt100 .bgAnsi144 { background-color: #afaf87; }
+-#vt100 .bgAnsi145 { background-color: #afafaf; }
+-#vt100 .bgAnsi146 { background-color: #afafd7; }
+-#vt100 .bgAnsi147 { background-color: #afafff; }
+-#vt100 .bgAnsi148 { background-color: #afd700; }
+-#vt100 .bgAnsi149 { background-color: #afd75f; }
+-#vt100 .bgAnsi150 { background-color: #afd787; }
+-#vt100 .bgAnsi151 { background-color: #afd7af; }
+-#vt100 .bgAnsi152 { background-color: #afd7d7; }
+-#vt100 .bgAnsi153 { background-color: #afd7ff; }
+-#vt100 .bgAnsi154 { background-color: #afff00; }
+-#vt100 .bgAnsi155 { background-color: #afff5f; }
+-#vt100 .bgAnsi156 { background-color: #afff87; }
+-#vt100 .bgAnsi157 { background-color: #afffaf; }
+-#vt100 .bgAnsi158 { background-color: #afffd7; }
+-#vt100 .bgAnsi159 { background-color: #afffff; }
+-#vt100 .bgAnsi160 { background-color: #d70000; }
+-#vt100 .bgAnsi161 { background-color: #d7005f; }
+-#vt100 .bgAnsi162 { background-color: #d70087; }
+-#vt100 .bgAnsi163 { background-color: #d700af; }
+-#vt100 .bgAnsi164 { background-color: #d700d7; }
+-#vt100 .bgAnsi165 { background-color: #d700ff; }
+-#vt100 .bgAnsi166 { background-color: #d75f00; }
+-#vt100 .bgAnsi167 { background-color: #d75f5f; }
+-#vt100 .bgAnsi168 { background-color: #d75f87; }
+-#vt100 .bgAnsi169 { background-color: #d75faf; }
+-#vt100 .bgAnsi170 { background-color: #d75fd7; }
+-#vt100 .bgAnsi171 { background-color: #d75fff; }
+-#vt100 .bgAnsi172 { background-color: #d78700; }
+-#vt100 .bgAnsi173 { background-color: #d7875f; }
+-#vt100 .bgAnsi174 { background-color: #d78787; }
+-#vt100 .bgAnsi175 { background-color: #d787af; }
+-#vt100 .bgAnsi176 { background-color: #d787d7; }
+-#vt100 .bgAnsi177 { background-color: #d787ff; }
+-#vt100 .bgAnsi178 { background-color: #d7af00; }
+-#vt100 .bgAnsi179 { background-color: #d7af5f; }
+-#vt100 .bgAnsi180 { background-color: #d7af87; }
+-#vt100 .bgAnsi181 { background-color: #d7afaf; }
+-#vt100 .bgAnsi182 { background-color: #d7afd7; }
+-#vt100 .bgAnsi183 { background-color: #d7afff; }
+-#vt100 .bgAnsi184 { background-color: #d7d700; }
+-#vt100 .bgAnsi185 { background-color: #d7d75f; }
+-#vt100 .bgAnsi186 { background-color: #d7d787; }
+-#vt100 .bgAnsi187 { background-color: #d7d7af; }
+-#vt100 .bgAnsi188 { background-color: #d7d7d7; }
+-#vt100 .bgAnsi189 { background-color: #d7d7ff; }
+-#vt100 .bgAnsi190 { background-color: #d7ff00; }
+-#vt100 .bgAnsi191 { background-color: #d7ff5f; }
+-#vt100 .bgAnsi192 { background-color: #d7ff87; }
+-#vt100 .bgAnsi193 { background-color: #d7ffaf; }
+-#vt100 .bgAnsi194 { background-color: #d7ffd7; }
+-#vt100 .bgAnsi195 { background-color: #d7ffff; }
+-#vt100 .bgAnsi196 { background-color: #ff0000; }
+-#vt100 .bgAnsi197 { background-color: #ff005f; }
+-#vt100 .bgAnsi198 { background-color: #ff0087; }
+-#vt100 .bgAnsi199 { background-color: #ff00af; }
+-#vt100 .bgAnsi200 { background-color: #ff00d7; }
+-#vt100 .bgAnsi201 { background-color: #ff00ff; }
+-#vt100 .bgAnsi202 { background-color: #ff5f00; }
+-#vt100 .bgAnsi203 { background-color: #ff5f5f; }
+-#vt100 .bgAnsi204 { background-color: #ff5f87; }
+-#vt100 .bgAnsi205 { background-color: #ff5faf; }
+-#vt100 .bgAnsi206 { background-color: #ff5fd7; }
+-#vt100 .bgAnsi207 { background-color: #ff5fff; }
+-#vt100 .bgAnsi208 { background-color: #ff8700; }
+-#vt100 .bgAnsi209 { background-color: #ff875f; }
+-#vt100 .bgAnsi210 { background-color: #ff8787; }
+-#vt100 .bgAnsi211 { background-color: #ff87af; }
+-#vt100 .bgAnsi212 { background-color: #ff87d7; }
+-#vt100 .bgAnsi213 { background-color: #ff87ff; }
+-#vt100 .bgAnsi214 { background-color: #ffaf00; }
+-#vt100 .bgAnsi215 { background-color: #ffaf5f; }
+-#vt100 .bgAnsi216 { background-color: #ffaf87; }
+-#vt100 .bgAnsi217 { background-color: #ffafaf; }
+-#vt100 .bgAnsi218 { background-color: #ffafd7; }
+-#vt100 .bgAnsi219 { background-color: #ffafff; }
+-#vt100 .bgAnsi220 { background-color: #ffd700; }
+-#vt100 .bgAnsi221 { background-color: #ffd75f; }
+-#vt100 .bgAnsi222 { background-color: #ffd787; }
+-#vt100 .bgAnsi223 { background-color: #ffd7af; }
+-#vt100 .bgAnsi224 { background-color: #ffd7d7; }
+-#vt100 .bgAnsi225 { background-color: #ffd7ff; }
+-#vt100 .bgAnsi226 { background-color: #ffff00; }
+-#vt100 .bgAnsi227 { background-color: #ffff5f; }
+-#vt100 .bgAnsi228 { background-color: #ffff87; }
+-#vt100 .bgAnsi229 { background-color: #ffffaf; }
+-#vt100 .bgAnsi230 { background-color: #ffffd7; }
+-#vt100 .bgAnsi231 { background-color: #ffffff; }
+-#vt100 .bgAnsi232 { background-color: #080808; }
+-#vt100 .bgAnsi233 { background-color: #121212; }
+-#vt100 .bgAnsi234 { background-color: #1c1c1c; }
+-#vt100 .bgAnsi235 { background-color: #262626; }
+-#vt100 .bgAnsi236 { background-color: #303030; }
+-#vt100 .bgAnsi237 { background-color: #3a3a3a; }
+-#vt100 .bgAnsi238 { background-color: #444444; }
+-#vt100 .bgAnsi239 { background-color: #4e4e4e; }
+-#vt100 .bgAnsi240 { background-color: #585858; }
+-#vt100 .bgAnsi241 { background-color: #626262; }
+-#vt100 .bgAnsi242 { background-color: #6c6c6c; }
+-#vt100 .bgAnsi243 { background-color: #767676; }
+-#vt100 .bgAnsi244 { background-color: #808080; }
+-#vt100 .bgAnsi245 { background-color: #8a8a8a; }
+-#vt100 .bgAnsi246 { background-color: #949494; }
+-#vt100 .bgAnsi247 { background-color: #9e9e9e; }
+-#vt100 .bgAnsi248 { background-color: #a8a8a8; }
+-#vt100 .bgAnsi249 { background-color: #b2b2b2; }
+-#vt100 .bgAnsi250 { background-color: #bcbcbc; }
+-#vt100 .bgAnsi251 { background-color: #c6c6c6; }
+-#vt100 .bgAnsi252 { background-color: #d0d0d0; }
+-#vt100 .bgAnsi253 { background-color: #dadada; }
+-#vt100 .bgAnsi254 { background-color: #e4e4e4; }
+-#vt100 .bgAnsi255 { background-color: #eeeeee; }
+-[endif DEFINES_COLORS]
++#vt100 #cursize,#vt100 #reconnect{position:absolute;z-index:2}#vt100 #cursor,#vt100 #padding,#vt100 pre pre{overflow:hidden}#vt100 #kbd_button,#vt100 #padding{visibility:hidden}#vt100 a{text-decoration:none;color:inherit}#vt100 a:hover{text-decoration:underline}#vt100 #reconnect input{padding:.625rem 1rem;font-weight:600;font-size:.875rem!important;transition:.15s;cursor:pointer;line-height:1.25rem;background-color:#0054a6;border-radius:4px;color:#fff;border:0;font-family:'Open Sans',sans-serif}#vt100 #reconnect input:hover{background-color:#003f7d!important}#vt100 #cursize{background:#eee;border:1px solid #000;font-family:sans-serif;font-size:large;font-weight:700;padding:1ex}#vt100 pre{margin:0}#vt100 #scrollable{overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgb(201,201,201) rgb(247,247,247);position:relative;padding:1px}#vt100 #alt_console,#vt100 #console,#vt100 #cursor,#vt100 #lineheight,#vt100 .hidden pre{font-family:"DejaVu Sans Mono","Everson Mono",FreeMono,"Andale Mono",Consolas,monospace}#vt100 #lineheight{position:absolute;visibility:hidden}#vt100 #cursor{position:absolute;left:0;top:0;z-index:1}#vt100 #cursor.bright{background-color:#000;color:#fff}#vt100 #cursor.dim,#vt100 #scrollable.inverted .bgAnsiDefR,#vt100 .bgAnsi15,#vt100 .bgAnsi231,#vt100 .bgAnsiDef{background-color:#fff}#vt100 #cursor.dim{opacity:.2;-moz-opacity:0.2}#vt100 #cursor.inactive{border:1px solid;margin:-1px}#vt100 #padding{width:1px;height:0}#vt100 .hidden{position:absolute;top:-10000px;left:-10000px;width:0;height:0}#vt100 #menu{overflow:visible;position:absolute;z-index:3}#vt100 #menu .popup{background-color:#eee;border:1px solid #000;font-family:sans-serif;position:absolute}#vt100 #menu .popup ul{list-style-type:none;padding:0;margin:0;min-width:10em}#vt100 #menu .popup li{padding:3px .5ex}#vt100 #menu .popup li.hover{background-color:#444;color:#fff}#vt100 #menu .popup li.disabled{color:#aaa}#vt100 #menu .popup hr{margin:.5ex 0}#vt100 #menu img{margin-right:.5ex;width:1ex;height:1ex}#vt100 #scrollable.inverted{color:#fff;background-color:#000}#vt100 #kbd_button{float:left;position:fixed;z-index:0}@media print{#vt100 .scrollback{display:none}#vt100 #cursor,#vt100 #kbd_button,#vt100 #menu,#vt100 #reconnect{visibility:hidden}#vt100 #scrollable{overflow:hidden}#vt100 #alt_console,#vt100 #console{overflow:hidden;width:1000000ex}}#vt100 #scrollable.inverted .ansiDefR,#vt100 .ansi0,#vt100 .ansi16,[if DEFINES_COLORS] [else DEFINES_COLORS] #vt100 .ansiDef{color:#000}#vt100 #scrollable.inverted .ansiDef,#vt100 .ansi15,#vt100 .ansi231,#vt100 .ansiDefR{color:#fff}#vt100 .ansi1{color:#cd0000}#vt100 .ansi2{color:#00cd00}#vt100 .ansi3{color:#cdcd00}#vt100 .ansi4{color:#00e}#vt100 .ansi5{color:#cd00cd}#vt100 .ansi6{color:#00cdcd}#vt100 .ansi7{color:#e5e5e5}#vt100 .ansi8{color:#7f7f7f}#vt100 .ansi196,#vt100 .ansi9{color:red}#vt100 .ansi10,#vt100 .ansi46{color:#0f0}#vt100 .ansi11{color:#e8e8e0}#vt100 .ansi12{color:#5c5cff}#vt100 .ansi13,#vt100 .ansi201{color:#f0f}#vt100 .ansi14,#vt100 .ansi51{color:#0ff}#vt100 .ansi17{color:#00005f}#vt100 .ansi18{color:#000087}#vt100 .ansi19{color:#0000af}#vt100 .ansi20{color:#0000d7}#vt100 .ansi21{color:#00f}#vt100 .ansi22{color:#005f00}#vt100 .ansi23{color:#005f5f}#vt100 .ansi24{color:#005f87}#vt100 .ansi25{color:#005faf}#vt100 .ansi26{color:#005fd7}#vt100 .ansi27{color:#005fff}#vt100 .ansi28{color:#008700}#vt100 .ansi29{color:#00875f}#vt100 .ansi30{color:#008787}#vt100 .ansi31{color:#0087af}#vt100 .ansi32{color:#0087d7}#vt100 .ansi33{color:#0087ff}#vt100 .ansi34{color:#00af00}#vt100 .ansi35{color:#00af5f}#vt100 .ansi36{color:#00af87}#vt100 .ansi37{color:#00afaf}#vt100 .ansi38{color:#00afd7}#vt100 .ansi39{color:#00afff}#vt100 .ansi40{color:#00d700}#vt100 .ansi41{color:#00d75f}#vt100 .ansi42{color:#00d787}#vt100 .ansi43{color:#00d7af}#vt100 .ansi44{color:#00d7d7}#vt100 .ansi45{color:#00d7ff}#vt100 .ansi47{color:#00ff5f}#vt100 .ansi48{color:#00ff87}#vt100 .ansi49{color:#00ffaf}#vt100 .ansi50{color:#00ffd7}#vt100 .ansi52{color:#5f0000}#vt100 .ansi53{color:#5f005f}#vt100 .ansi54{color:#5f0087}#vt100 .ansi55{color:#5f00af}#vt100 .ansi56{color:#5f00d7}#vt100 .ansi57{color:#5f00ff}#vt100 .ansi58{color:#5f5f00}#vt100 .ansi59{color:#5f5f5f}#vt100 .ansi60{color:#5f5f87}#vt100 .ansi61{color:#5f5faf}#vt100 .ansi62{color:#5f5fd7}#vt100 .ansi63{color:#5f5fff}#vt100 .ansi64{color:#5f8700}#vt100 .ansi65{color:#5f875f}#vt100 .ansi66{color:#5f8787}#vt100 .ansi67{color:#5f87af}#vt100 .ansi68{color:#5f87d7}#vt100 .ansi69{color:#5f87ff}#vt100 .ansi70{color:#5faf00}#vt100 .ansi71{color:#5faf5f}#vt100 .ansi72{color:#5faf87}#vt100 .ansi73{color:#5fafaf}#vt100 .ansi74{color:#5fafd7}#vt100 .ansi75{color:#5fafff}#vt100 .ansi76{color:#5fd700}#vt100 .ansi77{color:#5fd75f}#vt100 .ansi78{color:#5fd787}#vt100 .ansi79{color:#5fd7af}#vt100 .ansi80{color:#5fd7d7}#vt100 .ansi81{color:#5fd7ff}#vt100 .ansi82{color:#5fff00}#vt100 .ansi83{color:#5fff5f}#vt100 .ansi84{color:#5fff87}#vt100 .ansi85{color:#5fffaf}#vt100 .ansi86{color:#5fffd7}#vt100 .ansi87{color:#5fffff}#vt100 .ansi88{color:#870000}#vt100 .ansi89{color:#87005f}#vt100 .ansi90{color:#870087}#vt100 .ansi91{color:#8700af}#vt100 .ansi92{color:#8700d7}#vt100 .ansi93{color:#8700ff}#vt100 .ansi94{color:#875f00}#vt100 .ansi95{color:#875f5f}#vt100 .ansi96{color:#875f87}#vt100 .ansi97{color:#875faf}#vt100 .ansi98{color:#875fd7}#vt100 .ansi99{color:#875fff}#vt100 .ansi100{color:#878700}#vt100 .ansi101{color:#87875f}#vt100 .ansi102{color:#878787}#vt100 .ansi103{color:#8787af}#vt100 .ansi104{color:#8787d7}#vt100 .ansi105{color:#8787ff}#vt100 .ansi106{color:#87af00}#vt100 .ansi107{color:#87af5f}#vt100 .ansi108{color:#87af87}#vt100 .ansi109{color:#87afaf}#vt100 .ansi110{color:#87afd7}#vt100 .ansi111{color:#87afff}#vt100 .ansi112{color:#87d700}#vt100 .ansi113{color:#87d75f}#vt100 .ansi114{color:#87d787}#vt100 .ansi115{color:#87d7af}#vt100 .ansi116{color:#87d7d7}#vt100 .ansi117{color:#87d7ff}#vt100 .ansi118{color:#87ff00}#vt100 .ansi119{color:#87ff5f}#vt100 .ansi120{color:#87ff87}#vt100 .ansi121{color:#87ffaf}#vt100 .ansi122{color:#87ffd7}#vt100 .ansi123{color:#87ffff}#vt100 .ansi124{color:#af0000}#vt100 .ansi125{color:#af005f}#vt100 .ansi126{color:#af0087}#vt100 .ansi127{color:#af00af}#vt100 .ansi128{color:#af00d7}#vt100 .ansi129{color:#af00ff}#vt100 .ansi130{color:#af5f00}#vt100 .ansi131{color:#af5f5f}#vt100 .ansi132{color:#af5f87}#vt100 .ansi133{color:#af5faf}#vt100 .ansi134{color:#af5fd7}#vt100 .ansi135{color:#af5fff}#vt100 .ansi136{color:#af8700}#vt100 .ansi137{color:#af875f}#vt100 .ansi138{color:#af8787}#vt100 .ansi139{color:#af87af}#vt100 .ansi140{color:#af87d7}#vt100 .ansi141{color:#af87ff}#vt100 .ansi142{color:#afaf00}#vt100 .ansi143{color:#afaf5f}#vt100 .ansi144{color:#afaf87}#vt100 .ansi145{color:#afafaf}#vt100 .ansi146{color:#afafd7}#vt100 .ansi147{color:#afafff}#vt100 .ansi148{color:#afd700}#vt100 .ansi149{color:#afd75f}#vt100 .ansi150{color:#afd787}#vt100 .ansi151{color:#afd7af}#vt100 .ansi152{color:#afd7d7}#vt100 .ansi153{color:#afd7ff}#vt100 .ansi154{color:#afff00}#vt100 .ansi155{color:#afff5f}#vt100 .ansi156{color:#afff87}#vt100 .ansi157{color:#afffaf}#vt100 .ansi158{color:#afffd7}#vt100 .ansi159{color:#afffff}#vt100 .ansi160{color:#d70000}#vt100 .ansi161{color:#d7005f}#vt100 .ansi162{color:#d70087}#vt100 .ansi163{color:#d700af}#vt100 .ansi164{color:#d700d7}#vt100 .ansi165{color:#d700ff}#vt100 .ansi166{color:#d75f00}#vt100 .ansi167{color:#d75f5f}#vt100 .ansi168{color:#d75f87}#vt100 .ansi169{color:#d75faf}#vt100 .ansi170{color:#d75fd7}#vt100 .ansi171{color:#d75fff}#vt100 .ansi172{color:#d78700}#vt100 .ansi173{color:#d7875f}#vt100 .ansi174{color:#d78787}#vt100 .ansi175{color:#d787af}#vt100 .ansi176{color:#d787d7}#vt100 .ansi177{color:#d787ff}#vt100 .ansi178{color:#d7af00}#vt100 .ansi179{color:#d7af5f}#vt100 .ansi180{color:#d7af87}#vt100 .ansi181{color:#d7afaf}#vt100 .ansi182{color:#d7afd7}#vt100 .ansi183{color:#d7afff}#vt100 .ansi184{color:#d7d700}#vt100 .ansi185{color:#d7d75f}#vt100 .ansi186{color:#d7d787}#vt100 .ansi187{color:#d7d7af}#vt100 .ansi188{color:#d7d7d7}#vt100 .ansi189{color:#d7d7ff}#vt100 .ansi190{color:#d7ff00}#vt100 .ansi191{color:#d7ff5f}#vt100 .ansi192{color:#d7ff87}#vt100 .ansi193{color:#d7ffaf}#vt100 .ansi194{color:#d7ffd7}#vt100 .ansi195{color:#d7ffff}#vt100 .ansi197{color:#ff005f}#vt100 .ansi198{color:#ff0087}#vt100 .ansi199{color:#ff00af}#vt100 .ansi200{color:#ff00d7}#vt100 .ansi202{color:#ff5f00}#vt100 .ansi203{color:#ff5f5f}#vt100 .ansi204{color:#ff5f87}#vt100 .ansi205{color:#ff5faf}#vt100 .ansi206{color:#ff5fd7}#vt100 .ansi207{color:#ff5fff}#vt100 .ansi208{color:#ff8700}#vt100 .ansi209{color:#ff875f}#vt100 .ansi210{color:#ff8787}#vt100 .ansi211{color:#ff87af}#vt100 .ansi212{color:#ff87d7}#vt100 .ansi213{color:#ff87ff}#vt100 .ansi214{color:#ffaf00}#vt100 .ansi215{color:#ffaf5f}#vt100 .ansi216{color:#ffaf87}#vt100 .ansi217{color:#ffafaf}#vt100 .ansi218{color:#ffafd7}#vt100 .ansi219{color:#ffafff}#vt100 .ansi220{color:gold}#vt100 .ansi221{color:#ffd75f}#vt100 .ansi222{color:#ffd787}#vt100 .ansi223{color:#ffd7af}#vt100 .ansi224{color:#ffd7d7}#vt100 .ansi225{color:#ffd7ff}#vt100 .ansi226{color:#ff0}#vt100 .ansi227{color:#ffff5f}#vt100 .ansi228{color:#ffff87}#vt100 .ansi229{color:#ffffaf}#vt100 .ansi230{color:#ffffd7}#vt100 .ansi232{color:#080808}#vt100 .ansi233{color:#121212}#vt100 .ansi234{color:#1c1c1c}#vt100 .ansi235{color:#262626}#vt100 .ansi236{color:#303030}#vt100 .ansi237{color:#3a3a3a}#vt100 .ansi238{color:#444}#vt100 .ansi239{color:#4e4e4e}#vt100 .ansi240{color:#585858}#vt100 .ansi241{color:#626262}#vt100 .ansi242{color:#6c6c6c}#vt100 .ansi243{color:#767676}#vt100 .ansi244{color:grey}#vt100 .ansi245{color:#8a8a8a}#vt100 .ansi246{color:#949494}#vt100 .ansi247{color:#9e9e9e}#vt100 .ansi248{color:#a8a8a8}#vt100 .ansi249{color:#b2b2b2}#vt100 .ansi250{color:#bcbcbc}#vt100 .ansi251{color:#c6c6c6}#vt100 .ansi252{color:#d0d0d0}#vt100 .ansi253{color:#dadada}#vt100 .ansi254{color:#e4e4e4}#vt100 .ansi255{color:#eee}#vt100 #scrollable.inverted .bgAnsiDef,#vt100 .bgAnsi0,#vt100 .bgAnsi16,#vt100 .bgAnsiDefR{background-color:#000}#vt100 .bgAnsi1{background-color:#cd0000}#vt100 .bgAnsi2{background-color:#00cd00}#vt100 .bgAnsi3{background-color:#cdcd00}#vt100 .bgAnsi4{background-color:#00e}#vt100 .bgAnsi5{background-color:#cd00cd}#vt100 .bgAnsi6{background-color:#00cdcd}#vt100 .bgAnsi7{background-color:#e5e5e5}#vt100 .bgAnsi8{background-color:#7f7f7f}#vt100 .bgAnsi196,#vt100 .bgAnsi9{background-color:red}#vt100 .bgAnsi10,#vt100 .bgAnsi46{background-color:#0f0}#vt100 .bgAnsi11{background-color:#e8e800}#vt100 .bgAnsi12{background-color:#5c5cff}#vt100 .bgAnsi13,#vt100 .bgAnsi201{background-color:#f0f}#vt100 .bgAnsi14,#vt100 .bgAnsi51{background-color:#0ff}#vt100 .bgAnsi17{background-color:#00005f}#vt100 .bgAnsi18{background-color:#000087}#vt100 .bgAnsi19{background-color:#0000af}#vt100 .bgAnsi20{background-color:#0000d7}#vt100 .bgAnsi21{background-color:#00f}#vt100 .bgAnsi22{background-color:#005f00}#vt100 .bgAnsi23{background-color:#005f5f}#vt100 .bgAnsi24{background-color:#005f87}#vt100 .bgAnsi25{background-color:#005faf}#vt100 .bgAnsi26{background-color:#005fd7}#vt100 .bgAnsi27{background-color:#005fff}#vt100 .bgAnsi28{background-color:#008700}#vt100 .bgAnsi29{background-color:#00875f}#vt100 .bgAnsi30{background-color:#008787}#vt100 .bgAnsi31{background-color:#0087af}#vt100 .bgAnsi32{background-color:#0087d7}#vt100 .bgAnsi33{background-color:#0087ff}#vt100 .bgAnsi34{background-color:#00af00}#vt100 .bgAnsi35{background-color:#00af5f}#vt100 .bgAnsi36{background-color:#00af87}#vt100 .bgAnsi37{background-color:#00afaf}#vt100 .bgAnsi38{background-color:#00afd7}#vt100 .bgAnsi39{background-color:#00afff}#vt100 .bgAnsi40{background-color:#00d700}#vt100 .bgAnsi41{background-color:#00d75f}#vt100 .bgAnsi42{background-color:#00d787}#vt100 .bgAnsi43{background-color:#00d7af}#vt100 .bgAnsi44{background-color:#00d7d7}#vt100 .bgAnsi45{background-color:#00d7ff}#vt100 .bgAnsi47{background-color:#00ff5f}#vt100 .bgAnsi48{background-color:#00ff87}#vt100 .bgAnsi49{background-color:#00ffaf}#vt100 .bgAnsi50{background-color:#00ffd7}#vt100 .bgAnsi52{background-color:#5f0000}#vt100 .bgAnsi53{background-color:#5f005f}#vt100 .bgAnsi54{background-color:#5f0087}#vt100 .bgAnsi55{background-color:#5f00af}#vt100 .bgAnsi56{background-color:#5f00d7}#vt100 .bgAnsi57{background-color:#5f00ff}#vt100 .bgAnsi58{background-color:#5f5f00}#vt100 .bgAnsi59{background-color:#5f5f5f}#vt100 .bgAnsi60{background-color:#5f5f87}#vt100 .bgAnsi61{background-color:#5f5faf}#vt100 .bgAnsi62{background-color:#5f5fd7}#vt100 .bgAnsi63{background-color:#5f5fff}#vt100 .bgAnsi64{background-color:#5f8700}#vt100 .bgAnsi65{background-color:#5f875f}#vt100 .bgAnsi66{background-color:#5f8787}#vt100 .bgAnsi67{background-color:#5f87af}#vt100 .bgAnsi68{background-color:#5f87d7}#vt100 .bgAnsi69{background-color:#5f87ff}#vt100 .bgAnsi70{background-color:#5faf00}#vt100 .bgAnsi71{background-color:#5faf5f}#vt100 .bgAnsi72{background-color:#5faf87}#vt100 .bgAnsi73{background-color:#5fafaf}#vt100 .bgAnsi74{background-color:#5fafd7}#vt100 .bgAnsi75{background-color:#5fafff}#vt100 .bgAnsi76{background-color:#5fd700}#vt100 .bgAnsi77{background-color:#5fd75f}#vt100 .bgAnsi78{background-color:#5fd787}#vt100 .bgAnsi79{background-color:#5fd7af}#vt100 .bgAnsi80{background-color:#5fd7d7}#vt100 .bgAnsi81{background-color:#5fd7ff}#vt100 .bgAnsi82{background-color:#5fff00}#vt100 .bgAnsi83{background-color:#5fff5f}#vt100 .bgAnsi84{background-color:#5fff87}#vt100 .bgAnsi85{background-color:#5fffaf}#vt100 .bgAnsi86{background-color:#5fffd7}#vt100 .bgAnsi87{background-color:#5fffff}#vt100 .bgAnsi88{background-color:#870000}#vt100 .bgAnsi89{background-color:#87005f}#vt100 .bgAnsi90{background-color:#870087}#vt100 .bgAnsi91{background-color:#8700af}#vt100 .bgAnsi92{background-color:#8700d7}#vt100 .bgAnsi93{background-color:#8700ff}#vt100 .bgAnsi94{background-color:#875f00}#vt100 .bgAnsi95{background-color:#875f5f}#vt100 .bgAnsi96{background-color:#875f87}#vt100 .bgAnsi97{background-color:#875faf}#vt100 .bgAnsi98{background-color:#875fd7}#vt100 .bgAnsi99{background-color:#875fff}#vt100 .bgAnsi100{background-color:#878700}#vt100 .bgAnsi101{background-color:#87875f}#vt100 .bgAnsi102{background-color:#878787}#vt100 .bgAnsi103{background-color:#8787af}#vt100 .bgAnsi104{background-color:#8787d7}#vt100 .bgAnsi105{background-color:#8787ff}#vt100 .bgAnsi106{background-color:#87af00}#vt100 .bgAnsi107{background-color:#87af5f}#vt100 .bgAnsi108{background-color:#87af87}#vt100 .bgAnsi109{background-color:#87afaf}#vt100 .bgAnsi110{background-color:#87afd7}#vt100 .bgAnsi111{background-color:#87afff}#vt100 .bgAnsi112{background-color:#87d700}#vt100 .bgAnsi113{background-color:#87d75f}#vt100 .bgAnsi114{background-color:#87d787}#vt100 .bgAnsi115{background-color:#87d7af}#vt100 .bgAnsi116{background-color:#87d7d7}#vt100 .bgAnsi117{background-color:#87d7ff}#vt100 .bgAnsi118{background-color:#87ff00}#vt100 .bgAnsi119{background-color:#87ff5f}#vt100 .bgAnsi120{background-color:#87ff87}#vt100 .bgAnsi121{background-color:#87ffaf}#vt100 .bgAnsi122{background-color:#87ffd7}#vt100 .bgAnsi123{background-color:#87ffff}#vt100 .bgAnsi124{background-color:#af0000}#vt100 .bgAnsi125{background-color:#af005f}#vt100 .bgAnsi126{background-color:#af0087}#vt100 .bgAnsi127{background-color:#af00af}#vt100 .bgAnsi128{background-color:#af00d7}#vt100 .bgAnsi129{background-color:#af00ff}#vt100 .bgAnsi130{background-color:#af5f00}#vt100 .bgAnsi131{background-color:#af5f5f}#vt100 .bgAnsi132{background-color:#af5f87}#vt100 .bgAnsi133{background-color:#af5faf}#vt100 .bgAnsi134{background-color:#af5fd7}#vt100 .bgAnsi135{background-color:#af5fff}#vt100 .bgAnsi136{background-color:#af8700}#vt100 .bgAnsi137{background-color:#af875f}#vt100 .bgAnsi138{background-color:#af8787}#vt100 .bgAnsi139{background-color:#af87af}#vt100 .bgAnsi140{background-color:#af87d7}#vt100 .bgAnsi141{background-color:#af87ff}#vt100 .bgAnsi142{background-color:#afaf00}#vt100 .bgAnsi143{background-color:#afaf5f}#vt100 .bgAnsi144{background-color:#afaf87}#vt100 .bgAnsi145{background-color:#afafaf}#vt100 .bgAnsi146{background-color:#afafd7}#vt100 .bgAnsi147{background-color:#afafff}#vt100 .bgAnsi148{background-color:#afd700}#vt100 .bgAnsi149{background-color:#afd75f}#vt100 .bgAnsi150{background-color:#afd787}#vt100 .bgAnsi151{background-color:#afd7af}#vt100 .bgAnsi152{background-color:#afd7d7}#vt100 .bgAnsi153{background-color:#afd7ff}#vt100 .bgAnsi154{background-color:#afff00}#vt100 .bgAnsi155{background-color:#afff5f}#vt100 .bgAnsi156{background-color:#afff87}#vt100 .bgAnsi157{background-color:#afffaf}#vt100 .bgAnsi158{background-color:#afffd7}#vt100 .bgAnsi159{background-color:#afffff}#vt100 .bgAnsi160{background-color:#d70000}#vt100 .bgAnsi161{background-color:#d7005f}#vt100 .bgAnsi162{background-color:#d70087}#vt100 .bgAnsi163{background-color:#d700af}#vt100 .bgAnsi164{background-color:#d700d7}#vt100 .bgAnsi165{background-color:#d700ff}#vt100 .bgAnsi166{background-color:#d75f00}#vt100 .bgAnsi167{background-color:#d75f5f}#vt100 .bgAnsi168{background-color:#d75f87}#vt100 .bgAnsi169{background-color:#d75faf}#vt100 .bgAnsi170{background-color:#d75fd7}#vt100 .bgAnsi171{background-color:#d75fff}#vt100 .bgAnsi172{background-color:#d78700}#vt100 .bgAnsi173{background-color:#d7875f}#vt100 .bgAnsi174{background-color:#d78787}#vt100 .bgAnsi175{background-color:#d787af}#vt100 .bgAnsi176{background-color:#d787d7}#vt100 .bgAnsi177{background-color:#d787ff}#vt100 .bgAnsi178{background-color:#d7af00}#vt100 .bgAnsi179{background-color:#d7af5f}#vt100 .bgAnsi180{background-color:#d7af87}#vt100 .bgAnsi181{background-color:#d7afaf}#vt100 .bgAnsi182{background-color:#d7afd7}#vt100 .bgAnsi183{background-color:#d7afff}#vt100 .bgAnsi184{background-color:#d7d700}#vt100 .bgAnsi185{background-color:#d7d75f}#vt100 .bgAnsi186{background-color:#d7d787}#vt100 .bgAnsi187{background-color:#d7d7af}#vt100 .bgAnsi188{background-color:#d7d7d7}#vt100 .bgAnsi189{background-color:#d7d7ff}#vt100 .bgAnsi190{background-color:#d7ff00}#vt100 .bgAnsi191{background-color:#d7ff5f}#vt100 .bgAnsi192{background-color:#d7ff87}#vt100 .bgAnsi193{background-color:#d7ffaf}#vt100 .bgAnsi194{background-color:#d7ffd7}#vt100 .bgAnsi195{background-color:#d7ffff}#vt100 .bgAnsi197{background-color:#ff005f}#vt100 .bgAnsi198{background-color:#ff0087}#vt100 .bgAnsi199{background-color:#ff00af}#vt100 .bgAnsi200{background-color:#ff00d7}#vt100 .bgAnsi202{background-color:#ff5f00}#vt100 .bgAnsi203{background-color:#ff5f5f}#vt100 .bgAnsi204{background-color:#ff5f87}#vt100 .bgAnsi205{background-color:#ff5faf}#vt100 .bgAnsi206{background-color:#ff5fd7}#vt100 .bgAnsi207{background-color:#ff5fff}#vt100 .bgAnsi208{background-color:#ff8700}#vt100 .bgAnsi209{background-color:#ff875f}#vt100 .bgAnsi210{background-color:#ff8787}#vt100 .bgAnsi211{background-color:#ff87af}#vt100 .bgAnsi212{background-color:#ff87d7}#vt100 .bgAnsi213{background-color:#ff87ff}#vt100 .bgAnsi214{background-color:#ffaf00}#vt100 .bgAnsi215{background-color:#ffaf5f}#vt100 .bgAnsi216{background-color:#ffaf87}#vt100 .bgAnsi217{background-color:#ffafaf}#vt100 .bgAnsi218{background-color:#ffafd7}#vt100 .bgAnsi219{background-color:#ffafff}#vt100 .bgAnsi220{background-color:gold}#vt100 .bgAnsi221{background-color:#ffd75f}#vt100 .bgAnsi222{background-color:#ffd787}#vt100 .bgAnsi223{background-color:#ffd7af}#vt100 .bgAnsi224{background-color:#ffd7d7}#vt100 .bgAnsi225{background-color:#ffd7ff}#vt100 .bgAnsi226{background-color:#ff0}#vt100 .bgAnsi227{background-color:#ffff5f}#vt100 .bgAnsi228{background-color:#ffff87}#vt100 .bgAnsi229{background-color:#ffffaf}#vt100 .bgAnsi230{background-color:#ffffd7}#vt100 .bgAnsi232{background-color:#080808}#vt100 .bgAnsi233{background-color:#121212}#vt100 .bgAnsi234{background-color:#1c1c1c}#vt100 .bgAnsi235{background-color:#262626}#vt100 .bgAnsi236{background-color:#303030}#vt100 .bgAnsi237{background-color:#3a3a3a}#vt100 .bgAnsi238{background-color:#444}#vt100 .bgAnsi239{background-color:#4e4e4e}#vt100 .bgAnsi240{background-color:#585858}#vt100 .bgAnsi241{background-color:#626262}#vt100 .bgAnsi242{background-color:#6c6c6c}#vt100 .bgAnsi243{background-color:#767676}#vt100 .bgAnsi244{background-color:grey}#vt100 .bgAnsi245{background-color:#8a8a8a}#vt100 .bgAnsi246{background-color:#949494}#vt100 .bgAnsi247{background-color:#9e9e9e}#vt100 .bgAnsi248{background-color:#a8a8a8}#vt100 .bgAnsi249{background-color:#b2b2b2}#vt100 .bgAnsi250{background-color:#bcbcbc}#vt100 .bgAnsi251{background-color:#c6c6c6}#vt100 .bgAnsi252{background-color:#d0d0d0}#vt100 .bgAnsi253{background-color:#dadada}#vt100 .bgAnsi254{background-color:#e4e4e4}#vt100 .bgAnsi255{background-color:#eee}[endif DEFINES_COLORS]
+\ No newline at end of file
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox/vt100.jspp src/shellinabox/vt100.jspp
+--- upstream/shellinabox/vt100.jspp	2016-11-09 19:40:33.000000000 +0000
++++ src/shellinabox/vt100.jspp	2025-02-05 12:54:15.000000000 +0000
+@@ -98,6 +98,9 @@
+ #define MOUSE_UP       1
+ #define MOUSE_CLICK    2
+ 
++//  check if browser is firefox
++const isFirefox = navigator.userAgent.includes('Firefox')
++
+ function VT100(container) {
+   if (typeof linkifyURLs == 'undefined' || linkifyURLs <= 0) {
+     this.urlRE            = null;
+@@ -287,10 +290,8 @@
+   // looked up in a cookie associated with this page.
+   this.signature            = 3;
+   this.utfPreferred         = true;
+-  this.visualBell           = typeof suppressAllAudio != 'undefined' &&
+-                              suppressAllAudio;
++  this.visualBell           = true;
+   this.autoprint            = true;
+-  this.softKeyboard         = false;
+   this.blinkingCursor       = true;
+   this.disableAlt           = false;
+ 
+@@ -298,12 +299,6 @@
+     this.disableAlt         = true;
+   }
+ 
+-  // Enable soft keyboard icon on some clients by default.
+-  if (navigator.userAgent.match(/iPad|iPhone|iPod/i) != null ||
+-      navigator.userAgent.match(/PlayStation Vita|Kindle/i) != null) {
+-    this.softKeyboard       = true;
+-  }
+-
+   if (this.visualBell) {
+     this.signature          = Math.floor(16807*this.signature + 1) %
+                                          ((1 << 31) - 1);
+@@ -333,7 +328,6 @@
+       this.utfPreferred     = settings.charAt(0) != '0';
+       this.visualBell       = settings.charAt(1) != '0';
+       this.autoprint        = settings.charAt(2) != '0';
+-      this.softKeyboard     = settings.charAt(3) != '0';
+       this.blinkingCursor   = settings.charAt(4) != '0';
+       this.disableAlt       = settings.charAt(5) != '0';
+       if (typeof userCSSList != 'undefined') {
+@@ -351,7 +345,6 @@
+                   (this.utfEnabled     ? '1' : '0') +
+                   (this.visualBell     ? '1' : '0') +
+                   (this.autoprint      ? '1' : '0') +
+-                  (this.softKeyboard   ? '1' : '0') +
+                   (this.blinkingCursor ? '1' : '0') +
+                   (this.disableAlt     ? '1' : '0');
+   if (typeof userCSSList != 'undefined') {
+@@ -499,344 +492,6 @@
+   }
+ };
+ 
+-VT100.prototype.resetLastSelectedKey = function(e) {
+-  var key                          = this.lastSelectedKey;
+-  if (!key) {
+-    return false;
+-  }
+-
+-  var position                     = this.mousePosition(e);
+-
+-  // We don't get all the necessary events to reliably reselect a key
+-  // if we moved away from it and then back onto it. We approximate the
+-  // behavior by remembering the key until either we release the mouse
+-  // button (we might never get this event if the mouse has since left
+-  // the window), or until we move away too far.
+-  var box                          = this.keyboard.firstChild;
+-  if (position[0] <  box.offsetLeft + key.offsetWidth ||
+-      position[1] <  box.offsetTop + key.offsetHeight ||
+-      position[0] >= box.offsetLeft + box.offsetWidth - key.offsetWidth ||
+-      position[1] >= box.offsetTop + box.offsetHeight - key.offsetHeight ||
+-      position[0] <  box.offsetLeft + key.offsetLeft - key.offsetWidth ||
+-      position[1] <  box.offsetTop + key.offsetTop - key.offsetHeight ||
+-      position[0] >= box.offsetLeft + key.offsetLeft + 2*key.offsetWidth ||
+-      position[1] >= box.offsetTop + key.offsetTop + 2*key.offsetHeight) {
+-    if (this.lastSelectedKey.className) log.console('reset: deselecting');
+-    this.lastSelectedKey.className = '';
+-    this.lastSelectedKey           = undefined;
+-  }
+-  return false;
+-};
+-
+-VT100.prototype.showShiftState = function(state) {
+-  var style              = document.getElementById('shift_state');
+-  if (state) {
+-    this.setTextContentRaw(style,
+-                           '#vt100 #keyboard .shifted {' +
+-                             'display: inline }' +
+-                           '#vt100 #keyboard .unshifted {' +
+-                             'display: none }');
+-  } else {
+-    this.setTextContentRaw(style, '');
+-  }
+-  var elems              = this.keyboard.getElementsByTagName('I');
+-  for (var i = 0; i < elems.length; ++i) {
+-    if (elems[i].id == '16') {
+-      elems[i].className = state ? 'selected' : '';
+-    }
+-  }
+-};
+-
+-VT100.prototype.showCtrlState = function(state) {
+-  var ctrl         = this.getChildById(this.keyboard, '17' /* Ctrl */);
+-  if (ctrl) {
+-    ctrl.className = state ? 'selected' : '';
+-  }
+-};
+-
+-VT100.prototype.showAltState = function(state) {
+-  var alt         = this.getChildById(this.keyboard, '18' /* Alt */);
+-  if (alt) {
+-    alt.className = state ? 'selected' : '';
+-  }
+-};
+-
+-VT100.prototype.clickedKeyboard = function(e, elem, ch, key, shift, ctrl, alt){
+-  var fake      = [ ];
+-  fake.charCode = ch;
+-  fake.keyCode  = key;
+-  fake.ctrlKey  = ctrl;
+-  fake.shiftKey = shift;
+-  fake.altKey   = alt;
+-  fake.metaKey  = alt;
+-  return this.handleKey(fake);
+-};
+-
+-VT100.prototype.addKeyBinding = function(elem, ch, key, CH, KEY) {
+-  if (elem == undefined) {
+-    return;
+-  }
+-  if (ch == '\u00A0') {
+-    // &nbsp; should be treated as a regular space character.
+-    ch                                  = ' ';
+-  }
+-  if (ch != undefined && CH == undefined) {
+-    // For letter keys, we automatically compute the uppercase character code
+-    // from the lowercase one.
+-    CH                                  = ch.toUpperCase();
+-  }
+-  if (KEY == undefined && key != undefined) {
+-    // Most keys have identically key codes for both lowercase and uppercase
+-    // keypresses. Normally, only function keys would have distinct key codes,
+-    // whereas regular keys have character codes.
+-    KEY                                 = key;
+-  } else if (KEY == undefined && CH != undefined) {
+-    // For regular keys, copy the character code to the key code.
+-    KEY                                 = CH.charCodeAt(0);
+-  }
+-  if (key == undefined && ch != undefined) {
+-    // For regular keys, copy the character code to the key code.
+-    key                                 = ch.charCodeAt(0);
+-  }
+-  // Convert characters to numeric character codes. If the character code
+-  // is undefined (i.e. this is a function key), set it to zero.
+-  ch                                    = ch ? ch.charCodeAt(0) : 0;
+-  CH                                    = CH ? CH.charCodeAt(0) : 0;
+-
+-  // Mouse down events high light the key. We also set lastSelectedKey. This
+-  // is needed to that mouseout/mouseover can keep track of the key that
+-  // is currently being clicked.
+-  this.addListener(elem, 'mousedown',
+-    function(vt100, elem, key) { return function(e) {
+-      if ((e.which || e.button) == 1) {
+-        if (vt100.lastSelectedKey) {
+-          vt100.lastSelectedKey.className= '';
+-        }
+-        // Highlight the key while the mouse button is held down.
+-        if (key == 16 /* Shift */) {
+-          if (!elem.className != vt100.isShift) {
+-            vt100.showShiftState(!vt100.isShift);
+-          }
+-        } else if (key == 17 /* Ctrl */) {
+-          if (!elem.className != vt100.isCtrl) {
+-            vt100.showCtrlState(!vt100.isCtrl);
+-          }
+-        } else if (key == 18 /* Alt */) {
+-          if (!elem.className != vt100.isAlt) {
+-            vt100.showAltState(!vt100.isAlt);
+-          }
+-        } else {
+-          elem.className                  = 'selected';
+-        }
+-        vt100.lastSelectedKey             = elem;
+-      }
+-      return false; }; }(this, elem, key));
+-  var clicked                           =
+-    // Modifier keys update the state of the keyboard, but do not generate
+-    // any key clicks that get forwarded to the application.
+-    key >= 16 /* Shift */ && key <= 18 /* Alt */ ?
+-    function(vt100, elem) { return function(e) {
+-      if (elem == vt100.lastSelectedKey) {
+-        if (key == 16 /* Shift */) {
+-          // The user clicked the Shift key
+-          vt100.isShift                 = !vt100.isShift;
+-          vt100.showShiftState(vt100.isShift);
+-        } else if (key == 17 /* Ctrl */) {
+-          vt100.isCtrl                  = !vt100.isCtrl;
+-          vt100.showCtrlState(vt100.isCtrl);
+-        } else if (key == 18 /* Alt */) {
+-          vt100.isAlt                   = !vt100.isAlt;
+-          vt100.showAltState(vt100.isAlt);
+-        }
+-        vt100.lastSelectedKey           = undefined;
+-      }
+-      if (vt100.lastSelectedKey) {
+-        vt100.lastSelectedKey.className = '';
+-        vt100.lastSelectedKey           = undefined;
+-      }
+-      return false; }; }(this, elem) :
+-    // Regular keys generate key clicks, when the mouse button is released or
+-    // when a mouse click event is received.
+-    function(vt100, elem, ch, key, CH, KEY) { return function(e) {
+-      if (vt100.lastSelectedKey) {
+-        if (elem == vt100.lastSelectedKey) {
+-          // The user clicked a key.
+-          if (vt100.isShift) {
+-            vt100.clickedKeyboard(e, elem, CH, KEY,
+-                                  true, vt100.isCtrl, vt100.isAlt);
+-          } else {
+-            vt100.clickedKeyboard(e, elem, ch, key,
+-                                  false, vt100.isCtrl, vt100.isAlt);
+-          }
+-          vt100.isShift                 = false;
+-          vt100.showShiftState(false);
+-          vt100.isCtrl                  = false;
+-          vt100.showCtrlState(false);
+-          vt100.isAlt                   = false;
+-          vt100.showAltState(false);
+-        }
+-        vt100.lastSelectedKey.className = '';
+-        vt100.lastSelectedKey           = undefined;
+-      }
+-      elem.className                    = '';
+-      return false; }; }(this, elem, ch, key, CH, KEY);
+-  this.addListener(elem, 'mouseup', clicked);
+-  this.addListener(elem, 'click', clicked);
+-
+-  // When moving the mouse away from a key, check if any keys need to be
+-  // deselected.
+-  this.addListener(elem, 'mouseout',
+-    function(vt100, elem, key) { return function(e) {
+-      if (key == 16 /* Shift */) {
+-        if (!elem.className == vt100.isShift) {
+-          vt100.showShiftState(vt100.isShift);
+-        }
+-      } else if (key == 17 /* Ctrl */) {
+-        if (!elem.className == vt100.isCtrl) {
+-          vt100.showCtrlState(vt100.isCtrl);
+-        }
+-      } else if (key == 18 /* Alt */) {
+-        if (!elem.className == vt100.isAlt) {
+-          vt100.showAltState(vt100.isAlt);
+-        }
+-      } else if (elem.className) {
+-        elem.className                  = '';
+-        vt100.lastSelectedKey           = elem;
+-      } else if (vt100.lastSelectedKey) {
+-        vt100.resetLastSelectedKey(e);
+-      }
+-      return false; }; }(this, elem, key));
+-
+-  // When moving the mouse over a key, select it if the user is still holding
+-  // the mouse button down (i.e. elem == lastSelectedKey)
+-  this.addListener(elem, 'mouseover',
+-    function(vt100, elem, key) { return function(e) {
+-      if (elem == vt100.lastSelectedKey) {
+-        if (key == 16 /* Shift */) {
+-          if (!elem.className != vt100.isShift) {
+-            vt100.showShiftState(!vt100.isShift);
+-          }
+-        } else if (key == 17 /* Ctrl */) {
+-          if (!elem.className != vt100.isCtrl) {
+-            vt100.showCtrlState(!vt100.isCtrl);
+-          }
+-        } else if (key == 18 /* Alt */) {
+-          if (!elem.className != vt100.isAlt) {
+-            vt100.showAltState(!vt100.isAlt);
+-          }
+-        } else if (!elem.className) {
+-          elem.className                = 'selected';
+-        }
+-      } else {
+-        vt100.resetLastSelectedKey(e);
+-      }
+-      return false; }; }(this, elem, key));
+-};
+-
+-VT100.prototype.initializeKeyBindings = function(elem) {
+-  if (elem) {
+-    if (elem.nodeName == "I" || elem.nodeName == "B") {
+-      if (elem.id) {
+-        // Function keys. The Javascript keycode is part of the "id"
+-        var i     = parseInt(elem.id);
+-        if (i) {
+-          // If the id does not parse as a number, it is not a keycode.
+-          this.addKeyBinding(elem, undefined, i);
+-        }
+-      } else {
+-        var child = elem.firstChild;
+-        if (child) {
+-          if (child.nodeName == "#text") {
+-            // If the key only has a text node as a child, then it is a letter.
+-            // Automatically compute the lower and upper case version of the
+-            // key.
+-            var text = this.getTextContent(child) ||
+-                       this.getTextContent(elem);
+-            this.addKeyBinding(elem, text.toLowerCase());
+-          } else if (child.nextSibling) {
+-            // If the key has two children, they are the lower and upper case
+-            // character code, respectively.
+-            this.addKeyBinding(elem, this.getTextContent(child), undefined,
+-                               this.getTextContent(child.nextSibling));
+-          }
+-        }
+-      }
+-    }
+-  }
+-  // Recursively parse all other child nodes.
+-  for (elem = elem.firstChild; elem; elem = elem.nextSibling) {
+-    this.initializeKeyBindings(elem);
+-  }
+-};
+-
+-VT100.prototype.initializeKeyboardButton = function() {
+-  // Configure mouse event handlers for button that displays/hides keyboard
+-  this.addListener(this.keyboardImage, 'click',
+-    function(vt100) { return function(e) {
+-      if (vt100.keyboard.style.display != '') {
+-        if (vt100.reconnectBtn.style.visibility != '') {
+-          vt100.initializeKeyboard();
+-          vt100.showSoftKeyboard();
+-        }
+-      } else {
+-        vt100.hideSoftKeyboard();
+-        vt100.input.focus();
+-      }
+-      return false; }; }(this));
+-
+-  // Enable button that displays keyboard
+-  if (this.softKeyboard) {
+-    this.keyboardImage.style.visibility = 'visible';
+-  }
+-};
+-
+-VT100.prototype.initializeKeyboard = function() {
+-  // Only need to initialize the keyboard the very first time. When doing so,
+-  // copy the keyboard layout from the iframe.
+-  if (this.keyboard.firstChild) {
+-    return;
+-  }
+-  this.keyboard.innerHTML               =
+-                                    this.layout.contentDocument.body.innerHTML;
+-  var box                               = this.keyboard.firstChild;
+-  this.hideSoftKeyboard();
+-
+-  // Configure mouse event handlers for on-screen keyboard
+-  this.addListener(this.keyboard, 'click',
+-    function(vt100) { return function(e) {
+-      vt100.hideSoftKeyboard();
+-      vt100.input.focus();
+-      return false; }; }(this));
+-  this.addListener(this.keyboard, 'selectstart', this.cancelEvent);
+-  this.addListener(box, 'click', this.cancelEvent);
+-  this.addListener(box, 'mouseup',
+-    function(vt100) { return function(e) {
+-      if (vt100.lastSelectedKey) {
+-        vt100.lastSelectedKey.className = '';
+-        vt100.lastSelectedKey           = undefined;
+-      }
+-      return false; }; }(this));
+-  this.addListener(box, 'mouseout',
+-    function(vt100) { return function(e) {
+-      return vt100.resetLastSelectedKey(e); }; }(this));
+-  this.addListener(box, 'mouseover',
+-    function(vt100) { return function(e) {
+-      return vt100.resetLastSelectedKey(e); }; }(this));
+-
+-  // Configure SHIFT key behavior
+-  var style                             = document.createElement('style');
+-  var id                                = document.createAttribute('id');
+-  id.nodeValue                          = 'shift_state';
+-  style.setAttributeNode(id);
+-  var type                              = document.createAttribute('type');
+-  type.nodeValue                        = 'text/css';
+-  style.setAttributeNode(type);
+-  document.getElementsByTagName('head')[0].appendChild(style);
+-
+-  // Set up key bindings
+-  this.initializeKeyBindings(box);
+-};
+-
+ VT100.prototype.initializeElements = function(container) {
+   // If the necessary objects have not already been defined in the HTML
+   // page, create them now.
+@@ -850,9 +505,6 @@
+ 
+   if (!this.getChildById(this.container, 'reconnect')   ||
+       !this.getChildById(this.container, 'menu')        ||
+-      !this.getChildById(this.container, 'keyboard')    ||
+-      !this.getChildById(this.container, 'kbd_button')  ||
+-      !this.getChildById(this.container, 'kbd_img')     ||
+       !this.getChildById(this.container, 'layout')      ||
+       !this.getChildById(this.container, 'scrollable')  ||
+       !this.getChildById(this.container, 'console')     ||
+@@ -865,28 +517,6 @@
+       !this.getChildById(this.container, 'space')       ||
+       !this.getChildById(this.container, 'input')       ||
+       !this.getChildById(this.container, 'cliphelper')) {
+-    // Only enable the "embed" object, if we have a suitable plugin. Otherwise,
+-    // we might get a pointless warning that a suitable plugin is not yet
+-    // installed. If in doubt, we'd rather just stay silent.
+-    var embed                  = '';
+-    try {
+-      if (typeof navigator.mimeTypes["audio/x-wav"].enabledPlugin.name !=
+-          'undefined') {
+-        embed                  = typeof suppressAllAudio != 'undefined' &&
+-                                 suppressAllAudio ? "" :
+-        '<embed classid="clsid:02BF25D5-8C17-4B23-BC80-D3488ABDDC6B" ' +
+-                       'id="beep_embed" ' +
+-                       'src="beep.wav" ' +
+-                       'autostart="false" ' +
+-                       'volume="100" ' +
+-                       'enablejavascript="true" ' +
+-                       'type="audio/x-wav" ' +
+-                       'height="16" ' +
+-                       'width="200" ' +
+-                       'style="position:absolute;left:-1000px;top:-1000px" />';
+-      }
+-    } catch (e) {
+-    }
+ 
+     this.container.innerHTML   =
+                        '<div id="reconnect" style="visibility: hidden">' +
+@@ -896,14 +526,7 @@
+                        '<div id="cursize" style="visibility: hidden">' +
+                        '</div>' +
+                        '<div id="menu"></div>' +
+-                       '<div id="keyboard" unselectable="on">' +
+-                       '</div>' +
+                        '<div id="scrollable">' +
+-                         '<table id="kbd_button">' +
+-                           '<tr><td width="100%">&nbsp;</td>' +
+-                           '<td><img id="kbd_img" src="keyboard.png" /></td>' +
+-                           '<td>&nbsp;&nbsp;&nbsp;&nbsp;</td></tr>' +
+-                         '</table>' +
+                          '<pre id="lineheight">&nbsp;</pre>' +
+                          '<pre id="console">' +
+                            '<pre></pre>' +
+@@ -916,37 +539,16 @@
+                        '<div class="hidden">' +
+                          '<div id="usercss"></div>' +
+                          '<pre><div><span id="space"></span></div></pre>' +
+-                         '<input type="text" id="input" autocorrect="off" autocapitalize="off" />' +
+-                         '<input type="text" id="cliphelper" />' +
+-                         (typeof suppressAllAudio != 'undefined' &&
+-                          suppressAllAudio ? "" :
+-                         embed + '<bgsound id="beep_bgsound" loop=1 />') +
+-                          '<iframe id="layout" src="keyboard.html" />' +
++                         '<input type="text" id="input" autocorrect="off" autocapitalize="off" autocomplete="off" spellcheck="false" />' +
++                         '<input type="text" id="cliphelper" tabindex="-1" />' +
+                         '</div>';
+   }
+ 
+-  // Find the object used for playing the "beep" sound, if any.
+-  if (typeof suppressAllAudio != 'undefined' && suppressAllAudio) {
+-    this.beeper                = undefined;
+-  } else {
+-    this.beeper                = this.getChildById(this.container,
+-                                                   'beep_embed');
+-    if (!this.beeper || !this.beeper.Play) {
+-      this.beeper              = this.getChildById(this.container,
+-                                                   'beep_bgsound');
+-      if (!this.beeper || typeof this.beeper.src == 'undefined') {
+-        this.beeper            = undefined;
+-      }
+-    }
+-  }
+-
+   // Initialize the variables for finding the text console and the
+   // cursor.
+   this.reconnectBtn            = this.getChildById(this.container,'reconnect');
+   this.curSizeBox              = this.getChildById(this.container, 'cursize');
+   this.menu                    = this.getChildById(this.container, 'menu');
+-  this.keyboard                = this.getChildById(this.container, 'keyboard');
+-  this.keyboardImage           = this.getChildById(this.container, 'kbd_img');
+   this.layout                  = this.getChildById(this.container, 'layout');
+   this.scrollable              = this.getChildById(this.container,
+                                                                  'scrollable');
+@@ -1029,9 +631,6 @@
+     try { document.body.oncontextmenu = function() {return false;};} catch(e){}
+   }
+ 
+-  // Set up onscreen soft keyboard
+-  this.initializeKeyboardButton();
+-
+   // Hide context menu
+   this.hideContextMenu();
+ 
+@@ -1122,7 +721,6 @@
+ 
+ VT100.prototype.showReconnect = function(state) {
+   if (state) {
+-    this.hideSoftKeyboard();
+     this.reconnectBtn.style.visibility = '';
+   } else {
+     this.reconnectBtn.style.visibility = 'hidden';
+@@ -1156,9 +754,6 @@
+ };
+ 
+ VT100.prototype.resizer = function() {
+-  // Hide onscreen soft keyboard
+-  this.hideSoftKeyboard();
+-
+   // The cursor can get corrupted if the print-preview is displayed in Firefox.
+   // Recreating it, will repair it.
+   var newCursor                = document.createElement('pre');
+@@ -2417,11 +2012,6 @@
+   this.visualBell = !this.visualBell;
+ };
+ 
+-VT100.prototype.toggleSoftKeyboard = function() {
+-  this.softKeyboard = !this.softKeyboard;
+-  this.keyboardImage.style.visibility = this.softKeyboard ? 'visible' : '';
+-};
+-
+ VT100.prototype.toggleDisableAlt = function() {
+   this.disableAlt = !this.disableAlt;
+ };
+@@ -2435,56 +2025,6 @@
+   }
+ };
+ 
+-VT100.prototype.showSoftKeyboard = function() {
+-  // Make sure no key is currently selected
+-  this.lastSelectedKey           = undefined;
+-  this.deselectKeys(this.keyboard);
+-  this.isShift                   = false;
+-  this.showShiftState(false);
+-  this.isCtrl                    = false;
+-  this.showCtrlState(false);
+-  this.isAlt                     = false;
+-  this.showAltState(false);
+-
+-  this.keyboard.style.left       = '0px';
+-  this.keyboard.style.top        = '0px';
+-  this.keyboard.style.width      = this.container.offsetWidth  + 'px';
+-  this.keyboard.style.height     = this.container.offsetHeight + 'px';
+-  this.keyboard.style.visibility = 'hidden';
+-  this.keyboard.style.display    = '';
+-
+-  var kbd                        = this.keyboard.firstChild;
+-  var scale                      = 1.0;
+-  var transform                  = this.getTransformName();
+-  if (transform) {
+-    kbd.style[transform]         = '';
+-    if (kbd.offsetWidth > 0.9 * this.container.offsetWidth) {
+-      scale                      = (kbd.offsetWidth/
+-                                    this.container.offsetWidth)/0.9;
+-    }
+-    if (kbd.offsetHeight > 0.9 * this.container.offsetHeight) {
+-      scale                      = Math.max((kbd.offsetHeight/
+-                                             this.container.offsetHeight)/0.9);
+-    }
+-    var style                    = this.getTransformStyle(transform,
+-                                              scale > 1.0 ? scale : undefined);
+-    kbd.style[transform]         = style;
+-  }
+-  if (transform == 'filter') {
+-    scale                        = 1.0;
+-  }
+-  kbd.style.left                 = ((this.container.offsetWidth -
+-                                     kbd.offsetWidth/scale)/2) + 'px';
+-  kbd.style.top                  = ((this.container.offsetHeight -
+-                                     kbd.offsetHeight/scale)/2) + 'px';
+-
+-  this.keyboard.style.visibility = 'visible';
+-};
+-
+-VT100.prototype.hideSoftKeyboard = function() {
+-  this.keyboard.style.display    = 'none';
+-};
+-
+ VT100.prototype.toggleCursorBlinking = function() {
+   this.blinkingCursor = !this.blinkingCursor;
+ };
+@@ -2525,9 +2065,6 @@
+              (this.visualBell ? '<img src="enabled.gif" />' : '') +
+              'Visual Bell</li>'+
+           '<li>' +
+-             (this.softKeyboard ? '<img src="enabled.gif" />' : '') +
+-             'Onscreen Keyboard</li>' +
+-          '<li>' +
+              (this.disableAlt ? '<img src="enabled.gif" />' : '') +
+              'Disable Alt Key</li>' +
+           '<li id="endconfig">' +
+@@ -2561,7 +2098,6 @@
+   // Actions for default items
+   var actions                 = [ this.copyLast, p, this.pasteBrowserFnc, this.reset,
+                                   this.toggleUTF, this.toggleBell,
+-                                  this.toggleSoftKeyboard,
+                                   this.toggleDisableAlt,
+                                   this.toggleCursorBlinking ];
+ 
+@@ -2685,6 +2221,11 @@
+ };
+ 
+ VT100.prototype.handleKey = function(event) {
++  // for some reason mobile firefox has bug with 'Backspace' button where 'Backspace' button
++  // is registered as 'Process' (keycode = 229) for n number of times where n is equal times of symbols typed
++  // for example typing '12345' (5 characters) and pressing 'Backspace' registers as `Process` for 5 times and only then registers as "Backspace"
++  // for example typing 'a b c d e' (9 characters (5 letters 4 spaces)) and pressing 'Backspace' registers as `Process` for 9 times and only then registers as "Backspace"
++  if (event.keyCode === 229 && isFirefox) event.keyCode = 8
+   // this.vt100('H: c=' + event.charCode + ', k=' + event.keyCode +
+   //            (event.shiftKey || event.ctrlKey || event.altKey ||
+   //             event.metaKey ? ', ' +
+@@ -2714,7 +2255,7 @@
+   // By this point, "ch" is either defined and contains the character code, or
+   // it is undefined and "key" defines the code of a function key
+   if (ch != undefined) {
+-    this.scrollable.scrollTop         = this.numScrollbackLines *
++        this.scrollable.scrollTop         = this.numScrollbackLines *
+                                         this.cursorHeight + 1;
+   } else {
+     if ((event.altKey || event.metaKey) && !event.shiftKey && !event.ctrlKey) {
+@@ -2819,7 +2360,7 @@
+       }
+       this.scrollable.scrollTop       = this.numScrollbackLines *
+                                         this.cursorHeight + 1;
+-    }
++        }
+   }
+ 
+   // "ch" now contains the sequence of keycodes to send. But we might still
+@@ -2978,7 +2519,7 @@
+ };
+ 
+ VT100.prototype.keyDown = function(event) {
+-  // this.vt100('D: c=' + event.charCode + ', k=' + event.keyCode +
++    // this.vt100('D: c=' + event.charCode + ', k=' + event.keyCode +
+   //            (event.shiftKey || event.ctrlKey || event.altKey ||
+   //             event.metaKey ? ', ' +
+   //             (event.shiftKey ? 'S' : '') + (event.ctrlKey ? 'C' : '') +
+@@ -3245,15 +2786,6 @@
+ VT100.prototype.beep = function() {
+   if (this.visualBell) {
+     this.flashScreen();
+-  } else {
+-    try {
+-      this.beeper.Play();
+-    } catch (e) {
+-      try {
+-        this.beeper.src = 'beep.wav';
+-      } catch (e) {
+-      }
+-    }
+   }
+ };
+ 
+@@ -4299,7 +3831,7 @@
+ };
+ 
+ VT100.prototype.renderString = function(s, showCursor) {
+-  if (this.printing) {
++    if (this.printing) {
+     this.sendToPrinter(s);
+     if (showCursor) {
+       this.showCursor();
+@@ -4326,7 +3858,7 @@
+ };
+ 
+ VT100.prototype.vt100 = function(s) {
+-  this.cursorNeedsShowing = this.hideCursor();
++    this.cursorNeedsShowing = this.hideCursor();
+   this.respondString      = '';
+   var lineBuf             = '';
+   for (var i = 0; i < s.length; i++) {
+@@ -4370,7 +3902,7 @@
+         this.utfCount     = 0;
+       }
+     }
+-    var isNormalCharacter =
++        var isNormalCharacter =
+       (ch >= 32 && ch <= 127 || ch >= 160 ||
+        this.utfEnabled && ch >= 128 ||
+        !(this.dispCtrl ? this.ctrlAlways : this.ctrlAction)[ch & 0x1F]) &&
+@@ -4424,7 +3956,7 @@
+   } else if (this.cursorNeedsShowing) {
+     this.showCursor();
+   }
+-  return this.respondString;
++    return this.respondString;
+ };
+ 
+ VT100.prototype.Latin1Map = [
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox.init src/shellinabox.init
+--- upstream/shellinabox.init	1970-01-01 00:00:00.000000000 +0000
++++ src/shellinabox.init	2025-02-05 12:54:15.000000000 +0000
+@@ -0,0 +1,46 @@
++#!/bin/sh /etc/rc.common
++# Copyright (C) 2018 Teltonika
++#. /lib/teltonika-functions.sh
++#. /lib/functions.sh
++START=99
++
++USE_PROCD=1
++enable=$(uci get cli.status.enable)
++uhttpd_cert=$(uci get uhttpd.main.cert)
++uhttpd_key=$(uci get uhttpd.main.key)
++key_type=$(uci get uhttpd.defaults.key_type)
++shell_cert="/tmp/certificate.pem"
++
++start_service()
++{
++	if [ "$enable" == "1" ]; then
++		if [ ! -s "$shell_cert" ]; then
++			openssl x509 -inform DER -in "$uhttpd_cert" -outform PEM | cat "$uhttpd_key" - > /tmp/shellinabox.tmp
++			mv /tmp/shellinabox.tmp "$shell_cert"
++
++			[ "$key_type" = "ec" ] && sed -i 's/PRIVATE/EC PRIVATE/g' "$shell_cert"
++		fi
++	fi
++}
++
++stop_service()
++{
++	rm -f "$shell_cert"
++	killall shellinaboxd
++}
++
++restart_service()
++{
++	rm -f "$shell_cert"
++	killall shellinaboxd
++	if [ "$enable" == "1" ]; then
++		openssl x509 -inform DER -in "$uhttpd_cert" -outform PEM | cat "$uhttpd_key" - > /tmp/shellinabox.tmp
++		mv /tmp/shellinabox.tmp "$shell_cert"
++		[ "$key_type" = "ec" ] && sed -i 's/PRIVATE/EC PRIVATE/g' "$shell_cert"
++	fi
++}
++
++reload_service()
++{
++	restart_service
++}
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/shellinabox.sh src/shellinabox.sh
+--- upstream/shellinabox.sh	1970-01-01 00:00:00.000000000 +0000
++++ src/shellinabox.sh	2025-02-05 12:54:15.000000000 +0000
+@@ -0,0 +1,55 @@
++#!/bin/sh
++title=""
++paragraph=""
++shell_cert="/tmp/certificate.pem"
++uhttpd_cert=$(uci -q get uhttpd.main.cert)
++uhttpd_key=$(uci -q get uhttpd.main.key)
++enable=$(uci -q get cli.status.enable)
++if [ "$enable" -eq "1" ]; then
++	port=$(uci -q get cli.status.port)
++	if [ -z "$port" ]; then
++		port="4200-4220"
++		uci -q set cli.status.port="$port"
++		uci -q commit cli
++	fi
++	shell_limit=$(uci -q get cli.status.shell_limit)
++	if [ -z "$shell_limit" ]; then
++		shell_limit="5"
++		uci -q set cli.status.shell_limit="$shell_limit"
++		uci -q commit cli
++	fi
++	shells=$(ps | grep -v grep | grep -c shellinaboxd)
++	if [ "$shells" -lt "$shell_limit" ]; then
++		if [ ! -s "$shell_cert" ]; then
++			openssl x509 -inform DER -in "$uhttpd_cert" -outform PEM | cat "$uhttpd_key" - > /tmp/shellinabox.tmp
++			mv /tmp/shellinabox.tmp "$shell_cert"
++		fi
++		if [ -n "$HTTPS" ]; then
++			/usr/sbin/shellinaboxd --disable-ssl-menu --cgi="${port}" -u 0 -g 0 -c /tmp
++		else
++			/usr/sbin/shellinaboxd -t --cgi="${port}" -u 0 -g 0
++		fi
++	else
++		title="Too many active shell instances!"
++		paragraph="Too many active shell instances! Close some shell instances and try again."
++	fi
++else
++	title="CLI not enabled!"
++	paragraph="CLI not enabled! Enable CLI and try again."
++fi
++
++if [ -n "$title" ] && [ -n "$paragraph" ]; then
++echo "Content-type: text/html"
++echo ""
++cat <<EOT
++<!DOCTYPE html>
++<html>
++<head>
++        <title>${title}</title>
++</head>
++<body>
++        <p>${paragraph}</p>
++</body>
++</html>
++EOT
++fi

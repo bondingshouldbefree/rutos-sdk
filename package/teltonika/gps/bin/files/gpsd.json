@@ -1,0 +1,58 @@
+{
+	"user": "gps",
+	"publish": [ "gpsd" ],
+	"listen": [ "hotplug.modem_added", "hotplug.modem_removed" ],
+	"access": {
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"gnss_init",
+				"gnss_start",
+				"gnss_stop",
+				"get_nmea",
+				"set_nmea",
+				"get_dpo_mode",
+				"set_dpo_mode",
+				"set_gnss_oper_mode",
+				"set_nmea_outport",
+				"get_signal_query"
+			]
+		},
+		"mctl": {
+			"methods": [
+				"reboot"
+			]
+		},
+		"mobifd.*": {
+			"methods": [
+				"ifdown_mobile_interfaces"
+			]
+		},
+		"network.interface.*": {
+			"methods": [
+				"status"
+			]
+		},
+		"ioman.*": {
+			"methods": [
+				"status",
+				"location"
+			]
+		},
+		"file": {
+			"methods": [
+				"exec"
+			]
+		},
+		"log": {
+			"methods": [
+				"write_ext"
+			]
+		}
+	}
+}

@@ -1,0 +1,63 @@
+--- a/libfstools/mtd.c
++++ b/libfstools/mtd.c
+@@ -336,6 +336,7 @@ static int mtd_volume_write(struct volum
+ 
+ static struct driver mtd_driver = {
+ 	.name = "mtd",
++	.priority = 10,
+ 	.find = mtd_volume_find,
+ 	.init = mtd_volume_init,
+ 	.erase = mtd_volume_erase,
+--- a/libfstools/rootdisk.c
++++ b/libfstools/rootdisk.c
+@@ -108,10 +108,6 @@ static struct volume *rootdisk_volume_fi
+ 	if (!rootdev)
+ 		return NULL;
+ 
+-	if (strstr(rootdev, "mtdblock") ||
+-	    strstr(rootdev, "ubiblock"))
+-		return NULL;
+-
+ 	if (get_squashfs(&sb))
+ 		return NULL;
+ 
+--- a/libfstools/ubi.c
++++ b/libfstools/ubi.c
+@@ -171,6 +171,7 @@ static int ubi_volume_identify(struct vo
+ 
+ static struct driver ubi_driver = {
+ 	.name = "ubi",
++	.priority = 20,
+ 	.find = ubi_volume_find,
+ 	.init = ubi_volume_init,
+ 	.identify = ubi_volume_identify,
+--- a/libfstools/volume.c
++++ b/libfstools/volume.c
+@@ -23,7 +23,16 @@ static LIST_HEAD(drivers);
+ void
+ volume_register_driver(struct driver *d)
+ {
+-	list_add(&d->list, &drivers);
++	struct driver *cur, *tmp;
++
++	list_for_each_entry_safe(cur, tmp, &drivers, list) {
++		if (d->priority <= cur->priority)
++			continue;
++
++		_list_add(&d->list, cur->list.prev, &cur->list);
++		return;
++	}
++	list_add_tail(&d->list, &drivers);
+ }
+ 
+ struct volume* volume_find(char *name)
+--- a/libfstools/volume.h
++++ b/libfstools/volume.h
+@@ -30,6 +30,7 @@ typedef int (*volume_erase_all_t)(struct
+ 
+ struct driver {
+ 	struct list_head	list;
++	unsigned int		priority;
+ 	char			*name;
+ 	volume_probe_t		probe;
+ 	volume_init_t		init;

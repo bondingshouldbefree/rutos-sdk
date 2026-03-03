@@ -1,0 +1,12 @@
+config SYSFS_MNFINFO
+	bool "Mnfinfo via sysfs"
+	default y
+	help
+	  This provides a ability to read device RO metadata via sysfs.
+
+config MNF_TEST
+	bool "sysfs_mnfinfo test image option"
+	default n
+	depends on SYSFS_MNFINFO=y
+	help
+	  This adds additional dummy RO MNF fields for testing image.

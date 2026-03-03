@@ -1,0 +1,26 @@
+From 52022123f86334a3fc811aefe72104156b142475 Mon Sep 17 00:00:00 2001
+From: "@joris.vaisvila" <joris.vaisvila@teltonika.lt>
+Date: Thu, 30 Oct 2025 20:25:48 +0200
+Subject: [PATCH 1/1] add EXTRA_LIB_SEARCH_PATH
+
+---
+ CMakeLists.txt | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 07e37a5..567fcde 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -30,6 +30,9 @@ OPTION(STRUCT_SUPPORT "Struct plugin support" ON)
+ OPTION(ULOOP_SUPPORT "Uloop plugin support" ON)
+ 
+ SET(LIB_SEARCH_PATH "${CMAKE_INSTALL_PREFIX}/lib/ucode/*.so:${CMAKE_INSTALL_PREFIX}/share/ucode/*.uc:./*.so:./*.uc" CACHE STRING "Default library search path")
++IF(DEFINED EXTRA_LIB_SEARCH_PATH AND EXTRA_LIB_SEARCH_PATH)
++	SET(LIB_SEARCH_PATH "${LIB_SEARCH_PATH}:${EXTRA_LIB_SEARCH_PATH}" CACHE STRING "Default library search path" FORCE)
++ENDIF()
+ STRING(REPLACE ":" "\", \"" LIB_SEARCH_DEFINE "${LIB_SEARCH_PATH}")
+ ADD_DEFINITIONS(-DLIB_SEARCH_PATH="${LIB_SEARCH_DEFINE}")
+ 
+-- 
+2.43.0
+

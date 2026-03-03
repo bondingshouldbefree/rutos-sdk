@@ -1,0 +1,5 @@
+/etc/config/uhttpd      uhttpd:uhttpd        660     -
+/etc/uhttpd.crt         uhttpd:uhttpd        660     -
+/etc/uhttpd.key         uhttpd:uhttpd        660     -
+/etc/vuci-uploads       uhttpd:uhttpd        -       cd
+/tmp/vuci               uhttpd:uhttpd        775     cd

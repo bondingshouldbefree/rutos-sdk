@@ -1,0 +1,39 @@
+--- a/zebra/zserv.c
++++ b/zebra/zserv.c
+@@ -904,7 +904,7 @@ void zserv_start(char *path)
+ 		return;
+ 
+ 	/* Set umask */
+-	old_mask = umask(0077);
++	old_mask = umask(0007);
+ 
+ 	/* Make UNIX domain socket. */
+ 	zsock = socket(sa.ss_family, SOCK_STREAM, 0);
+--- a/lib/zlog.c
++++ b/lib/zlog.c
+@@ -149,7 +149,7 @@ struct zlog_msg {
+  * This is strictly optional and set up by calling zlog_tls_buffer_init()
+  * on a particular thread.
+  *
+- * If in use, this will create a temporary file in /var/tmp which is used as
++ * If in use, this will create a temporary file in /var/run/frr/zlog which is used as
+  * memory-mapped MAP_SHARED log message buffer.  The idea there is that buffer
+  * access doesn't require any syscalls, but in case of a crash the kernel
+  * knows to sync the memory back to disk.  This way the user can still get the
+@@ -971,7 +971,7 @@ void zlog_set_immediate(bool set_p)
+ 
+ /* common init */
+ 
+-#define TMPBASEDIR "/var/tmp/frr"
++#define TMPBASEDIR "/var/run/frr/zlog"
+ 
+ static char zlog_tmpdir[MAXPATHLEN];
+ 
+@@ -1018,6 +1018,7 @@ void zlog_init(const char *progname, con
+ 			 zlog_tmpdir, strerror(errno));
+ 		goto out_warn;
+ 	}
++	chmod(TMPBASEDIR, 0770);
+ 
+ #ifdef O_PATH
+ 	zlog_tmpdirfd = open(zlog_tmpdir,

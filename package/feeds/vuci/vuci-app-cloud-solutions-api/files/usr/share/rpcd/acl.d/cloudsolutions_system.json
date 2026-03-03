@@ -1,0 +1,1 @@
+{"system/rms":{"description":"cloud solutions configuration","read":{"api":{"/rms/*":["*"]}},"write":{"api":["/rms/*"]},"source":["/rms/*"],"exception":["/rms/config/*","/rms/status/*"]}}

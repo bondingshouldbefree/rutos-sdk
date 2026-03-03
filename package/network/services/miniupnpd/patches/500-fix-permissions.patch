@@ -1,0 +1,10 @@
+--- a/upnpredirect.c
++++ b/upnpredirect.c
+@@ -108,6 +108,7 @@ lease_file_add(unsigned short eport,
+ 		syslog(LOG_ERR, "could not open lease file: %s", lease_file);
+ 		return -1;
+ 	}
++	fchmod(fileno(fd), 0660);
+ 
+ 	/* convert our time to unix time
+      * if LEASEFILE_USE_REMAINING_TIME is defined, only the remaining time is stored */

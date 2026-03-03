@@ -1,0 +1,34 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+ID_LIST=""
+
+find_wrong_ids() {
+	local section="$1"
+	[ "$(uci -q get network.$section)" = "interface" ] && return
+	ID_LIST="$ID_LIST $section"
+}
+
+fix_mwan3_ids() {
+	local section="$1"
+	for mwan_iface in $ID_LIST
+	do
+		config_get iface_name "$section" name
+		[ "$mwan_iface" = "$iface_name" ] && {
+			ID_LIST=$(echo "$ID_LIST" | sed -E "s/(^| )$mwan_iface( |$)/\1/")
+			# Do not rename section if duplicate ID already exists
+			uci -q get "mwan3.$section" > /dev/null || uci -q rename "mwan3.$mwan_iface=$section"
+			return
+		}
+	done
+}
+
+config_load "mwan3"
+config_foreach find_wrong_ids "interface"
+config_load "network"
+config_foreach fix_mwan3_ids "interface"
+
+uci_commit "$mwan3"
+
+exit 0

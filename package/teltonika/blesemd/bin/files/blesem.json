@@ -1,0 +1,5 @@
+{
+	"user": "blesemd",
+	"publish": [ "blesem" ],
+	"listen": [ "blesemd.store_data" ]
+}

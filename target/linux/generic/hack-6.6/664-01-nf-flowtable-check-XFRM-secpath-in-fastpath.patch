@@ -1,0 +1,197 @@
+net: netfiler: flowtables: validate XFRM secpath in IP hook
+
+Add XFRM secpath states to flow offload tuples. This makes sure malicious peers
+cannot inject packets into offloaded connections. Before this the fastpath couldn't
+distinguish packets originating from diferent SA's. 
+
+--- /dev/null
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -0,0 +1,71 @@
++#ifndef _NF_FLOW_TABLE_XFRM_H
++#define _NF_FLOW_TABLE_XFRM_H
++
++#include <net/xfrm.h>
++#include <net/netfilter/nf_flow_table.h>
++
++static inline void nf_flow_xfrm_tuple_release(struct flow_xfrm_tuple *xtuple)
++{
++#ifdef CONFIG_XFRM
++	int i;
++
++	for (i = 0; i < NF_FLOW_XFRM_SP_MAX_LEN; i++) {
++		struct xfrm_state *x = xtuple->secpath[i];
++		if (x)
++			xfrm_state_put(x);
++	}
++#endif
++}
++
++static inline int nf_flow_xfrm_tuple_disect(struct sk_buff *skb,
++					    struct flow_xfrm_tuple *xtuple)
++{
++#ifdef CONFIG_XFRM
++	struct sec_path *sp;
++	int i;
++
++	sp = skb_sec_path(skb);
++	if (!sp)
++		return 0;
++
++	if (sp->len > NF_FLOW_XFRM_SP_MAX_LEN)
++		return -ENOTSUPP;
++
++	for (i = 0; i < sp->len; i++) {
++		xtuple->secpath[i] = sp->xvec[i];
++	}
++#endif
++	return 0;
++}
++
++static inline bool nf_flow_xfrm_tuple_can_disect(struct sk_buff *skb)
++{
++#ifdef CONFIG_XFRM
++	struct sec_path *sp;
++
++	sp = skb_sec_path(skb);
++	if (!sp)
++		return true;
++
++	if (sp->len > NF_FLOW_XFRM_SP_MAX_LEN)
++		return false;
++#endif
++	return true;
++}
++
++static inline void nf_flow_xfrm_tuple_clone(struct flow_xfrm_tuple *dst,
++				     struct flow_xfrm_tuple *src)
++{
++#ifdef CONFIG_XFRM
++	int i;
++
++	for (i = 0; i < NF_FLOW_XFRM_SP_MAX_LEN; i++) {
++		struct xfrm_state *x = src->secpath[i];
++		dst->secpath[i] = x;
++		if (x)
++			xfrm_state_hold(x);
++	}
++#endif
++}
++
++#endif /* _NF_FLOW_TABLE_XFRM_H */
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -93,6 +93,14 @@ static inline bool nf_flowtable_hw_offlo
+ 	return flowtable->flags & NF_FLOWTABLE_HW_OFFLOAD;
+ }
+ 
++#define NF_FLOW_XFRM_SP_MAX_LEN 1
++
++struct flow_xfrm_tuple {
++#ifdef CONFIG_XFRM
++	struct xfrm_state *secpath[NF_FLOW_XFRM_SP_MAX_LEN];
++#endif
++};
++
+ enum flow_offload_tuple_dir {
+ 	FLOW_OFFLOAD_DIR_ORIGINAL = IP_CT_DIR_ORIGINAL,
+ 	FLOW_OFFLOAD_DIR_REPLY = IP_CT_DIR_REPLY,
+@@ -135,6 +143,12 @@ struct flow_offload_tuple {
+ 	/* All members above are keys for lookups, see flow_offload_hash(). */
+ 	struct { }			__hash;
+ 
++	// XFRM info likely to be unique in relation to above fields, don't hash, just check.
++	struct flow_xfrm_tuple		xfrm_tuple;
++
++	/* All members above are keys for comparison, see flow_offload_hash_cmp(). */
++	struct { }			__key;
++
+ 	u8				dir:2,
+ 					xmit_type:3,
+ 					encap_num:2,
+@@ -219,6 +233,7 @@ struct nf_flow_route {
+ 			u16		id;
+ 			__be16		proto;
+ 		} encap[NF_FLOW_TABLE_ENCAP_MAX];
++		struct flow_xfrm_tuple	xfrm_tuple;
+ 		u8			num_encaps:2,
+ 					ingress_vlans:2;
+ 	} in;
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -8,6 +8,7 @@
+ #include <net/ip.h>
+ #include <net/ip6_route.h>
+ #include <net/netfilter/nf_flow_table.h>
++#include <net/netfilter/nf_flow_table_xfrm.h>
+ #include <net/netfilter/nf_conntrack.h>
+ #include <net/netfilter/nf_conntrack_core.h>
+ #include <net/netfilter/nf_conntrack_l4proto.h>
+@@ -142,6 +143,8 @@ static int flow_offload_fill_route(struc
+ 	}
+ 	flow_tuple->encap_out.encap_num = route->out.num_encaps;
+ 
++	nf_flow_xfrm_tuple_clone(&flow_tuple->xfrm_tuple, &route->in.xfrm_tuple);
++
+ 	switch (route->xmit_type) {
+ 	case FLOW_OFFLOAD_XMIT_DIRECT:
+ 		memcpy(flow_tuple->out.h_dest, route->out.h_dest,
+@@ -168,6 +171,10 @@ static int flow_offload_fill_route(struc
+ 	return 0;
+ }
+ 
++static void flow_offload_release_common_tuple(struct flow_offload_tuple *tuple) {
++	nf_flow_xfrm_tuple_release(&tuple->xfrm_tuple);
++}
++
+ static void nft_flow_dst_release(struct flow_offload *flow,
+ 				 enum flow_offload_tuple_dir dir)
+ {
+@@ -218,6 +225,9 @@ static void flow_offload_fixup_ct(struct
+ 
+ static void flow_offload_route_release(struct flow_offload *flow)
+ {
++	flow_offload_release_common_tuple(&flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].tuple);
++	flow_offload_release_common_tuple(&flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].tuple);
++
+ 	nft_flow_dst_release(flow, FLOW_OFFLOAD_DIR_ORIGINAL);
+ 	nft_flow_dst_release(flow, FLOW_OFFLOAD_DIR_REPLY);
+ }
+@@ -256,7 +266,7 @@ static int flow_offload_hash_cmp(struct
+ 	const struct flow_offload_tuple *tuple = arg->key;
+ 	const struct flow_offload_tuple_rhash *x = ptr;
+ 
+-	if (memcmp(&x->tuple, tuple, offsetof(struct flow_offload_tuple, __hash)))
++	if (memcmp(&x->tuple, tuple, offsetof(struct flow_offload_tuple, __key)))
+ 		return 1;
+ 
+ 	return 0;
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -14,6 +14,7 @@
+ #include <net/ip6_route.h>
+ #include <net/neighbour.h>
+ #include <net/netfilter/nf_flow_table.h>
++#include <net/netfilter/nf_flow_table_xfrm.h>
+ #include <net/netfilter/nf_conntrack_acct.h>
+ /* For layer 4 checksum field offset. */
+ #include <linux/tcp.h>
+@@ -239,6 +240,9 @@ static int nf_flow_tuple_ip(struct nf_fl
+ 	tuple->iifidx		= ctx->in->ifindex;
+ 	nf_flow_tuple_encap(skb, tuple);
+ 
++	if (nf_flow_xfrm_tuple_disect(skb, &tuple->xfrm_tuple))
++		return -1;
++
+ 	return 0;
+ }
+ 
+@@ -640,6 +644,9 @@ static int nf_flow_tuple_ipv6(struct nf_
+ 	tuple->iifidx		= ctx->in->ifindex;
+ 	nf_flow_tuple_encap(skb, tuple);
+ 
++	if (nf_flow_xfrm_tuple_disect(skb, &tuple->xfrm_tuple))
++		return -1;
++
+ 	return 0;
+ }
+ 

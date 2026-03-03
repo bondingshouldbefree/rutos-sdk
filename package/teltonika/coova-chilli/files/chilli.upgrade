@@ -1,0 +1,4 @@
+/etc/chilli/uamdomainfile*
+/etc/chilli/conup_*
+/etc/chilli/condown_*
+/etc/chilli/usersignup_*

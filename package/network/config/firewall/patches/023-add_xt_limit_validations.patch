@@ -1,0 +1,77 @@
+--- a/iptables.c
++++ b/iptables.c
+@@ -54,6 +54,7 @@
+ #endif
+ 
+ #include "iptables.h"
++#include <linux/netfilter/xt_limit.h>
+ 
+ #define XT_LOCK_NAME "/var/run/xtables.lock"
+ static int xt_lock_fd = -1;
+@@ -1030,14 +1031,63 @@ fw3_ipt_rule_icmptype(struct fw3_ipt_rul
+ 	}
+ }
+ 
++// Validations are based on checks performed in xt_limit.c
++static uint32_t calculate_xt_limit_credits(uint32_t rate) {
++	uint32_t hz = sysconf(_SC_CLK_TCK);
++	uint32_t max_cpj = 0xFFFFFFFF / (hz * 60 * 60 * 24);
++
++	uint32_t credits_per_jiffy = max_cpj;
++	credits_per_jiffy |= credits_per_jiffy >> 1;
++	credits_per_jiffy |= credits_per_jiffy >> 2;
++	credits_per_jiffy |= credits_per_jiffy >> 4;
++	credits_per_jiffy |= credits_per_jiffy >> 8;
++	credits_per_jiffy |= credits_per_jiffy >> 16;
++	credits_per_jiffy = (credits_per_jiffy >> 1) + 1;
++
++	if (rate > 0xFFFFFFFF / (hz*credits_per_jiffy))
++		return (rate / XT_LIMIT_SCALE) * hz * credits_per_jiffy;
++	return (rate * hz * credits_per_jiffy) / XT_LIMIT_SCALE;
++}
++
++static bool is_limit_valid(struct fw3_limit *limit) {
++	if (!limit || limit->rate <= 0)
++		return false;
++
++	if (limit->burst <= 0) {
++		limit->burst = 5; //Validate using xt_limit default
++	}
++
++	uint32_t mult = 1;
++	switch (limit->unit) {
++		case FW3_LIMIT_UNIT_MINUTE:
++			mult = 60;
++			break;
++		case FW3_LIMIT_UNIT_HOUR:
++			mult = 3600;
++			break;
++		case FW3_LIMIT_UNIT_DAY:
++			mult = 86400;
++			break;
++		default:
++			break;
++	}
++
++	uint32_t avg = XT_LIMIT_SCALE * mult / limit->rate;
++
++	if(calculate_xt_limit_credits(avg * limit->burst) < calculate_xt_limit_credits(avg))
++		return false;
++
++	return true;
++}
++
+ void
+ fw3_ipt_rule_limit(struct fw3_ipt_rule *r, struct fw3_limit *limit)
+ {
+-	char buf[sizeof("-4294967296/second")];
+-
+-	if (!limit || limit->rate <= 0)
++	if (!is_limit_valid(limit))
+ 		return;
+ 
++	char buf[sizeof("-4294967296/second")];
++
+ 	fw3_ipt_rule_addarg(r, false, "-m", "limit");
+ 
+ 	snprintf(buf, sizeof(buf), "%u/%s", limit->rate, fw3_limit_units[limit->unit]);

@@ -1,0 +1,65 @@
+From 61d2f92dac541407228025a40b1d19e66248cd03 Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Thu, 8 May 2025 17:23:48 +0300
+Subject: [PATCH 1/1] tpm2: attempt to use keys with unrestricted algos
+
+---
+ src/libtpmtss/tpm_tss_tss2_v2.c | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/src/libtpmtss/tpm_tss_tss2_v2.c b/src/libtpmtss/tpm_tss_tss2_v2.c
+index 95fe05c03..150c1399b 100644
+--- a/src/libtpmtss/tpm_tss_tss2_v2.c
++++ b/src/libtpmtss/tpm_tss_tss2_v2.c
+@@ -157,6 +157,7 @@ hash_algorithm_t hash_alg_from_tpm_alg_id(TPM2_ALG_ID alg)
+ 		case TPM2_ALG_SHA1:
+ 			return HASH_SHA1;
+ 		case TPM2_ALG_SHA256:
++		default:
+ 			return HASH_SHA256;
+ 		case TPM2_ALG_SHA384:
+ 			return HASH_SHA384;
+@@ -168,8 +169,6 @@ hash_algorithm_t hash_alg_from_tpm_alg_id(TPM2_ALG_ID alg)
+ 			return HASH_SHA3_384;
+ 		case TPM2_ALG_SHA3_512:
+ 			return HASH_SHA3_512;
+-		default:
+-			return HASH_UNKNOWN;
+ 	}
+ }
+ 
+@@ -736,14 +735,13 @@ METHOD(tpm_tss_t, supported_signature_schemes, enumerator_t*,
+ 					break;
+ 				}
+ 				case TPM2_ALG_RSASSA:
++				default:
+ 					supported_scheme = (signature_params_t){
+ 						.scheme = signature_scheme_from_oid(
+ 									hasher_signature_algorithm_to_oid(digest,
+ 																	  KEY_RSA)),
+ 					};
+ 					break;
+-				default:
+-					return enumerator_create_empty();
+ 			}
+ 			break;
+ 		}
+@@ -757,14 +755,13 @@ METHOD(tpm_tss_t, supported_signature_schemes, enumerator_t*,
+ 			switch (scheme->scheme)
+ 			{
+ 				case TPM2_ALG_ECDSA:
++				default:
+ 					supported_scheme = (signature_params_t){
+ 						.scheme = signature_scheme_from_oid(
+ 									hasher_signature_algorithm_to_oid(digest,
+ 																	KEY_ECDSA)),
+ 					};
+ 					break;
+-				default:
+-					return enumerator_create_empty();
+ 			}
+ 			break;
+ 		}
+-- 
+2.49.0
+

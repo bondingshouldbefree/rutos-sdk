@@ -1,0 +1,41 @@
+{
+  "network/routes": {
+    "title": "Routing",
+    "index": 80
+  },
+  "network/routes/dynamic_routes": {
+    "title": "Dynamic Routes",
+    "index": 30
+  },
+  "network/routes/dynamic_routes/proto_ospf": {
+    "title": "OSPF",
+    "index": 30,
+    "view": "network/ProtoOspf",
+    "acls": ["network/routes/dynamic_routes/proto_ospf"],
+    "main_page": true,
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-ospfd", "frr5-ospfd"]
+      }
+    }
+  },
+  "status/routes": {
+    "title": "Routes",
+    "index": 35
+  },
+  "status/routes/dynamic": {
+    "title": "Dynamic",
+    "index": 20
+  },
+  "status/routes/dynamic/ospf": {
+    "title": "OSPF",
+    "index": 30,
+    "view": "status/ProtoOspf",
+    "acls": ["status/routes/dynamic/ospf"],
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-ospfd", "frr5-ospfd"]
+      }
+    }
+  }
+}

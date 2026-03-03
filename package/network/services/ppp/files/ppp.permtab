@@ -1,0 +1,2 @@
+/tmp/resolv.conf.ppp	pppd:pppd	660	cf
+/etc/ppp	pppd:pppd	-	r

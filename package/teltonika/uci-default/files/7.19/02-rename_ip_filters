@@ -1,0 +1,26 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+rename_ip_filter_rule() {
+	local section="$1"
+	local service_prefix="$2"
+
+	config_get service "${section}" service
+	[[ "$service" == "$service_prefix"* ]] || return
+
+	local parent_id=$(echo "$service" | awk -F. '{ print $2 }')
+
+	uci_set firewall "$section" service ""
+	uci_set firewall "$section" tag ""
+
+	uci_set firewall "$section" _owner_type "$service_prefix"
+	uci_set firewall "$section" _owner_id "$parent_id"
+}
+
+config_load firewall
+config_foreach rename_ip_filter_rule rule "overip"
+config_foreach rename_ip_filter_rule rule "modbusgwd"
+uci_commit firewall
+
+exit 0

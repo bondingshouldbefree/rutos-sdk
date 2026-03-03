@@ -1,0 +1,11 @@
+--- a/src/options.c
++++ b/src/options.c
+@@ -20,7 +20,7 @@ void options_init(struct Options *opt) {
+   opt->listen_port = 5053;
+   opt->logfile = "-";
+   opt->logfd = -1;
+-  opt->loglevel = LOG_ERROR;
++  opt->loglevel = LOG_FATAL;
+   opt->daemonize = 0;
+   opt->dscp = 0;
+   opt->user = NULL;

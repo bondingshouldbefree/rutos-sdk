@@ -1,0 +1,6 @@
+{
+	"user": "ntp_gps",
+	"publish": [ "ntp_gps" ],
+	"subscribe": [ "gpsd" ],
+	"listen": [ "ubus.object.add" ]
+}

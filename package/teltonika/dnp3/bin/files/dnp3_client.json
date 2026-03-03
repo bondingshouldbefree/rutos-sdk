@@ -1,0 +1,12 @@
+{
+	"user": "dnp3_client",
+	"publish": [ "dnp3_client",  "dnp3_client.*" ],
+	"access": {
+		"dnp3_client": {
+			"methods": [
+				"tcp.test",
+				"serial.test"
+			]
+		}
+	}
+}

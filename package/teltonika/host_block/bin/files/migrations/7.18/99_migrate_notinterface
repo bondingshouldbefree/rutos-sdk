@@ -1,0 +1,26 @@
+#!/bin/sh
+. /lib/functions.sh
+
+config="dhcp"
+
+enabled=$(uci_get hostblock config enabled)
+network=$(uci_get hostblock config network)
+
+[ "$enabled" != "1" ] || [ "$network" = "all" ] && exit 0
+
+merge_webfilter() {
+    local section="$1"
+    [ "${section%_webfilter}" != "$section" ] && {
+        local iface
+        local notifs="$(uci_get $config "@dnsmasq[0]" notinterface 2>/dev/null)"
+        for iface in $(uci_get $config $section interface); do
+            [ -n "$iface" ] && ! echo " $notifs " | grep -qw "$iface" && \
+                uci_add_list $config "@dnsmasq[0]" notinterface "$iface"
+        done
+    }
+}
+
+config_load $config
+config_foreach merge_webfilter dnsmasq
+uci_commit $config
+exit 0

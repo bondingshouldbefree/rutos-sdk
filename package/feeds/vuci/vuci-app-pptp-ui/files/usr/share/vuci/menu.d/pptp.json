@@ -1,0 +1,12 @@
+{
+	"services/vpn": {
+		"title": "VPN",
+		"index": 20
+	},
+	"services/vpn/pptp": {
+		"title": "PPTP",
+		"index": 70,
+		"view": "services/PPTP",
+		"acls": [ "services/vpn/pptp" ]
+	}
+}

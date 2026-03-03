@@ -1,0 +1,11 @@
+--- a/src/runopts.h
++++ b/src/runopts.h
+@@ -202,7 +202,7 @@ typedef struct cli_runopts {
+ 	/* A proxy command to run via the user's shell */
+ 	char *proxycmd;
+ #endif
+-#if DROPBEAR_CLI_MULTIHOP
++#if DROPBEAR_CLI_MULTIHOP || DROPBEAR_CLI_PROXYCMD
+ 	/* Similar to proxycmd, but is arguments for execve(), not shell */
+ 	char **proxyexec;
+ #endif

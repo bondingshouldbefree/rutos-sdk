@@ -1,0 +1,24 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+fix_status() {
+	local section="$1"
+	local status path sec
+	config_get "status" "$section" "status"
+	[ -z "$status" ] && return
+	set -- $status
+	path="$1"
+	sec="$2"
+	[ -z "$sec" ] && uci_remove "openvpn" "$section" "status" && return
+	if [ "${path%/*}" == "/var/run/openvpn" ]; then
+		return
+	fi
+	uci_set "openvpn" "$section" "status" "/var/run/openvpn/openvpn.${section}.status $sec"
+}
+
+config_load "openvpn"
+config_foreach "fix_status" "openvpn"
+uci_commit "openvpn"
+
+exit 0

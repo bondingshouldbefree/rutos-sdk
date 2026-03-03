@@ -1,0 +1,70 @@
+Index: tailscale-1.86.2/cmd/tailscaled/tailscaled.go
+===================================================================
+--- tailscale-1.86.2.orig/cmd/tailscaled/tailscaled.go
++++ tailscale-1.86.2/cmd/tailscaled/tailscaled.go
+@@ -70,6 +70,7 @@ import (
+ 	"tailscale.com/wgengine"
+ 	"tailscale.com/wgengine/netstack"
+ 	"tailscale.com/wgengine/router"
++	"kernel.org/pub/linux/libs/security/libcap/cap"
+ )
+ 
+ // defaultTunName returns the default tun device name for the platform.
+@@ -176,6 +177,23 @@ func shouldRunCLI() bool {
+ 	return false
+ }
+ 
++func setInheritCapabilities() error {
++	caps := cap.GetProc()
++
++	if err := caps.SetFlag(cap.Inheritable, true, cap.NET_ADMIN); err != nil {
++		return err
++	}
++	if err := caps.SetFlag(cap.Inheritable, true, cap.NET_RAW); err != nil {
++		return err
++	}
++
++	if err := caps.SetProc(); err != nil {
++		return err
++	}
++
++	return nil
++}
++
+ func main() {
+ 	envknob.PanicIfAnyEnvCheckedInInit()
+ 	if shouldRunCLI() {
+@@ -203,6 +221,10 @@ func main() {
+ 	flag.BoolVar(&args.disableLogs, "no-logs-no-support", false, "disable log uploads; this also disables any technical support")
+ 	flag.StringVar(&args.confFile, "config", "", "path to config file, or 'vm:user-data' to use the VM's user-data (EC2)")
+ 
++	if err := setInheritCapabilities(); err != nil {
++		log.Fatal("Failed to set capabilities: %v", err)
++	}
++
+ 	if runtime.GOOS == "plan9" && os.Getenv("_NETSHELL_CHILD_") != "" {
+ 		os.Args = []string{"tailscaled", "be-child", "plan9-netshell"}
+ 	}
+Index: tailscale-1.86.2/go.mod
+===================================================================
+--- tailscale-1.86.2.orig/go.mod
++++ tailscale-1.86.2/go.mod
+@@ -413,4 +413,6 @@ require (
+ 	mvdan.cc/unparam v0.0.0-20240104100049-c549a3470d14 // indirect
+ 	sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 // indirect
+ 	sigs.k8s.io/structured-merge-diff/v4 v4.4.2 // indirect
++	kernel.org/pub/linux/libs/security/libcap/cap v1.2.76 // indirect
++	kernel.org/pub/linux/libs/security/libcap/psx v1.2.76 // indirect
+ )
+Index: tailscale-1.86.2/go.sum
+===================================================================
+--- tailscale-1.86.2.orig/go.sum
++++ tailscale-1.86.2/go.sum
+@@ -1548,3 +1548,7 @@ sigs.k8s.io/yaml v1.4.0 h1:Mk1wCc2gy/F0T
+ sigs.k8s.io/yaml v1.4.0/go.mod h1:Ejl7/uTz7PSA4eKMyQCUTnhZYNmLIl+5c2lQPGR2BPY=
+ software.sslmate.com/src/go-pkcs12 v0.4.0 h1:H2g08FrTvSFKUj+D309j1DPfk5APnIdAQAB8aEykJ5k=
+ software.sslmate.com/src/go-pkcs12 v0.4.0/go.mod h1:Qiz0EyvDRJjjxGyUQa2cCNZn/wMyzrRJ/qcDXOQazLI=
++kernel.org/pub/linux/libs/security/libcap/cap v1.2.76 h1:mrdLPj8ujM6eIKGtd1PkkuCIodpFFDM42Cfm0YODkIM=
++kernel.org/pub/linux/libs/security/libcap/cap v1.2.76/go.mod h1:7V2BQeHnVAQwhCnCPJ977giCeGDiywVewWF+8vkpPlc=
++kernel.org/pub/linux/libs/security/libcap/psx v1.2.76 h1:3DyzQ30OHt3wiOZVL1se2g1PAPJIU7+tMUyvfMUj1dY=
++kernel.org/pub/linux/libs/security/libcap/psx v1.2.76/go.mod h1:+l6Ee2F59XiJ2I6WR5ObpC1utCQJZ/VLsEbQCD8RG24=

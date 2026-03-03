@@ -1,0 +1,31 @@
+#!/bin/sh
+. /lib/functions.sh
+CONFIG="bacnet_router"
+
+IS_OLD_CONFIG=false
+
+migrate_rule() {
+	local section="$1"
+	config_get device_type "$1" "device_type" ""
+	if [ "$device_type" == "mstp" ]; then
+		uci -q rename "$CONFIG"."${1}"="2"
+	else
+		uci -q rename "$CONFIG"."${1}"="1"
+	fi
+}
+
+check_rule() {
+	if [[ "$1" =~ "cfg" ]]; then
+		IS_OLD_CONFIG=true
+	fi
+}
+
+config_load "$CONFIG"
+config_foreach check_rule "port"
+
+[ "$IS_OLD_CONFIG" = false ] && exit 0
+
+config_foreach migrate_rule "port"
+uci_commit "$CONFIG"
+
+exit 0

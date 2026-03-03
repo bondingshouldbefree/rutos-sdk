@@ -1,0 +1,56 @@
+net: netfilter: flowtables: update route MTU when using XFRM output fastpath
+
+Use MTU provided by XFRM bundle when using XFRM output fastpath.
+
+--- a/include/net/netfilter/nf_flow_table_xfrm.h
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -124,6 +124,15 @@ static inline bool flow_offload_route_xf
+ 	return false;
+ }
+ 
++static inline struct dst_entry *fn_flow_route_xfrm_dst(struct nf_flow_route *route)
++{
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	if (route->out.xfrm_route.bundle)
++		return route->out.xfrm_route.bundle;
++#endif
++	return route->dst;
++}
++
+ static inline int flow_offload_xfrm_decap(struct net *net,
+ 					  const struct flow_offload *flow,
+ 					  enum flow_offload_tuple_dir dir,
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -111,15 +111,15 @@ static int flow_offload_fill_route(struc
+ 				   enum flow_offload_tuple_dir dir)
+ {
+ 	struct flow_offload_tuple *flow_tuple = &flow->tuplehash[dir].tuple;
+-	struct dst_entry *dst = nft_route_dst_fetch(route, dir);
++	struct dst_entry *mtu_dst = fn_flow_route_xfrm_dst(route);
+ 	int i, j = 0;
+ 
+ 	switch (flow_tuple->l3proto) {
+ 	case NFPROTO_IPV4:
+-		flow_tuple->mtu = ip_dst_mtu_maybe_forward(dst, true);
++		flow_tuple->mtu = ip_dst_mtu_maybe_forward(mtu_dst, true);
+ 		break;
+ 	case NFPROTO_IPV6:
+-		flow_tuple->mtu = ip6_dst_mtu_maybe_forward(dst, true);
++		flow_tuple->mtu = ip6_dst_mtu_maybe_forward(mtu_dst, true);
+ 		break;
+ 	}
+ 
+@@ -154,11 +154,10 @@ static int flow_offload_fill_route(struc
+ 		       ETH_ALEN);
+ 		flow_tuple->out.ifidx = route->out.ifindex;
+ 		flow_tuple->out.hw_ifidx = route->out.hw_ifindex;
+-		dst_release(dst);
+ 		break;
+ 	case FLOW_OFFLOAD_XMIT_XFRM:
+ 	case FLOW_OFFLOAD_XMIT_NEIGH:
+-		flow_tuple->dst_cache = dst;
++		flow_tuple->dst_cache = nft_route_dst_fetch(route, dir);
+ 		flow_tuple->dst_cookie = flow_offload_dst_cookie(flow_tuple);
+ 		flow_tuple->xmit_dst_ip = route->out.xmit_dst_ip;
+ 		break;

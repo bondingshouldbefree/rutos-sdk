@@ -1,0 +1,39 @@
+#!/bin/sh
+. /lib/functions.sh
+
+fix_cert() {
+	[ -f "$1" ] && {
+		chown certificates:certificates "$1"
+		chmod 0660 "$1"
+	}
+}
+
+fix_certs() {
+	local priv_key ca_cert client_cert
+
+	config_get priv_key "$1" priv_key
+	[ -f "$priv_key" ] && fix_cert "$priv_key"
+
+	config_get ca_cert "$1" ca_cert
+	[ -f "$ca_cert" ] && fix_cert "$ca_cert"
+
+	config_get client_cert "$1" client_cert
+	[ -f "$client_cert" ] && fix_cert "$client_cert"
+
+	config_get priv_key2 "$1" priv_key2
+	[ -f "$priv_key2" ] && fix_cert "$priv_key2"
+
+	config_get ca_cert2 "$1" ca_cert2
+	[ -f "$ca_cert2" ] && fix_cert "$ca_cert2"
+
+	config_get client_cert2 "$1" client_cert2
+	[ -f "$client_cert2" ] && fix_cert "$client_cert2"
+
+	config_get pkcs_cert "$1" pkcs_cert
+	[ -f "$pkcs_cert" ] && fix_cert "$pkcs_cert"
+}
+
+config_load wireless
+config_foreach "fix_certs" "wifi-iface"
+uci_commit "wireless"
+exit 0

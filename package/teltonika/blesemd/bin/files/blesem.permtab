@@ -1,0 +1,2 @@
+/etc/config/blesem blesemd:blesemd 660
+/etc/config/ble_devices blesemd:blesemd 660

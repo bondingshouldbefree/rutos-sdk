@@ -1,0 +1,44 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+fix_conf() {
+	local sid="$1"
+	local config="$2"
+	local opts="$3"
+
+	if [ "$config" = "network" ]; then
+		config_get proto "$sid" proto ""
+		[ "$proto" != "l2tp" ] && return
+	fi
+
+	local existing=""
+	append_existing() {
+		[ -n "$existing" ] && existing="$existing;"
+		existing="$existing$1"
+	}
+	config_list_foreach "$sid" pppd_options append_existing
+
+	IFS=';'
+	for i in $opts; do
+		case ";$existing;" in
+			*";$i;"*)
+				;;
+			*)
+				uci_add_list "$config" "$sid" pppd_options "$i" 
+				;;
+		esac
+	done
+	unset IFS
+}
+
+config_load xl2tpd
+config_foreach fix_conf service xl2tpd "noauth;logfd 2;noccp;novj;novjccomp;nopcomp;noaccomp;mtu 1400;mru 1400;lcp-echo-interval 20;lcp-echo-failure 5;connect-delay 5000;nodefaultroute;noipdefault;proxyarp"
+uci_commit xl2tpd
+
+config_load network
+config_foreach fix_conf interface network "usepeerdns;nodefaultroute;lcp-max-terminate 0"
+uci_commit network
+
+exit 0
+

@@ -1,0 +1,1 @@
+{"system/maintenance/uscripts":{"description":"custom scripts","read":{"api":{"/uscripts/*":["*"]}},"write":{"api":["/uscripts/*"]}}}

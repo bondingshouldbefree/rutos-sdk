@@ -1,0 +1,59 @@
+#!/bin/sh
+
+# this is an rpcd plugin to expose
+# the functionality of dfota to be used via ubus
+
+. /usr/share/libubox/jshn.sh
+
+export_available_updates() {
+	local status
+	/usr/sbin/dfota -e > /dev/null
+	status=$?
+
+	json_init
+	json_add_int "status" "$status"
+	json_dump
+}
+
+update_modem() {
+	local input modem status
+	read input
+	json_load "$input"
+
+	json_get_var modem modem
+	/usr/sbin/dfota -u -s ${modem:+-m "$modem"} > /dev/null
+	status=$?
+
+	json_init
+	json_add_int "status" "$status"
+	json_dump
+}
+
+main() {
+	case "$1" in
+	list)
+		json_init
+
+		json_add_object "export_updates"
+		json_close_object
+
+		json_add_object "update"
+		json_add_string "modem"
+		json_close_object
+
+		json_dump
+		;;
+	call)
+		case "$2" in
+		export_updates)
+			export_available_updates
+			;;
+		update)
+			update_modem
+			;;
+		esac
+		;;
+	esac
+}
+
+main "$@"

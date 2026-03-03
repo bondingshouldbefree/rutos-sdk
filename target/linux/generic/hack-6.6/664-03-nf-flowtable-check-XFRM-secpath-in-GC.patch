@@ -1,0 +1,54 @@
+net: netfiler: flowtables: check XFRM secpath in GC loop
+
+Check the state of secpath SA's in GC loop. This allows for quicker cleanup
+after SA's are destroyed.
+
+--- a/include/net/netfilter/nf_flow_table_xfrm.h
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -78,6 +78,36 @@ nf_flow_xfrm_tuple_has_secpath(const str
+ 	return false;
+ }
+ 
++static inline bool nf_flow_xfrm_tuple_expired(struct flow_xfrm_tuple *xtuple)
++{
++#ifdef CONFIG_XFRM
++	int i = 0;
++
++	for (i = 0; i < NF_FLOW_XFRM_SP_MAX_LEN; i++) {
++		struct xfrm_state *x = xtuple->secpath[i];
++		if (x && x->km.state != XFRM_STATE_VALID)
++			return true;
++	}
++#endif
++	return false;
++}
++
++static inline bool flow_offload_route_xfrm_expired(struct flow_offload *flow)
++{
++	if (flow_offload_has_orig(flow) &&
++	    nf_flow_xfrm_tuple_expired(
++		    &flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL]
++			     .tuple.xfrm_tuple))
++		return true;
++
++	if (flow_offload_has_reply(flow) &&
++	    nf_flow_xfrm_tuple_expired(
++		    &flow->tuplehash[FLOW_OFFLOAD_DIR_REPLY].tuple.xfrm_tuple))
++		return true;
++
++	return false;
++}
++
+ static inline int flow_offload_xfrm_decap(struct net *net,
+ 					  const struct flow_offload *flow,
+ 					  enum flow_offload_tuple_dir dir,
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -515,6 +515,7 @@ static void nf_flow_offload_gc_step(stru
+ {
+ 	if (nf_flow_has_expired(flow) ||
+ 	    nf_ct_is_dying(flow->ct) ||
++	    flow_offload_route_xfrm_expired(flow) ||
+ 	    nf_flow_custom_gc(flow_table, flow))
+ 		flow_offload_teardown(flow);
+ 

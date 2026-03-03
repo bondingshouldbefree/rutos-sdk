@@ -1,0 +1,27 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Tue Nov 5 15:20:09 2024 +0200
+Subject: net: xfrm: reset skb hash on input
+
+Previously packets originating from an XFRM tunnel would keep the same flow hash as
+the original tunnel packet, meaning that, with RPS, all decapsulated packets would
+go to the same CPU for processing.
+
+IPIP could probably be excluded from this, as a quick glance at flow dissection code
+suggests it analyzes inner headers of IPIP packets, however we're mainly concerned with
+ESP for now.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ net/xfrm/xfrm_input.c |    1 +
+ 1 file changed, 1 insertion(+)
+
+--- a/net/xfrm/xfrm_input.c
++++ b/net/xfrm/xfrm_input.c
+@@ -700,6 +700,7 @@ resume:
+ 		goto drop;
+ 
+ 	nf_reset_ct(skb);
++	skb_clear_hash(skb);
+ 
+ 	if (decaps) {
+ 		sp = skb_sec_path(skb);

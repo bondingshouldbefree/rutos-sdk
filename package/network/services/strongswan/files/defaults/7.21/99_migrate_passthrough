@@ -1,0 +1,21 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+migrate_passthrough(){
+	local section="$1" passthrough_ip ip
+
+	config_get "passthrough_ip" "$section" "passthrough_ip"
+	[ -n "$passthrough_ip" ] || return
+	uci_remove "ipsec" "$section" "passthrough_ip"
+	for ip in $passthrough_ip; do
+		uci_add_list "ipsec" "$section" "passthrough_local" "$ip"
+		uci_add_list "ipsec" "$section" "passthrough_remote" "$ip"
+	done
+}
+
+config_load ipsec
+config_foreach migrate_passthrough "connection"
+uci_commit "ipsec"
+
+exit 0

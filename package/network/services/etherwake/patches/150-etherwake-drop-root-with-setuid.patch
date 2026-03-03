@@ -1,0 +1,91 @@
+From 5c46fce3cbffcf4df39b6868ebe504e3b07bc308 Mon Sep 17 00:00:00 2001
+From: "@joris.vaisvila" <joris.vaisvila@teltonika.lt>
+Date: Tue, 14 Oct 2025 10:08:13 +0300
+Subject: [PATCH 1/1] drop root without suid
+
+---
+ ether-wake.c | 47 +++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 47 insertions(+)
+
+diff --git a/ether-wake.c b/ether-wake.c
+index 62aa06e..33640cf 100644
+--- a/ether-wake.c
++++ b/ether-wake.c
+@@ -30,6 +30,10 @@ static char usage_msg[] =
+ "		-p 00:22:44:66:88:aa\n"
+ "		-p 192.168.1.1\n";
+ 
++#ifndef ETHERWAKE_USER
++#define ETHERWAKE_USER "etherwake"
++#endif
++
+ /*
+ 	This program generates and transmits a Wake-On-LAN (WOL) "Magic Packet",
+ 	used for restarting machines that have been soft-powered-down
+@@ -82,6 +86,9 @@ static char usage_msg[] =
+ #include <net/ethernet.h>
+ #include <netdb.h>
+ #include <netinet/ether.h>
++#include <sys/prctl.h>
++#include <sys/capability.h>
++#include <pwd.h>
+ 
+ /* Grrr, no consistency between include versions.
+    Enable this if setsockopt() isn't declared with your library. */
+@@ -104,6 +111,45 @@ static int get_dest_addr(const char *arg, struct ether_addr *eaddr);
+ static int get_fill(unsigned char *pkt, struct ether_addr *eaddr);
+ static int get_wol_pw(const char *optarg);
+ 
++void drop_root() {
++	if (getuid() != 0) return;
++	prctl(PR_SET_KEEPCAPS, 1);
++	struct passwd *pwd = getpwnam(ETHERWAKE_USER);
++	if (!pwd) {
++		// fallback
++		if (setgid(65534) != 0 || setuid(65534) != 0) {
++			exit(EXIT_FAILURE);
++		}
++	} else {
++		if (setgid(pwd->pw_gid) != 0 || setuid(pwd->pw_uid) != 0) {
++			exit(EXIT_FAILURE);
++		}
++	}
++	cap_t caps = cap_init();
++	if(!caps) {
++		printf("Failed to init caps\n");
++		exit(EXIT_FAILURE);
++	}
++	if(cap_clear(caps) == -1) {
++		printf("Failed to clear caps\n");
++		cap_free(caps);
++		exit(EXIT_FAILURE);
++	}
++	cap_value_t cap_list[] = { CAP_NET_RAW };
++	if(cap_set_flag(caps, CAP_PERMITTED, 1, cap_list, CAP_SET) == -1 ||
++			cap_set_flag(caps, CAP_EFFECTIVE, 1, cap_list, CAP_SET) == -1) {
++		printf("Failed to set CAP_NET_RAW capability\n");
++		cap_free(caps);
++		exit(EXIT_FAILURE);
++	}
++	if(cap_set_proc(caps) < 0) {
++		printf("cap_set_proc() failed\n");
++		cap_free(caps);
++		exit(EXIT_FAILURE);
++	}
++	cap_free(caps);
++}
++
+ int main(int argc, char *argv[])
+ {
+ 	char *ifname = "eth0";
+@@ -118,6 +164,7 @@ int main(int argc, char *argv[])
+ 	struct sockaddr whereto;	/* who to wake up */
+ #endif
+ 	struct ether_addr eaddr;
++	drop_root();
+ 
+ 	while ((c = getopt(argc, argv, "bDi:p:uvV")) != -1)
+ 		switch (c) {
+-- 
+2.43.0
+

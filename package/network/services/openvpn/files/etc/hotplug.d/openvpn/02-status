@@ -1,0 +1,139 @@
+#!/bin/sh
+. /usr/share/libubox/jshn.sh
+
+INSTANCE=$(echo "$config" | cut -d"-" -f2 | cut -d"." -f1)
+TYPE=$(uci get openvpn."$INSTANCE".type)
+STATUS_FILE="/var/run/openvpn/openvpn-$INSTANCE.info"
+DNSMASQ_RELOAD=0
+UP_FILE="/var/run/openvpn/openvpn-$INSTANCE.up"
+
+create_status_file() {
+	json_init
+	json_add_string "name" "$INSTANCE"
+	json_add_string "ip" "$ifconfig_local"
+	json_add_string "ipv6" "$ifconfig_ipv6_local"
+	[ "$TYPE" = "client" ] && {
+		json_add_string "ip_remote" "$ifconfig_remote"
+		json_add_string "ipv6_remote" "$ifconfig_ipv6_remote"
+	}
+	json_add_string "time" "$(awk '{print $1}' /proc/uptime)"
+	json_dump > "$STATUS_FILE"
+	chown openvpn:openvpn "$STATUS_FILE"
+}
+
+send_package() {
+	local start end
+	local type="$1"
+	local tun_dev="$2"
+	local ipa="$3"
+	local mask="$4"
+
+	if [ -z "$mask" ]; then
+		eval "$(ipcalc.sh "$ipa")"
+	else
+		eval "$(ipcalc.sh "$ipa" "$mask")"
+	fi
+	if [ "$PREFIX" -lt "24" ]; then
+		start="1"
+		end="254"
+	else
+		start="${NETWORK##*.}"
+		end="${BROADCAST##*.}"
+	fi
+	if [ "$PREFIX" = "32" ] && [ "$type" = "icmp" ]; then
+		ping -c1 -W1 -I "$tun_dev" "$ipa" >/dev/null 2>&1 &
+	else
+		for i in $(seq "$start" "$end"); do
+			if [ "$type" = "arp" ]; then
+				arping -I "$tun_dev" -c1 -w1 "${IP%.*}.${i}" >/dev/null 2>&1 &
+			elif [ "$type" = "icmp" ]; then
+				ping -I "$tun_dev" -c1 -W1 "${IP%.*}.${i}" >/dev/null 2>&1 &
+			fi
+		done
+	fi
+	NOT_PINGED=0
+}
+
+create_ping_file() {
+	: > "$PING_FILE"
+	chown openvpn:openvpn "$PING_FILE"
+	NOT_PINGED=0
+}
+
+ping_skey() {
+	if [ -n "$ifconfig_remote" ] && [ -n "$ifconfig_local" ]; then
+		if ping -I "$dev" -c1 -W1 "$ifconfig_remote" >/dev/null 2>&1; then
+			create_ping_file
+		fi
+	elif [ -n "$ifconfig_ipv6_local" ] && [ -n "$ifconfig_ipv6_remote" ]; then
+		if ping6 -I "$dev" -c1 -W1 "$ifconfig_ipv6_remote" >/dev/null 2>&1; then
+			create_ping_file
+		fi
+	fi
+}
+
+ping_ipv4() {
+	if [ -n "$ifconfig_remote" ]; then
+		send_package "icmp" "$dev" "$ifconfig_remote" "255.255.255.255"
+	elif [ -n "$ifconfig_local" ] && [ -n "$ifconfig_netmask" ]; then
+		send_package "icmp" "$dev" "$ifconfig_local" "$ifconfig_netmask"
+	elif [ "$dev_type" = "tap" ] && [ -n "$bridge" ] && [ "$bridge" != "none" ]; then
+		dev_bridge="$(uci -q get network.${bridge}.name)"
+		for ip in $(ip -f inet addr show "$dev_bridge" | awk '/inet / {print $2}'); do
+			send_package "arp" "$dev" "$ip"
+		done
+	fi
+}
+
+check_connection() {
+	PING_FILE="/var/run/openvpn/openvpn-$INSTANCE.ping"
+	[ -f "$PING_FILE" ] && rm "$PING_FILE"
+	NOT_PINGED=1
+	chown openvpn:openvpn "$UP_FILE"
+	bridge="$(uci -q get openvpn.${INSTANCE}.to_bridge)"
+	if [ -n "$route_network_1" ]; then
+		i=1
+		route_network="$route_network_1"
+		while [ -n "$route_network" ]; do
+			[ "${route_network##*.}" = "0" ] && route_network="${route_network%.*}.1"
+			send_package "icmp" "$dev" "$route_network" "255.255.255.255"
+			i=$(( i+1 ))
+			eval "route_network=\$route_network_$i"
+		done
+	fi
+
+	ping_skey
+	[ "$NOT_PINGED" = 1 ] && ping_ipv4
+	{ sleep 7 && rm "$UP_FILE"; } &
+}
+
+case $ACTION in
+	up)
+		create_status_file
+		[ "$TYPE" = "client" ] && {
+			dns=$(env | sed -n -e "
+			/^foreign_option_.*=dhcp-option.*DNS /s//server=/p
+			/^foreign_option_.*=dhcp-option.*DOMAIN /s//domain=/p
+			" | sort -u)
+			if [ -n "$dns" ]; then
+				{
+					echo "$dns"
+					echo "$dns" | grep -q "server=" && echo "strict-order"
+				} >> /tmp/dnsmasq.d/$dev.dns
+				chown openvpn:dnsmasq /tmp/dnsmasq.d/$dev.dns
+				DNSMASQ_RELOAD=1
+			fi
+			# check connection after up
+			: > "$UP_FILE"
+			chown openvpn:openvpn "$UP_FILE"
+			{ sleep 3 && check_connection; } &
+		}
+		;;
+	down)
+		[ "$TYPE" = "client" ] && [ -f "/tmp/dnsmasq.d/$dev.dns" ] && rm /tmp/dnsmasq.d/$dev.dns 2> /dev/null && DNSMASQ_RELOAD=1
+		rm "$STATUS_FILE" 2> /dev/null
+		;;
+esac
+[ "$TYPE" = "client" ] && [ "$DNSMASQ_RELOAD" = "1" ] && ubus call rc init '{"action": "reload", "name": "dnsmasq"}' &
+
+exit 0

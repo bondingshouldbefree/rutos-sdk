@@ -1,0 +1,12 @@
+{
+	"user": "iosch",
+	"access": {
+		"ioman.*": {
+			"methods": [
+				"status",
+				"update",
+				"location"
+			]
+		}
+	}
+}

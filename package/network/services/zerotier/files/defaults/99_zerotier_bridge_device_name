@@ -1,0 +1,32 @@
+#!/bin/sh
+. /lib/functions.sh
+
+add_device_name() {
+	local section="$1"
+	local network_id device_name port bridge_to
+	config_get "bridge_to" "$section" "bridge_to"
+	config_get "device_name" "$section" "device_name"
+	config_get "network_id" "$section" "network_id"
+	[ -z "$device_name" ] || [ -z "$bridge_to" ] || [ -z "$network_id" ] && return 0
+	ports=$(uci_get "network" "br_$bridge_to" "ports")
+	echo " $ports " | grep -q " $device_name " && return 0
+	uci_remove "network" "br_$bridge_to" "ports"
+
+	for port in $ports; do
+		if [ "${port}" != "zt${network_id:0:13}" ]; then
+			uci_add_list "network" "br_$bridge_to" "ports" "$port"
+		fi
+	done
+	uci_add_list "network" "br_$bridge_to" "ports" "$device_name"
+}
+
+iterate_instance() {
+	local section="$1"
+	config_foreach "add_device_name" "network_${section}"
+}
+
+config_load zerotier
+config_foreach "iterate_instance" "instance"
+uci commit zerotier
+uci commit network
+exit 0

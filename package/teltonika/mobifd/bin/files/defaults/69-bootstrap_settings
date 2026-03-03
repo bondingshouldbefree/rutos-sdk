@@ -1,0 +1,150 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /lib/functions/modem.sh
+. /lib/functions/mobile.sh
+
+get_bootstrap_simcfg() {
+    for sim in $(seq 4); do
+        local boot_profile=$(/sbin/mnf_info -d "$sim" 2>/dev/null)
+        [ "$boot_profile" = "N/A" ] && continue
+        [ -z "$boot_profile" ] && return 1
+        /sbin/mnf_info -C "$sim" 2>/dev/null
+        return 0
+    done
+    return 1
+}
+
+remove_interfaces() {
+    local interface="$1"
+    local sim_pos="$2"
+    local modem_id="$3"
+
+	[ -z "$modem_id" ] || [ -z "$sim_pos" ] && return
+
+    local sim_cfg="$(uci -q get network."${interface}".sim)"
+    local modem_cfg="$(uci -q get network."${interface}".modem)"
+    local esim_profile="$(uci -q get network."${interface}".esim_profile)"
+
+    if [ "$sim_cfg" = "$sim_pos" ] && [ "$modem_cfg" = "$modem_id" ] && { [ "$esim_profile" = "0" ] || [ -z "$esim_profile" ]; }; then
+        uci delete network."${interface}"
+    fi
+}
+
+get_iface_metric () {
+    metric="$(uci -q get network."${interface}".metric)"
+    [ -z "$metric" ] && {
+        metric=0
+        get_highest_metric
+    } || metric=$((metric - 1))
+}
+
+remove_bootstrap_rules() {
+    local rule="$1"
+    local name="$(uci -q get firewall."${rule}".name)"
+    case "$name" in
+        Allow-cURL-eSIM|Allow-RMS-eSIM|Allow-DNS-eSIM|Allow-DHCP-Output-eSIM|Allow-DHCP-Input-eSIM)
+            uci delete firewall."${rule}"
+        ;;
+    esac
+}
+
+remove_bootstrap_zones() {
+    local zone="$1"
+    local interface="$2"
+    local name="$(uci -q get firewall."${zone}".name)"
+    local network="$(uci -q get firewall."${zone}".network)"
+
+    if [ "$name" = "eSIM" ]; then
+        uci delete firewall."${zone}"
+        return
+    fi
+
+    if [ -n "$interface" ] && echo "$network" | grep -qw "$interface"; then
+        new_network=$(echo "$network" | sed "s/\b$interface\b//g" | xargs)
+        uci set firewall."$zone".network="$new_network"
+    fi
+}
+
+find_bootstrap_interface () {
+    local iface="$1"
+    local bootstrap="$(uci -q get network."${iface}".bootstrap)"
+    [ -n "$bootstrap" ] && interface="$iface"
+}
+
+configure_sim_switch() {
+    local sim="$1"
+    local position="$(uci -q get sim_switch."${sim}".position)"
+    local esim_profile="$(uci -q get sim_switch."${sim}".esim_profile)"
+    local modem_id="$(uci -q get sim_switch."${sim}".modem)"
+
+    [ "$position" = "$count" ] && { [ "$esim_profile" = "0" ] || [ -z "$esim_profile" ]; } && [ "$modem_id" = "$id" ] && {
+        configure_bootstrap_sim_switch_rules "$id" "$position" "$sim"
+        return 1
+    }
+}
+
+get_sim_position_by_simcfg() {
+	local simcfg="$1"
+
+	local full_sim_cfg=""
+	for i in $(seq 4); do
+		local sim_cfg=$(mnf_info -C${i} 2>/dev/null)
+		[ -n "$sim_cfg" ] && full_sim_cfg="${full_sim_cfg:+${full_sim_cfg}_}${sim_cfg}"
+	done
+
+	[ -n "$(mnf_info -C4 2>/dev/null)" ] &&
+		sorted_sim_configs="$(echo $full_sim_cfg | tr '_' '\n')" ||
+		sorted_sim_configs=$(echo $full_sim_cfg | tr '_' '\n' | awk '{print substr($0,3,1)substr($0,2,1),$0}' | sort | cut -d ' ' -f2)
+
+	local i=0
+	for sim_config in $sorted_sim_configs; do
+		i=$((i + 1))
+
+		if [ "$sim_config" = "$simcfg" ]; then
+			echo "$i" && return 0
+		fi
+	done
+
+	return 1
+}
+
+interface=""
+config_load "network"
+config_foreach find_bootstrap_interface interface
+
+sim_cfg=$(get_bootstrap_simcfg)
+
+{ [ -n "$interface" ] && [ -n "$sim_cfg" ]; } || \
+{ [ -z "$interface" ] && [ -z "$sim_cfg" ]; } && exit 0
+
+[ -n "$sim_cfg" ] && [ -z "$interface" ] && {
+    bootstrap=1
+    num="$(echo "$sim_cfg" | cut -c2)"
+    count=$(get_sim_position_by_simcfg "$sim_cfg")
+    id="$(jsonfilter -i "/etc/board.json" -e "@.modems[@.num=\"${num}\"].id" 2>/dev/null)"
+    interface="mob${num}s${count}a1"
+    config_load sim_switch
+    config_foreach configure_sim_switch sim
+}
+
+[ -z "$sim_cfg" ] && [ -n "$interface" ] && {
+    count="$(uci -q get network."${interface}".sim)"
+    id="$(uci -q get network."${interface}".modem)"
+    num="$(jsonfilter -i "/etc/board.json" -e "@.modems[@.id=\"${id}\"].num" 2>/dev/null)"
+}
+
+get_iface_metric
+
+config_load "firewall"
+config_foreach remove_bootstrap_rules rule 
+config_foreach remove_bootstrap_zones zone "$interface"
+
+config_load "network"
+config_foreach remove_interfaces interface "$count" "$id"
+
+configure_interface
+
+uci commit
+
+exit 0

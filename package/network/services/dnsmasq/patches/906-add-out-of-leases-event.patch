@@ -1,0 +1,166 @@
+Index: dnsmasq-2.90/src/dnsmasq.h
+===================================================================
+--- dnsmasq-2.90.orig/src/dnsmasq.h
++++ dnsmasq-2.90/src/dnsmasq.h
+@@ -1056,7 +1056,7 @@ struct ra_interface {
+ };
+ 
+ struct dhcp_context {
+-  unsigned int lease_time, addr_epoch;
++  unsigned int lease_time, addr_epoch, no_leases_available;
+   struct in_addr netmask, broadcast;
+   struct in_addr local, router;
+   struct in_addr start, end; /* range of available addresses */
+@@ -1711,6 +1711,8 @@ int ubus_dns_notify_has_subscribers(void
+ struct blob_buf *ubus_dns_notify_prepare(void);
+ int ubus_dns_notify(const char *type, ubus_dns_notify_cb cb, void *priv);
+ void ubus_event_bcast(const char *type, const char *mac, const char *ip, const char *name, const char *interface);
++void ubus_log_leases_from_context(struct dhcp_context *context);
++void ubus_events_log(char *message);
+ #  ifdef HAVE_CONNTRACK
+ void ubus_event_bcast_connmark_allowlist_refused(u32 mark, const char *name);
+ void ubus_event_bcast_connmark_allowlist_resolved(u32 mark, const char *pattern, const char *ip, u32 ttl);
+Index: dnsmasq-2.90/src/rfc2131.c
+===================================================================
+--- dnsmasq-2.90.orig/src/rfc2131.c
++++ dnsmasq-2.90/src/rfc2131.c
+@@ -623,8 +623,15 @@ size_t dhcp_reply(struct dhcp_context *c
+ 		       lease_prune(lease, now);
+ 		       lease = NULL;
+ 		     }
+-		   if (!address_allocate(context, &mess->yiaddr, mess->chaddr, mess->hlen, tagif_netid, now, loopback))
++		   if (!address_allocate(context, &mess->yiaddr, mess->chaddr, mess->hlen, tagif_netid, now, loopback)) {
+ 		     message = _("no address available");
++#ifdef HAVE_UBUS
++		     ubus_log_leases_from_context(context);
++#endif
++		   }
++       		   else {
++		    context->no_leases_available = 0;
++       		   }
+ 		}
+ 	      else
+ 		mess->yiaddr = lease->addr;
+@@ -651,9 +658,16 @@ size_t dhcp_reply(struct dhcp_context *c
+ 
+ 	  if (!message && 
+ 	      !lease && 
+-	      (!(lease = lease4_allocate(mess->yiaddr))))
++	      (!(lease = lease4_allocate(mess->yiaddr)))) {
+ 	    message = _("no leases left");
+-	  
++#ifdef HAVE_UBUS
++	    ubus_log_leases_from_context(context);
++#endif
++	  }
++	  else
++	  {
++		  context->no_leases_available = 0;
++	  }
+ 	  if (!message)
+ 	    {
+ 	      logaddr = &mess->yiaddr;
+@@ -1126,19 +1140,29 @@ size_t dhcp_reply(struct dhcp_context *c
+ 		}
+ 	    }
+ 	  
+-	  if (conf.s_addr)
++	  if (conf.s_addr) {
+ 	    mess->yiaddr = conf;
++	  }
+ 	  else if (lease && 
+ 		   address_available(context, lease->addr, tagif_netid) && 
+-		   !config_find_by_address(daemon->dhcp_conf, lease->addr))
++		   !config_find_by_address(daemon->dhcp_conf, lease->addr)) {
+ 	    mess->yiaddr = lease->addr;
++	  }
+ 	  else if (opt && address_available(context, addr, tagif_netid) && !lease_find_by_addr(addr) && 
+-		   !config_find_by_address(daemon->dhcp_conf, addr) && do_icmp_ping(now, addr, 0, loopback))
++		   !config_find_by_address(daemon->dhcp_conf, addr) && do_icmp_ping(now, addr, 0, loopback)) {
+ 	    mess->yiaddr = addr;
+-	  else if (emac_len == 0)
++	  }
++	  else if (emac_len == 0) {
+ 	    message = _("no unique-id");
+-	  else if (!address_allocate(context, &mess->yiaddr, emac, emac_len, tagif_netid, now, loopback))
+-	    message = _("no address available");      
++	  }
++	  else if (!address_allocate(context, &mess->yiaddr, emac, emac_len, tagif_netid, now, loopback)) {
++	    message = _("no address available");
++#ifdef HAVE_UBUS
++	    ubus_log_leases_from_context(context);
++#endif
++	  } else {
++	    context->no_leases_available = 0;
++	  }
+ 	}
+       
+       daemon->metrics[METRIC_DHCPDISCOVER]++;
+@@ -1347,10 +1371,16 @@ size_t dhcp_reply(struct dhcp_context *c
+ 	      
+ 	      else if (!lease)
+ 		{	     
+-		  if ((lease = lease4_allocate(mess->yiaddr)))
++		  if ((lease = lease4_allocate(mess->yiaddr))) {
+ 		    do_classes = 1;
+-		  else
++		    context->no_leases_available = 0;
++		  }
++		  else {
+ 		    message = _("no leases left");
++#ifdef HAVE_UBUS
++		    ubus_log_leases_from_context(context);
++#endif
++		  }
+ 		}
+ 	    }
+ 	}
+Index: dnsmasq-2.90/src/ubus.c
+===================================================================
+--- dnsmasq-2.90.orig/src/ubus.c
++++ dnsmasq-2.90/src/ubus.c
+@@ -474,6 +474,44 @@ void ubus_event_bcast(const char *type,
+   CHECK(ubus_notify(ubus, &ubus_object, type, b.head, -1));
+ }
+ 
++void ubus_log_leases_from_context(struct dhcp_context *context) {
++  if(context->no_leases_available)
++    return;
++  context->no_leases_available = 1;
++
++  if(context->netid.net && context->netid.net[0]) {
++    char *event_message[64 + IFNAMSIZ];
++    snprintf(event_message, 64 + IFNAMSIZ, "No leases available in %s interface address pool", context->netid.net);
++    ubus_events_log(event_message);
++  } else {
++    char *start[16];
++    char *addr = inet_ntoa(context->start);
++    strncpy(start, addr, 16);
++    char *event_message[80 + IFNAMSIZ];
++    snprintf(event_message, 80 + IFNAMSIZ, "No leases available in %s - %s address pool", start, inet_ntoa(context->end));
++    ubus_events_log(event_message);
++  }
++}
++
++void ubus_events_log(char *message)
++{
++  struct ubus_context *ubus = (struct ubus_context *)daemon->ubus;
++
++  if (!ubus || !message)
++    return;
++
++  uint32_t id;
++  CHECK(ubus_lookup_id(ubus, "log", &id));
++
++  CHECK(blob_buf_init(&b, BLOBMSG_TYPE_TABLE));
++
++  CHECK(blobmsg_add_string(&b, "event", message));
++  CHECK(blobmsg_add_string(&b, "sender", "DHCP"));
++  CHECK(blobmsg_add_u32(&b, "table", 2));
++  CHECK(blobmsg_add_u32(&b, "write_db", 1));
++  CHECK(ubus_invoke(ubus, id, "write_ext", b.head, NULL, 0, 1));
++}
++
+ #ifdef HAVE_CONNTRACK
+ void ubus_event_bcast_connmark_allowlist_refused(u32 mark, const char *name)
+ {

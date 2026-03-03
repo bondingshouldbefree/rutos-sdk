@@ -1,0 +1,80 @@
+Index: mwan3-2.10.12/files/usr/share/15-mwan3
+===================================================================
+--- mwan3-2.10.12.orig/files/usr/share/15-mwan3
++++ mwan3-2.10.12/files/usr/share/15-mwan3
+@@ -114,33 +114,48 @@ esac
+ 
+ mwan3_flush_conntrack "$IFNAME" "$ACTION"
+ 
+-flush_conntrack() {
+-	ipsec_enabled
+-	local conn_name="${1%_*}" child_connections timeout=10
+-
++restart_ipsec() {
++	local conn_name="${1%_*}" child_connections timeout=10 active
+ 	config_get ipsec_enabled "$conn_name" enabled 0
+-	[ "$MWAN3_STARTUP" != "init" ] && [ "$enabled" = "1" ] || return 0
+-	echo f > /proc/net/nf_conntrack
+-	child_connections="$(/etc/init.d/swanctl get_child_conn ${conn_name})"
+-	logger -t "ipsec" "mwan3 is terminating IPSec connection $conn_name"
+-	swanctl --terminate --ike "$conn_name" --timeout "$timeout"
+-	swanctl --initiate --ike "$conn_name" --timeout "$timeout"
+-	for child in $child_connections; do
+-		logger -t "ipsec" "mwan3 is initiating IPSec child connection $child"
+-		swanctl --initiate --child "$child" --timeout "$timeout"
+-	done
++	ipsec_restarted=false
++
++	active="$(cat /tmp/run/mwan3/active_wan)"
++	if [ "$MWAN3_STARTUP" != "init" ] && [ "$ipsec_enabled" = "1" ]; then
++		case "$ACTION" in
++			ifup|connected)
++				[ "$IFNAME" = "$active" ] && restart=1
++				;;
++			ifdown|disconnected)
++				[ "$IFNAME" != "$active" ] && [ "$(uci -q get mwan3."${IFNAME}"_member_mwan.metric)" -lt "$(uci -q get mwan3."${active}"_member_mwan.metric)" ] && restart=1
++				;;
++		esac
++		if [ "$restart" = 1 ]; then
++			{	sleep 3
++				echo f > /proc/net/nf_conntrack
++				child_connections="$(/etc/init.d/swanctl get_child_conn "${conn_name}")"
++				logger -t "ipsec" "mwan3 is terminating IPSec connection $conn_name"
++				swanctl --terminate --ike "$conn_name" --timeout "$timeout"
++				swanctl --initiate --ike "$conn_name" --timeout "$timeout"
++				for child in $child_connections; do
++					logger -t "ipsec" "mwan3 is initiating IPSec child connection $child"
++					swanctl --initiate --child "$child" --timeout "$timeout"
++				done;
++			} &
++			ipsec_restarted=true
++		fi
++	fi
+ }
+ 
+ ipsec_routes() {
+-	[ "$ipsec_enabled" = "1" ] || return 0
++	$ipsec_restarted || return 0
+ 	local wan_device="$(cat /var/run/mwan3/active_wan)"
+ 	mwan3_get_true_iface "wan_device" "$wan_device"
+ 	network_get_device "wan_device" "$wan_device"
+-	local curr="$(ip route show default dev $wan_device)"
++	local curr="$(ip route show default dev "$wan_device")"
+ 	local curr_default="$(ip route show default metric 0)"
+ 
+-	[ -n "$curr_default" ] && ip route del $curr_default
+-	ip route add dev "$wan_device" $curr metric 0
++	[ -n "$curr_default" ] && ip route del "$curr_default"
++	ip route add dev "$wan_device" "$curr" metric 0
+ }
+ 
+ restart_openvpn() {
+@@ -192,7 +207,7 @@ restart_vpn_services() {
+ }
+ 
+ config_load ipsec
+-config_foreach flush_conntrack connection
++config_foreach restart_ipsec connection
+ ipsec_routes
+ config_load openvpn
+ config_foreach restart_openvpn openvpn

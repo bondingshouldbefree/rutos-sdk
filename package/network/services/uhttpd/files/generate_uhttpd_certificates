@@ -1,0 +1,167 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CONFIG="uhttpd"
+UHTTPD_BIN="/usr/sbin/uhttpd"
+OPENSSL_BIN="/usr/bin/openssl"
+
+DEFAULT_UHTTPD_CERT="/etc/uhttpd.crt"
+DEFAULT_UHTTPD_KEY="/etc/uhttpd.key"
+DEFAULT_UHTTPD_CA_CERT="/etc/uhttpd-ca.crt"
+DEFAULT_UHTTPD_CA_KEY="/etc/uhttpd-ca.key"
+
+TMP_CERT="/tmp/uhttpd.crt.new"
+TMP_KEY="/tmp/uhttpd.key.new"
+TMP_CA_CERT="/tmp/uhttpd-ca.crt.new"
+TMP_CA_KEY="/tmp/uhttpd-ca.key.new"
+
+cleanup() {
+	rm -f "$TMP_CERT" "$TMP_KEY" "$TMP_CA_CERT" "$TMP_CA_KEY"
+}
+trap cleanup EXIT INT TERM
+
+register_certificate_in_config() {
+	local cert="$1"
+	local key="$2"
+	local days="$3"
+	local key_type="$4"
+	local ec_curve="$5"
+
+	[ -e "/etc/config/certificates" ] || return 0
+
+	. /lib/functions.sh
+
+	local CFG="certificates"
+	local encryption key_size
+
+	if [ "$key_type" = "ec" ]; then
+		key_size="${ec_curve#P-}"
+		encryption="ecc"
+	else
+		key_size="$bits"
+		encryption="rsa"
+	fi
+
+	local expiry=$(( $(date +%s) + ($days * 86400) ))
+
+	local cert_section=$(uci show certificates | grep "path='$cert'" | cut -d. -f2 | head -1)
+	local key_section=$(uci show certificates | grep "path='$key'" | cut -d. -f2 | head -1)
+
+	if [ -n "$cert_section" ]; then
+		uci_set "$CFG" "$cert_section" datetime "$expiry"
+		uci_set "$CFG" "$cert_section" encryption "$encryption"
+		uci_set "$CFG" "$cert_section" key_size "$key_size"
+
+		local has_service=$(uci get "$CFG.$cert_section.services" 2>/dev/null | grep -c "uhttpd:main")
+		[ "$has_service" = "0" ] && uci_add_list "$CFG" "$cert_section" services 'uhttpd:main'
+	else
+		local sec_cert=$(uci add certificates certificate)
+		uci_set "$CFG" "$sec_cert" datetime "$expiry"
+		uci_set "$CFG" "$sec_cert" encryption "$encryption"
+		uci_set "$CFG" "$sec_cert" type 'cert'
+		uci_set "$CFG" "$sec_cert" name 'Teltonika'
+		uci_set "$CFG" "$sec_cert" cert_type 'server'
+		uci_set "$CFG" "$sec_cert" key_size "$key_size"
+		uci_set "$CFG" "$sec_cert" fullname "$(basename "$cert")"
+		uci_set "$CFG" "$sec_cert" path "$cert"
+		uci_add_list "$CFG" "$sec_cert" services 'uhttpd:main'
+	fi
+
+	if [ -n "$key_section" ]; then
+		uci_set "$CFG" "$key_section" datetime "$expiry"
+		uci_set "$CFG" "$key_section" encryption "$encryption"
+		uci_set "$CFG" "$key_section" key_size "$key_size"
+
+		local has_service=$(uci get "$CFG.$key_section.services" 2>/dev/null | grep -c "uhttpd:main")
+		[ "$has_service" = "0" ] && uci_add_list "$CFG" "$key_section" services 'uhttpd:main'
+	else
+		local sec_key=$(uci add certificates certificate)
+		uci_set "$CFG" "$sec_key" datetime "$expiry"
+		uci_set "$CFG" "$sec_key" encryption "$encryption"
+		uci_set "$CFG" "$sec_key" pass_required '0'
+		uci_set "$CFG" "$sec_key" type 'key'
+		uci_set "$CFG" "$sec_key" cert_type 'server'
+		uci_set "$CFG" "$sec_key" key_size "$key_size"
+		uci_set "$CFG" "$sec_key" fullname "$(basename "$key")"
+		uci_set "$CFG" "$sec_key" path "$key"
+		uci_add_list "$CFG" "$sec_key" services 'uhttpd:main'
+	fi
+
+	uci_commit "$CFG"
+}
+
+sign_certificate() {
+	local days="$1"
+	local crt_req="$2"
+	local crt_final="$3"
+	local crt_ca_cert="$4"
+	local crt_ca_key="$5"
+
+	local macaddr="$(mnf_info -m)"
+	#							replace invalid dashes JSON keys
+	local ip_addr=$(ubus call network.interface.lan status | tr '-' '_' | jsonfilter -e "@.ipv4_address[0].address")
+	[ -z "$ip_addr" ] && ip_addr=$(jsonfilter -i /etc/board.json -e "@.network.lan.default_ip")
+
+	local extfile="$(mktemp)"
+	echo -e "extendedKeyUsage=serverAuth\nsubjectAltName=DNS:Teltonika${macaddr},IP:${ip_addr}" > "$extfile"
+	$OPENSSL_BIN x509 -req -in "$crt_req" -CA "$crt_ca_cert" \
+		-CAkey "$crt_ca_key" -out "$crt_final" -days $days -extfile "$extfile" &>/dev/null
+	rm -f "$extfile" "$crt_req"
+}
+
+generate_keys() {
+	config_load "$CONFIG"
+	local crt="$1"
+	local key="$2"
+	local days bits country state location commonname key_type ec_curve
+
+	config_get days       "defaults" days       "3650"
+	config_get bits       "defaults" bits       "2048"
+	config_get country    "defaults" country    "ZZ"
+	config_get state      "defaults" state      "Somewhere"
+	config_get location   "defaults" location   "Unknown"
+	config_get commonname "defaults" commonname "OpenWrt"
+	config_get key_type   "defaults" key_type   "rsa"
+	config_get ec_curve   "defaults" ec_curve   "P-256"
+
+	local KEY_OPTS="rsa:$bits"
+	local UNIQUEID=$(dd if=/dev/urandom bs=1 count=4 2>/dev/null | hexdump -e '1/1 "%02x"')
+	[ "$key_type" = "ec" ] && KEY_OPTS="ec -pkeyopt ec_paramgen_curve:$ec_curve"
+	[ -x "$OPENSSL_BIN" ] || return
+
+	local crt_ca_cert="$DEFAULT_UHTTPD_CA_CERT"
+	local crt_ca_key="$DEFAULT_UHTTPD_CA_KEY"
+
+	if [ ! -s "$crt_ca_cert" ] || [ ! -s "$crt_ca_key" ]; then
+		crt_ca_cert="$TMP_CA_CERT"
+		crt_ca_key="$TMP_CA_KEY"
+
+		$OPENSSL_BIN req -x509 -nodes -subj "/CN=ca" \
+			-newkey $KEY_OPTS -keyout "$crt_ca_key" -out "$crt_ca_cert" -days $days &>/dev/null
+	fi
+
+	local crt_key="$TMP_KEY"
+	local crt_final="$TMP_CERT"
+
+	local crt_req="$(mktemp)"
+	$OPENSSL_BIN req -nodes \
+		-subj "/C=${country}/ST=${state}/L=${location}/O=${commonname}$UNIQUEID/CN=${commonname}" \
+		-newkey $KEY_OPTS -keyout "$crt_key" -out "$crt_req" &>/dev/null
+	sign_certificate "$days" "$crt_req" "$crt_final" "$crt_ca_cert" "$crt_ca_key"
+	sync
+	cat "$crt_key" > "$key"
+	cat "$crt_final" > "$crt"
+	[ "$crt_ca_cert" = "$DEFAULT_UHTTPD_CA_CERT" ] || cat "$crt_ca_cert" > "$DEFAULT_UHTTPD_CA_CERT"
+	[ "$crt_ca_key" = "$DEFAULT_UHTTPD_CA_KEY" ] || cat "$crt_ca_key" > "$DEFAULT_UHTTPD_CA_KEY"
+	register_certificate_in_config "$crt" "$key" "$days" "$key_type" "$ec_curve"
+	chown uhttpd:uhttpd "$crt" "$key"
+	chown uhttpd:uhttpd "${DEFAULT_UHTTPD_CA_CERT}" "${DEFAULT_UHTTPD_CA_KEY}"
+}
+
+passed_cert="${1:-$DEFAULT_UHTTPD_CERT}"
+passed_key="${2:-$DEFAULT_UHTTPD_KEY}"
+
+if [ ! -s "$passed_cert" ] || [ ! -s "$passed_key" ]; then
+	generate_keys "$passed_cert" "$passed_key"
+fi

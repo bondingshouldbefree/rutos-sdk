@@ -1,0 +1,1 @@
+{"system/admin/memory_expansion/usb":{"description":"memory expansion","read":{"api":{"/usb_tools/memory_expansion/*":["*"],"/usb_tools/mount/options/*":["fs","type","description","label","in_use"]}},"write":{"api":["/usb_tools/memory_expansion/*"]}}}

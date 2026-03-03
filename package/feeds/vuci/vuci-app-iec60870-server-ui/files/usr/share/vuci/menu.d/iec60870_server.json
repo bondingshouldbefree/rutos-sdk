@@ -1,0 +1,12 @@
+{
+  "services/iec60870": {
+    "title": "IEC 60870-5",
+    "index": 50
+  },
+  "services/iec60870/server": {
+    "index": 20,
+    "title": "Server",
+    "view": "services/IEC60870Server",
+    "acls": ["services/iec60870_server"]
+  }
+}

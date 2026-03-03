@@ -1,0 +1,23 @@
+{
+  "system/admin": {
+    "title": "Administration",
+    "index": 10
+  },
+  "system/admin/access_control": {
+    "title": "Access Control",
+    "index": 40
+  },
+  "system/admin/access_control/general": {
+    "title": "General",
+    "acls": ["system/admin/access_control/general"],
+    "view": "system/AccessControlGeneral",
+    "index": 10,
+    "main_page": true
+  },
+  "system/admin/access_control/safety": {
+    "title": "Security",
+    "acls": ["system/admin/access_control/safety"],
+    "view": "system/AccessControlSafety",
+    "index": 30
+  }
+}

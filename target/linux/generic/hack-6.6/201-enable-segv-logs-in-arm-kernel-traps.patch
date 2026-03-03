@@ -1,0 +1,11 @@
+--- a/arch/arm/kernel/traps.c
++++ b/arch/arm/kernel/traps.c
+@@ -52,7 +52,7 @@ static const char *handler[]= {
+ void *vectors_page;
+ 
+ #ifdef CONFIG_DEBUG_USER
+-unsigned int user_debug;
++unsigned int user_debug = UDBG_SEGV; // by default log segfaults
+ 
+ static int __init user_debug_setup(char *str)
+ {

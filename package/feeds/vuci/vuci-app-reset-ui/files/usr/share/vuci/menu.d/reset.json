@@ -1,0 +1,12 @@
+{
+	"system/maintenance": {
+		"title": "Maintenance",
+		"index": 20
+	},
+	"system/maintenance/reset": {
+		"title": "Reset Settings",
+		"index": 100,
+		"acls": [ "system/maintenance/reset" ],
+		"view": "system/Reset"
+	}
+}

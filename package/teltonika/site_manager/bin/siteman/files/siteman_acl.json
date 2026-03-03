@@ -1,0 +1,9 @@
+{
+    "user": "siteman",
+    "publish": ["site_manager", "site_manager.*"],
+    "access": {
+        "network.interface.*": {
+            "methods": ["status"]
+        }
+    }
+}

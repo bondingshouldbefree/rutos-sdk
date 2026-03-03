@@ -1,0 +1,1 @@
+{"status/network/topology":{"description":"networkmap configuration","read":{"api":{"/topology/*":["*"],"/network_usage/*":["*"],"/ports_settings/status/*":["id","speed","power","poe_enable","dot1x","enabled","bond_name","bond_index","name"]}},"write":{"api":["/topology/*","/network_usage/*"]}}}

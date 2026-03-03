@@ -1,0 +1,2 @@
+/etc/ulogd.conf     ulogd:ulogd 660
+/etc/config/ulogd   ulogd:ulogd 660

@@ -1,0 +1,17 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+check_redirect() {
+	local section="$1"
+	config_get "service" "$section" "service"
+	[ "$service" != "dmvpn" ] && return
+	config_get "redirect" "$section" "redirect"
+	if [ "$redirect" = "1" ]; then
+		uci_set "dmvpn" "$section" "redirect" "1"
+	fi
+}
+
+config_load "nhrp"
+config_foreach "check_redirect" "nhrp_instance"
+uci_commit "dmvpn"

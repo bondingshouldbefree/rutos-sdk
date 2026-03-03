@@ -1,0 +1,115 @@
+--- a/iprule.h
++++ b/iprule.h
+@@ -75,6 +75,9 @@ enum iprule_flags {
+ 
+ 	/* rule specifies dport */
+ 	IPRULE_DPORT		= (1 << 17),
++
++	/* rule specifies l3mdev lookup */
++	IPRULE_L3MDEV		= (1 << 18),
+ };
+ 
+ struct iprule {
+--- a/system-linux.c
++++ b/system-linux.c
+@@ -1130,7 +1130,7 @@ static char *system_get_vrf(const char *
+ 	char *path;
+ 	ssize_t len = -1;
+ 
+-	if (snprintf(master, sizeof(master), "%s/devices/virtual/net/%s/master", sysfs_path, name) <= 0)
++	if (snprintf(master, sizeof(master), "%s/class/net/%s/master", sysfs_path, name) <= 0)
+ 		return NULL;
+ 
+ 	len = readlink(master, buf, buflen);
+@@ -1168,10 +1168,14 @@ retry:
+ 	ret = 0;
+ 	oldvrf = system_get_vrf(dev->ifname, dev_buf, sizeof(dev_buf));
+ 	if (!oldvrf || strcmp(oldvrf, vrf->ifname) != 0) {
+-		ret = system_vrf_if(vrf->ifindex, dev);
++		// Manually query vrf ifindex if it hasn't yet been updated by netifd
++		int vrf_ifindex = vrf->ifindex == 0 ? system_if_resolve(vrf) : vrf->ifindex;
++		ret = system_vrf_if(vrf_ifindex, dev);
++		if (tries > 0)
++			D(SYSTEM, "Failed to add device '%s' to vrf '%s' (tries=%d): %s\n",
++			dev->ifname, vrf->ifname, tries, strerror(errno));
++
+ 		tries++;
+-		D(SYSTEM, "Failed to add device '%s' to vrf '%s' (tries=%d): %s\n",
+-		  dev->ifname, vrf->ifname, tries, strerror(errno));
+ 		if (tries <= 3)
+ 			goto retry;
+ 	}
+@@ -3791,6 +3795,8 @@ static int system_iprule(struct iprule *
+ 		rtm.rtm_type = rule->action;
+ 	else if (rule->flags & IPRULE_GOTO)
+ 		rtm.rtm_type = FR_ACT_GOTO;
++	else if (rule->flags & IPRULE_L3MDEV)
++		rtm.rtm_type = FR_ACT_TO_TBL;
+ 	else if (!(rule->flags & (IPRULE_LOOKUP | IPRULE_ACTION | IPRULE_GOTO)))
+ 		rtm.rtm_type = FR_ACT_NOP;
+ 
+@@ -3832,6 +3838,9 @@ static int system_iprule(struct iprule *
+ 	if (rule->flags & IPRULE_SUP_PREFIXLEN)
+ 		nla_put_u32(msg, FRA_SUPPRESS_PREFIXLEN, rule->sup_prefixlen);
+ 
++	if (rule->flags & IPRULE_L3MDEV)
++		nla_put_u8(msg, FRA_L3MDEV, 1);
++
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+ 	if (rule->flags & IPRULE_UIDRANGE) {
+ 		struct fib_rule_uid_range uidrange = {
+--- a/vrf.c
++++ b/vrf.c
+@@ -36,6 +36,7 @@ static struct device *vrf_create(const c
+ static void vrf_config_init(struct device *dev);
+ static void vrf_free(struct device *dev);
+ static void vrf_dump_info(struct device *dev, struct blob_buf *b);
++static void vrf_add_l3mdev_rule();
+ static enum dev_change_type
+ vrf_reload(struct device *dev, struct blob_attr *attr);
+ 
+@@ -166,12 +167,6 @@ vrf_enable_member(struct vrf_member *vm)
+ 	if (ret)
+ 		goto error;
+ 
+-	/* Disable IPv6 for vrf ports */
+-	if (!(vm->dev.dev->settings.flags & DEV_OPT_IPV6)) {
+-		vm->dev.dev->settings.ipv6 = 0;
+-		vm->dev.dev->settings.flags |= DEV_OPT_IPV6;
+-	}
+-
+ 	ret = device_claim(&vm->dev);
+ 	if (ret < 0)
+ 		goto error;
+@@ -360,6 +355,8 @@ vrf_set_up(struct vrf_state *vst)
+ 	ret = vst->set_state(&vst->dev, true);
+ 	if (ret < 0)
+ 		vrf_set_down(vst);
++	else
++		vrf_add_l3mdev_rule();
+ 
+ 	return ret;
+ }
+@@ -681,6 +678,22 @@ vrf_create(const char *name, struct devi
+ 	return dev;
+ }
+ 
++static void
++vrf_add_l3mdev_rule() {
++	struct iprule rule = {
++		.flags = IPRULE_PRIORITY | IPRULE_L3MDEV | IPRULE_INET4,
++		.priority = 1000
++	};
++
++	system_del_iprule(&rule);
++	system_add_iprule(&rule);
++	rule.flags &= ~IPRULE_INET4;
++	rule.flags |= IPRULE_INET6;
++	system_del_iprule(&rule);
++	system_add_iprule(&rule);
++
++}
++
+ static void __init vrf_state_type_init(void)
+ {
+ 	device_type_add(&vrf_state_type);

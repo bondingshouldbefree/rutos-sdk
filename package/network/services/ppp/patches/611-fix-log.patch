@@ -1,0 +1,74 @@
+Index: ppp-2.4.9.git-2021-01-04/pppd/main.c
+===================================================================
+--- ppp-2.4.9.git-2021-01-04.orig/pppd/main.c
++++ ppp-2.4.9.git-2021-01-04/pppd/main.c
+@@ -256,6 +256,9 @@ void print_link_stats(void);
+ extern	char	*getlogin(void);
+ int main(int, char *[]);
+ 
++const char *instance_id = NULL;
++static char log_id[64];
++
+ /*
+  * PPP Data Link Layer "protocol" table.
+  * One entry per supported protocol.
+@@ -793,13 +796,34 @@ detach(void)
+     close(pipefd[0]);
+ }
+ 
++void log_set_id(const char *path)
++{
++    const char *base = strrchr(path, '/');
++    if (base)
++        base++;
++    else
++        base = path;
++    if (strncmp(base, "options.", 8) != 0)
++        return;
++    const char *dot = strrchr(path, '.');
++    if (dot && *(dot+1) != '\0') {
++        instance_id = dot + 1;
++        reopen_log();
++    }
++}
++
+ /*
+  * reopen_log - (re)open our connection to syslog.
+  */
+ void
+ reopen_log(void)
+ {
+-    openlog("pppd", LOG_PID | LOG_NDELAY, LOG_PPP);
++    if (instance_id) {
++        snprintf(log_id, sizeof(log_id), "pppd(%s)", instance_id);
++        openlog(log_id, LOG_PID | LOG_NDELAY, LOG_PPP);
++    } else {
++        openlog("pppd", LOG_PID | LOG_NDELAY, LOG_PPP);
++    }
+     setlogmask(LOG_UPTO(LOG_INFO));
+ }
+ 
+Index: ppp-2.4.9.git-2021-01-04/pppd/options.c
+===================================================================
+--- ppp-2.4.9.git-2021-01-04.orig/pppd/options.c
++++ ppp-2.4.9.git-2021-01-04/pppd/options.c
+@@ -523,6 +523,7 @@ options_from_file(char *filename, int mu
+ 	if (!process_option(opt, cmd, argv))
+ 	    goto err;
+     }
++	log_set_id(filename);
+     ret = 1;
+ 
+ err:
+Index: ppp-2.4.9.git-2021-01-04/pppd/pppd.h
+===================================================================
+--- ppp-2.4.9.git-2021-01-04.orig/pppd/pppd.h
++++ ppp-2.4.9.git-2021-01-04/pppd/pppd.h
+@@ -742,6 +742,7 @@ void print_options(printer_func, void *)
+ 				/* print out values of all options */
+ 
+ int parse_dotted_ip(char *, u_int32_t *);
++void log_set_id(const char *path);
+ 
+ /*
+  * Hooks to enable plugins to change various things.

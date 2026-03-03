@@ -1,0 +1,12 @@
+{
+	"user": "iec60870_client",
+	"publish": [ "iec60870_client.app", "iec60870_client.rpc" ],
+	"access": {
+		"iec60870_client.app": {
+			"methods": [
+				"test",
+				"scan"
+			]
+		}
+	}
+}

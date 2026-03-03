@@ -1,0 +1,26 @@
+Index: fstools-2022-05-03-9e11b372/block.c
+===================================================================
+--- fstools-2022-05-03-9e11b372.orig/block.c
++++ fstools-2022-05-03-9e11b372/block.c
+@@ -1492,6 +1492,10 @@ static int check_extroot(char *path)
+ 		libubi_t libubi;
+ 
+ 		libubi = libubi_open();
++		if (!libubi) {
++			ULOG_ERR("cannot open libubi");
++			return -1;
++		}
+ 		err = find_block_ubi_RO(libubi, "rootfs", devpath, sizeof(devpath));
+ 		libubi_close(libubi);
+ 	}
+@@ -1742,6 +1746,10 @@ static int main_extroot(int argc, char *
+ 	/* ... but it also could be an UBI volume */
+ 	memset(blkdev_path, 0, sizeof(blkdev_path));
+ 	libubi = libubi_open();
++	if (!libubi) {
++		ULOG_ERR("cannot open libubi");
++		return -1;
++	}
+ 	find_block_ubi(libubi, "rootfs_data", blkdev_path, sizeof(blkdev_path));
+ 	libubi_close(libubi);
+ 	if (blkdev_path[0]) {

@@ -1,0 +1,3 @@
+topic read provision/siteman/hello
+pattern readwrite provision/siteman/%c/+/+
+pattern readwrite provision/siteman/%c/+/+/resp

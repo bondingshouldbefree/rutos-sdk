@@ -1,0 +1,17 @@
+{
+  "services/io": {
+    "index": 50,
+    "title": "Input/Output",
+    "depends": {
+      "board": {
+        "allOf": ["has_ios"]
+      }
+    }
+  },
+  "services/io/general": {
+    "view": "services/IoStatus",
+    "index": 10,
+    "title": "Status",
+    "acls": ["services/io/general"]
+  }
+}

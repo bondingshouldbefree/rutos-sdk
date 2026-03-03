@@ -1,0 +1,20 @@
+Index: netifd-2025-05-23-7901e66c/system-linux.c
+===================================================================
+--- netifd-2025-05-23-7901e66c.orig/system-linux.c
++++ netifd-2025-05-23-7901e66c/system-linux.c
+@@ -3852,6 +3852,7 @@ static int system_iprule(struct iprule *
+ 	}
+ #endif
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0)
+ 	if (rule->flags & IPRULE_GOTO)
+ 		nla_put_u32(msg, FRA_GOTO, rule->gotoid);
+ 
+@@ -3875,6 +3876,7 @@ static int system_iprule(struct iprule *
+ 
+ 		nla_put(msg, FRA_DPORT_RANGE, sizeof(dportrange), &dportrange);
+ 	}
++#endif
+ 
+ 	return system_rtnl_call(msg);
+ }

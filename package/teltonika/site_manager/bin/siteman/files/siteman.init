@@ -1,0 +1,108 @@
+#!/bin/sh /etc/rc.common
+
+START=20
+USE_PROCD=1
+SSH_KEY=/etc/siteman/certs/id_dropbear
+
+config_load siteman
+
+change_owner() {
+	local user=$1
+	local group=$2
+	local path=$3
+
+	[ -e $path ] || return
+
+	ls -ld $path | awk '{print $3}' | grep -q $user || {
+		chown $user:$group $path
+	}
+}
+
+start_mqtt_broker() {
+
+	[ ! -s "/etc/siteman/certs/server.crt" ] || [ ! -s "/etc/siteman/certs/server.key" ] && {
+		/etc/siteman/cert_gen.sh crt server
+		/etc/siteman/cert_gen.sh revoke #Generate CRL
+	}
+
+	# Change owner of files every time to avoid permission issues when restoring from backup
+	# Backup does not preserve owner and permissions
+	change_owner siteman siteman /etc/siteman/certs/ca.crt
+	change_owner siteman siteman /etc/siteman/certs/ca.key
+	change_owner siteman siteman /etc/siteman/certs/server.crt
+	change_owner siteman siteman /etc/siteman/certs/server.key
+	change_owner siteman siteman /etc/siteman/certs/crl.pem
+	change_owner siteman siteman /etc/siteman/mqtt.cfg
+	change_owner siteman siteman /etc/siteman/mqtt.passwd
+	change_owner siteman siteman /etc/siteman/mqtt.acl
+	change_owner siteman siteman /etc/siteman/mqtt_prov.acl
+
+	procd_open_instance
+	procd_set_param command /usr/sbin/mosquitto
+	procd_append_param command -c /etc/siteman/mqtt.cfg
+	procd_set_param file /etc/siteman/mqtt.cfg
+	procd_set_param file /etc/siteman/certs/crl.pem
+	procd_set_param user siteman
+	# procd_set_param group siteman
+	procd_set_param respawn
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+start_service() {
+	local enabled llevel
+
+	config_get enabled general enabled 0
+	[ "$enabled" = "1" ] || return
+
+	start_mqtt_broker
+	[ -e "$SSH_KEY" ] || {
+		dropbearkey -t ed25519 -f $SSH_KEY &>/dev/null
+	}
+
+	# /sbin/perm script has forbidden path check (e.g. /etc, /usr, etc.) so we need to change owner here
+	change_owner siteman siteman /etc/siteman/api_endpoints.json
+	change_owner siteman siteman "$SSH_KEY"
+	change_owner siteman siteman "$SSH_KEY.pub"
+
+	config_get llevel general log_level
+
+	procd_open_instance
+	procd_set_param command /usr/bin/siteman
+	procd_set_param user siteman
+	procd_set_param respawn
+
+	[ -n "$llevel" ] && {
+		procd_append_param command -l $llevel
+		procd_set_param stdout 1
+		procd_set_param stderr 1
+	}
+
+	procd_close_instance
+}
+
+add_config_update_trigger() {
+	local sec="$1"
+	local config
+
+	config_get config $sec config || return
+	procd_add_config_trigger "config.change" "$config" \
+			ubus call site_manager.track update "$(printf '{"config":"%s"}' $config)"
+}
+
+add_reload_trigger() {
+	local config="$1"
+
+	procd_add_config_trigger "config.change" "$config" \
+			/bin/ubus -t 10 call site_manager.device reload
+}
+
+service_triggers()
+{
+	procd_add_reload_trigger "siteman"
+
+	add_reload_trigger "siteman_devices"
+	add_reload_trigger "siteman_groups"
+
+	config_foreach add_config_update_trigger track
+}

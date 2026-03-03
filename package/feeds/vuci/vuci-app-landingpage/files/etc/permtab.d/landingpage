@@ -1,0 +1,4 @@
+/etc/config/landingpage                         landingpage:landingpage     660       -
+/etc/chilli/hotspotlogin/themes                 chilli:chilli               774       cd
+/etc/chilli/hotspotlogin/cgi-bin                chilli:chilli               774       cd
+/etc/chilli/hotspotlogin/cgi-bin/themes         chilli:chilli               774       cd

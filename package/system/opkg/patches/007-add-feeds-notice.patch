@@ -1,0 +1,17 @@
+--- a/libopkg/opkg_install.c
++++ b/libopkg/opkg_install.c
+@@ -1187,6 +1187,14 @@ int opkg_install_by_name(const char *pkg
+ 	new = pkg_hash_fetch_best_installation_candidate_by_name(pkg_name);
+ 	if (new == NULL) {
+ 		opkg_msg(NOTICE, "Unknown package '%s'.\n", pkg_name);
++
++		if (conf->force_feeds == NULL) {
++			opkg_msg(NOTICE,
++				 "The default package feeds only include software supported by Teltonika. If you want to use OpenWrt feeds, "
++				 "run opkg with '--force_feeds /etc/opkg/openwrt/distfeeds.conf'. Please be aware that packages from OpenWrt "
++				 "or other third-party feeds are not supported and may not work correctly.\n");
++		}
++
+ 		return -1;
+ 	}
+ 

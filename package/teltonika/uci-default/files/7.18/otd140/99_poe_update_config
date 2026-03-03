@@ -1,0 +1,26 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CFG="poe"
+
+update_port() {
+	local sec="$1"
+	[ "$(uci_get "$CFG" "$sec" name)" = "lan2" ] && uci_set "$CFG" "$sec" "name" "_lan1"
+	uci set "$CFG"."$sec"=port
+}
+
+update_chip() {
+	local sec="$1"
+	[ "$(uci_get "$CFG" "$sec" chan0)" = "lan2" ] && uci_set "$CFG" "$sec" "chan0" "_lan1"
+	[ "$(uci_get "$CFG" "$sec" chan1)" = "lan2" ] && uci_set "$CFG" "$sec" "chan1" "_lan1"
+	uci set "$CFG"."$sec"=chip
+}
+
+config_load "$CFG"
+update_port port1
+update_chip chip1
+update_chip chip2
+uci_commit "$CFG"
+
+exit 0

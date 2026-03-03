@@ -1,0 +1,26 @@
+{
+	"user": "quota_limit",
+	"subscribe": [ "network.interface" ],
+	"publish": [ "quota_limit", "quota_limit.*" ],
+	"access": {
+		"mdcollect": {
+			"methods": [ "backup_db", "get_raw_total" ]
+		},
+		"network.interface.*": {
+			"methods": [ "status" ]
+		},
+		"quota_limit": {
+			"methods": [ "get_quota_status" ]
+		},
+		"quota_limit.*": {
+			"methods": [ "status", "reload" ]
+		},
+		"gsm": {
+			"methods": [ "info" ]
+		},
+		"gsm.modem*": {
+			"methods": [ "info", "send_sms" ]
+		}
+	},
+	"send": [ "quota", "quota.limit_reach" ]
+}

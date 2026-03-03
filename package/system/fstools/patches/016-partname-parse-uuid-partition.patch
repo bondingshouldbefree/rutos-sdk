@@ -1,0 +1,46 @@
+Index: fstools-2022-05-03-9e11b372/libfstools/partname.c
+===================================================================
+--- fstools-2022-05-03-9e11b372.orig/libfstools/partname.c
++++ fstools-2022-05-03-9e11b372/libfstools/partname.c
+@@ -116,10 +116,13 @@ static struct volume *partname_volume_fi
+ 	char ueventgstr[BUFLEN];
+ 	char namebuf[BUFLEN];
+ 	char rootparam[BUFLEN];
++	char cmd[BUFLEN];
++	char output[BUFLEN];
+ 	char *rootdev = NULL, *devname, *tmp;
+ 	int j;
+ 	bool found = false;
+ 	glob_t gl;
++	FILE *fp;
+ 
+ 	if (get_var_from_file("/proc/cmdline", "fstools_ignore_partname", rootparam, sizeof(rootparam))) {
+ 		if (!strcmp("1", rootparam))
+@@ -127,7 +130,26 @@ static struct volume *partname_volume_fi
+ 	}
+ 
+ 	if (get_var_from_file("/proc/cmdline", "root", rootparam, sizeof(rootparam))) {
+-		rootdev = rootdevname(rootparam);
++		if (!strncmp(rootparam, "UUID=", 5)) {
++			snprintf(cmd, sizeof(cmd), "blkid -U %s", rootparam + 5);
++			fp = popen(cmd, "r");
++			if (fp) {
++				if (fgets(output, sizeof(output), fp)) {
++					char *nl = strchr(output, '\n');
++
++					if (nl)
++						*nl = '\0';
++
++					tmp = strrchr(output, '/');
++					if (tmp)
++						rootdev = rootdevname(tmp + 1);
++				}
++				pclose(fp);
++			}
++		} else {
++			rootdev = rootdevname(rootparam);
++		}
++
+ 		/* find partition on same device as rootfs */
+ 		snprintf(ueventgstr, sizeof(ueventgstr), "%s/%s/*/uevent", block_dir_name, rootdev);
+ 	} else {

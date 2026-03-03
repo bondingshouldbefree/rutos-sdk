@@ -1,0 +1,136 @@
+atrm50:
+  - ATRM50
+
+cap7:
+  - CAP700
+
+dap14x:
+  - DAP140
+  - DAP142
+  - DAP145
+
+otd140:
+  - OTD140
+
+otd16x:
+  - OTD164
+
+otd5:
+  - OTD500
+  - OTD501
+
+rut14x:
+  - RUT140
+  - RUT142
+  - RUT145
+
+rut2m:
+  - RUT200
+  - RUT241
+  - RUT260
+
+rut301:
+  - RUT301
+
+rut361:
+  - RUT361
+
+rut9m:
+  - RUT901
+  - RUT906
+  - RUT951
+  - RUT956
+
+rutc:
+  - RUTC16
+  - RUTC40
+  - RUTC41
+  - RUTC42
+  - RUTC50
+  - RUTC51
+  - RUTC54
+
+rute:
+  - OTD144
+  - RUT202
+  - RUT204
+  - RUT206
+  - RUT261
+  - RUT271
+  - RUT276
+  - RUT281
+  - RUT286
+  - RUT971
+  - RUT976
+  - RUT981
+  - RUT986
+
+rutm:
+  - RUTM08
+  - RUTM09
+  - RUTM10
+  - RUTM11
+  - RUTM16
+  - RUTM20
+  - RUTM30
+  - RUTM31
+  - RUTM50
+  - RUTM51
+  - RUTM52
+  - RUTM54
+  - RUTM55
+  - RUTM56
+  - RUTM59
+
+rutn:
+  - RUTN50
+  - RUTN54
+
+rutp:
+  - RUTP50
+  - RUTP52
+  - RUTP54
+
+rutx:
+  - RUTX08
+  - RUTX09
+  - RUTX10
+  - RUTX11
+  - RUTX12
+  - RUTX14
+  - RUTX50
+  - RUTXR1
+
+tap100:
+  - TAP100
+
+tap200:
+  - TAP200
+
+tap400:
+  - TAP400
+
+trb1:
+  - TRB140
+  - TRB141
+  - TRB142
+  - TRB143
+  - TRB145
+
+trb16:
+  - TRB160
+
+trb2m:
+  - TRB236
+  - TRB246
+  - TRB247
+  - TRB256
+
+trb500:
+  - TRB500
+
+trb501:
+  - TRB501
+
+x86_64:
+  - X86_64

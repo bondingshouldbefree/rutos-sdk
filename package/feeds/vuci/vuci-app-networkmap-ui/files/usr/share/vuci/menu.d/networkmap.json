@@ -1,0 +1,8 @@
+{
+	"status/network/topology": {
+		"title": "Topology",
+		"index": 60,
+		"view": "status/NetworkMap",
+		"acls": [ "status/network/topology" ]
+	}
+}

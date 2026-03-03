@@ -1,0 +1,947 @@
+Index: opkg-2021-06-13-1bf042dd/CMakeLists.txt
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/CMakeLists.txt
++++ opkg-2021-06-13-1bf042dd/CMakeLists.txt
+@@ -12,6 +12,7 @@ SET(VERSION "" CACHE STRING "Override ve
+ 
+ OPTION(STATIC_UBOX "Statically link libubox" OFF)
+ OPTION(BUILD_TESTS "Build test programs" ON)
++OPTION(BUILD_OPKG_EXT "Build with extended support" OFF)
+ OPTION(ENABLE_USIGN "Enable usign support" ON)
+ 
+ IF(NOT HOST_CPU)
+@@ -54,6 +55,10 @@ IF(WORDS_BIGENDIAN)
+ 	ADD_DEFINITIONS(-DWORDS_BIGENDIAN)
+ ENDIF()
+ 
++IF(BUILD_OPKG_EXT)
++	ADD_DEFINITIONS(-DOPKG_EXT)
++ENDIF()
++
+ ADD_SUBDIRECTORY(libbb)
+ ADD_SUBDIRECTORY(libopkg)
+ ADD_SUBDIRECTORY(src)
+Index: opkg-2021-06-13-1bf042dd/libopkg/pkg.h
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/libopkg/pkg.h
++++ opkg-2021-06-13-1bf042dd/libopkg/pkg.h
+@@ -102,6 +102,15 @@ enum pkg_fields {
+ 	PKG_CONFFILES,
+ 	PKG_ALTERNATIVES,
+ 	PKG_ABIVERSION,
++	PKG_APPNAME,
++	PKG_ROUTER,
++	PKG_HW_INFO,
++	PKG_TLT_NAME,
++	PKG_FIRMWARE,
++	PKG_LICENSE,
++	PKG_HIDDEN,
++	PKG_NETWORK_RESTART,
++	PKG_REBOOT,
+ };
+ 
+ struct abstract_pkg {
+Index: opkg-2021-06-13-1bf042dd/libopkg/pkg_parse.c
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/libopkg/pkg_parse.c
++++ opkg-2021-06-13-1bf042dd/libopkg/pkg_parse.c
+@@ -189,7 +189,7 @@ static void parse_alternatives(pkg_t *pk
+ 	}
+ }
+ 
+-int pkg_parse_line(void *ptr, char *line, uint mask)
++int pkg_parse_line(void *ptr, char *line, uint64_t mask)
+ {
+ 	pkg_t *pkg = (pkg_t *) ptr;
+ 	abstract_pkg_t *ab_pkg = NULL;
+@@ -220,6 +220,8 @@ int pkg_parse_line(void *ptr, char *line
+ 			if (strcmp(tmp, "yes") == 0)
+ 				pkg->auto_installed = 1;
+ 			free(tmp);
++		} else if ((mask & PFM_APPNAME) && is_field("AppName", line)) {
++			pkg_set_string(pkg, PKG_APPNAME, line + strlen("AppName") + 1);
+ 		}
+ 		break;
+ 
+@@ -260,8 +262,17 @@ int pkg_parse_line(void *ptr, char *line
+ 	case 'F':
+ 		if ((mask & PFM_FILENAME) && is_field("Filename", line))
+ 			pkg_set_string(pkg, PKG_FILENAME, line + strlen("Filename") + 1);
+-		break;
++		else if ((mask & PFM_FIRMWARE) && is_field("Firmware", line))
++			pkg_set_string(pkg, PKG_FIRMWARE, line + strlen("Firmware") + 1);
+ 
++		break;
++	case 'H':
++		if ((mask & PFM_HW_INFO) && is_field("HWInfo", line)) {
++			pkg_set_string(pkg, PKG_HW_INFO, line + strlen("HWInfo") + 1);
++		} else if ((mask & PFM_HIDDEN) && is_field("Hidden", line)) {
++			pkg_set_int(pkg, PKG_HIDDEN, 1);
++		}
++		break;
+ 	case 'I':
+ 		if ((mask & PFM_INSTALLED_SIZE)
+ 		    && is_field("Installed-Size", line)) {
+@@ -271,7 +282,11 @@ int pkg_parse_line(void *ptr, char *line
+ 			pkg_set_int(pkg, PKG_INSTALLED_TIME, strtoul(line + strlen("Installed-Time") + 1, NULL, 0));
+ 		}
+ 		break;
+-
++	case 'L':
++		if ((mask & PFM_LICENSE) && is_field("License:", line)) {
++			pkg_set_string(pkg, PKG_LICENSE, line + strlen("License:"));
++		}
++		break;
+ 	case 'M':
+ 		if ((mask & PFM_MD5SUM) && (is_field("MD5sum:", line) || is_field("MD5Sum:", line)))
+ 			pkg_set_md5(pkg, line + strlen("MD5sum") + 1);
+@@ -279,7 +294,14 @@ int pkg_parse_line(void *ptr, char *line
+ 			 && is_field("Maintainer", line))
+ 			pkg_set_string(pkg, PKG_MAINTAINER, line + strlen("Maintainer") + 1);
+ 		break;
++	case 'p':
++		if ((mask & PFM_PACKAGE) && is_field("pkg_network_restart", line)) {
++			pkg_set_int(pkg, PKG_NETWORK_RESTART, 1);
++		} else if ((mask & PFM_REBOOT) && is_field("pkg_reboot", line)) {
++			pkg_set_int(pkg, PKG_REBOOT, 1);
++		}
+ 
++		break;
+ 	case 'P':
+ 		if ((mask & PFM_PACKAGE) && is_field("Package", line)) {
+ 			pkg->name = parse_simple("Package", line);
+@@ -306,6 +328,11 @@ int pkg_parse_line(void *ptr, char *line
+ 			parse_deplist(pkg, RECOMMEND, line + strlen("Recommends") + 1);
+ 		else if ((mask & PFM_REPLACES) && is_field("Replaces", line))
+ 			parse_replacelist(pkg, line + strlen("Replaces") + 1);
++		else if ((mask & PFM_REPLACES) && is_field("Router", line))
++			pkg_set_string(pkg, PKG_ROUTER, line + strlen("Router") + 1);
++		else if ((mask & PFM_REBOOT) && is_field("pkg_reboot", line))
++			pkg_set_int(pkg, PKG_REBOOT, 1);
++
+ 		break;
+ 
+ 	case 'S':
+@@ -322,7 +349,12 @@ int pkg_parse_line(void *ptr, char *line
+ 		else if ((mask & PFM_SUGGESTS) && is_field("Suggests", line))
+ 			parse_deplist(pkg, SUGGEST, line + strlen("Suggests") + 1);
+ 		break;
++	case 't':
++		if ((mask & PFM_TLT_NAME) && is_field("tlt_name", line)) {
++			pkg_set_string(pkg, PKG_TLT_NAME, line + strlen("tlt_name") + 1);
++		}
+ 
++		break;
+ 	case 'T':
+ 		if ((mask & PFM_TAGS) && is_field("Tags", line))
+ 			pkg_set_string(pkg, PKG_TAGS, line + strlen("Tags") + 1);
+@@ -374,7 +406,7 @@ dont_reset_flags:
+ 	return ret;
+ }
+ 
+-int pkg_parse_from_stream(pkg_t * pkg, FILE * fp, uint mask)
++int pkg_parse_from_stream(pkg_t * pkg, FILE * fp, uint64_t mask)
+ {
+ 	int ret;
+ 	char *buf;
+Index: opkg-2021-06-13-1bf042dd/libopkg/pkg_parse.h
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/libopkg/pkg_parse.h
++++ opkg-2021-06-13-1bf042dd/libopkg/pkg_parse.h
+@@ -21,8 +21,8 @@
+ #include "pkg.h"
+ 
+ int parse_version(pkg_t * pkg, const char *raw);
+-int pkg_parse_from_stream(pkg_t * pkg, FILE * fp, uint mask);
+-int pkg_parse_line(void *ptr, char *line, uint mask);
++int pkg_parse_from_stream(pkg_t * pkg, FILE * fp, uint64_t mask);
++int pkg_parse_line(void *ptr, char *line, uint64_t mask);
+ 
+ #define EXCESSIVE_LINE_LEN	(4096 << 8)
+ 
+@@ -55,7 +55,16 @@ int pkg_parse_line(void *ptr, char *line
+ #define PFM_TAGS		(1 << 26)
+ #define PFM_VERSION		(1 << 27)
+ #define PFM_ABIVERSION		(1 << 28)
++#define PFM_APPNAME		(1 << 29)
++#define PFM_ROUTER		(1 << 30)
++#define PFM_HW_INFO      (1 << 31)
++#define PFM_TLT_NAME      (1ULL << 32)
++#define PFM_FIRMWARE		(1ULL << 33)
++#define PFM_LICENSE		(1ULL << 34)
++#define PFM_HIDDEN		(1ULL << 35)
++#define PFM_NETWORK_RESTART	(1ULL << 36)
++#define PFM_REBOOT		(1ULL << 37)
+ 
+-#define PFM_ALL	(~(uint)0)
++#define PFM_ALL	(~(uint64_t)0)
+ 
+ #endif
+Index: opkg-2021-06-13-1bf042dd/libopkg/parse_util.c
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/libopkg/parse_util.c
++++ opkg-2021-06-13-1bf042dd/libopkg/parse_util.c
+@@ -93,7 +93,7 @@ char **parse_list(const char *raw, unsig
+ 
+ int
+ parse_from_stream_nomalloc(parse_line_t parse_line, void *item, FILE * fp,
+-			   uint mask, char **buf0, size_t buf0len)
++			   uint64_t mask, char **buf0, size_t buf0len)
+ {
+ 	int ret, lineno;
+ 	char *buf, *nl;
+Index: opkg-2021-06-13-1bf042dd/libopkg/opkg_cmd.h
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/libopkg/opkg_cmd.h
++++ opkg-2021-06-13-1bf042dd/libopkg/opkg_cmd.h
+@@ -18,16 +18,24 @@
+ #ifndef OPKG_CMD_H
+ #define OPKG_CMD_H
+ 
++#ifdef OPKG_EXT
++#include <libubox/blobmsg.h>
++#endif
++
+ typedef int (*opkg_cmd_fun_t) (int argc, const char **argv);
+ 
+ struct opkg_cmd {
+ 	const char *name;
+ 	int requires_args;
+ 	opkg_cmd_fun_t fun;
+-	unsigned int pfm;	/* package field mask */
++	uint64_t pfm;	/* package field mask */
+ };
+ typedef struct opkg_cmd opkg_cmd_t;
+ 
++#ifdef OPKG_EXT
++extern struct blob_buf g_b;
++#endif
++
+ opkg_cmd_t *opkg_cmd_find(const char *name);
+ int opkg_cmd_exec(opkg_cmd_t * cmd, int argc, const char **argv);
+ 
+Index: opkg-2021-06-13-1bf042dd/libopkg/opkg_conf.h
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/libopkg/opkg_conf.h
++++ opkg-2021-06-13-1bf042dd/libopkg/opkg_conf.h
+@@ -23,6 +23,7 @@ extern opkg_conf_t *conf;
+ 
+ #include <stdarg.h>
+ #include <fnmatch.h>		/* FNM_CASEFOLD */
++#include <stdint.h>
+ 
+ #include "pkg_vec.h"
+ #include "hash_table.h"
+@@ -64,7 +65,7 @@ struct opkg_conf {
+ 	char *tmp_dir;
+ 	char *lists_dir;
+ 
+-	unsigned int pfm;	/* package field mask */
++	uint64_t pfm;	/* package field mask */
+ 
+ 	/* For libopkg users to capture messages. */
+ 	void (*opkg_vmessage) (int, const char *fmt, va_list ap);
+@@ -89,6 +90,9 @@ struct opkg_conf {
+ 	int no_check_certificate;
+ 	int nodeps;		/* do not follow dependencies */
+ 	int nocase;		/* perform case insensitive matching */
++#ifdef OPKG_EXT
++	int json_output;	/* output in JSON format */
++#endif
+ 	char *offline_root;
+ 	char *force_feeds;
+ 	char *overlay_root;
+Index: opkg-2021-06-13-1bf042dd/libopkg/parse_util.h
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/libopkg/parse_util.h
++++ opkg-2021-06-13-1bf042dd/libopkg/parse_util.h
+@@ -23,8 +23,8 @@ char *parse_simple(const char *type, con
+ char **parse_list(const char *raw, unsigned int *count, const char sep,
+ 		  int skip_field);
+ 
+-typedef int (*parse_line_t) (void *, char *, uint);
++typedef int (*parse_line_t) (void *, char *, uint64_t);
+ int parse_from_stream_nomalloc(parse_line_t parse_line, void *item, FILE * fp,
+-			       uint mask, char **buf0, size_t buf0len);
++			       uint64_t mask, char **buf0, size_t buf0len);
+ 
+ #endif
+Index: opkg-2021-06-13-1bf042dd/src/opkg-cl.c
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/src/opkg-cl.c
++++ opkg-2021-06-13-1bf042dd/src/opkg-cl.c
+@@ -31,6 +31,12 @@
+ #include "opkg_download.h"
+ #include "../libbb/libbb.h"
+ 
++#ifdef OPKG_EXT
++#include <grp.h>
++#include <libubox/blobmsg.h>
++#include <libubox/blobmsg_json.h>
++#endif
++
+ enum {
+ 	ARGS_OPT_FORCE_MAINTAINER = 129,
+ 	ARGS_OPT_FORCE_DEPENDS,
+@@ -59,6 +65,17 @@ enum {
+ 	ARGS_OPT_STRIP_ABI,
+ };
+ 
++#ifdef OPKG_EXT
++#define EXTRA_ARGS "j"
++
++struct blob_buf g_b = { 0 };
++struct blob_buf g_err_b = { 0 };
++struct blob_buf g_log_b = { 0 };
++int g_stdout = -1;
++#else
++#define EXTRA_ARGS ""
++#endif
++
+ static struct option long_options[] = {
+ 	{"query-all", 0, 0, 'A'},
+ 	{"autoremove", 0, 0, ARGS_OPT_AUTOREMOVE},
+@@ -121,6 +138,9 @@ static struct option long_options[] = {
+ 	{"force_feeds", 1, 0, 'e'},
+ 	{"remove_conf", 0, 0, 'c'},
+ 	{"version", 0, 0, 'v'},
++#ifdef OPKG_EXT
++	{"json-output", 0, 0, 'j'},
++#endif
+ 	{0, 0, 0, 0}
+ };
+ 
+@@ -132,7 +152,7 @@ static int args_parse(int argc, char *ar
+ 	char *tuple, *targ;
+ 
+ 	while (1) {
+-		c = getopt_long_only(argc, argv, "Acd:f:ino:e:p:l:t:vV::",
++		c = getopt_long_only(argc, argv, EXTRA_ARGS "Acd:f:ino:e:p:l:t:vV::",
+ 				     long_options, &option_index);
+ 		if (c == -1)
+ 			break;
+@@ -153,6 +173,11 @@ static int args_parse(int argc, char *ar
+ 		case 'i':
+ 			conf->nocase = FNM_CASEFOLD;
+ 			break;
++#ifdef OPKG_EXT
++		case 'j':
++			conf->json_output = 1;
++			break;
++#endif
+ 		case 'o':
+ 			conf->offline_root = xstrdup(optarg);
+ 			break;
+@@ -322,6 +347,10 @@ static void usage()
+ 	printf("\twhatprovides [-A] [pkgname|pat]+\n");
+ 	printf("\twhatconflicts [-A] [pkgname|pat]+\n");
+ 	printf("\twhatreplaces [-A] [pkgname|pat]+\n");
++#ifdef OPKG_EXT
++	printf("\tcleanup_feeds\t\tClean up feed files\n");
++	printf("\tlist_feeds\t\tList available packages from the feeds\n");
++#endif
+ 
+ 	printf("\nOptions:\n");
+ 	printf
+@@ -394,7 +423,9 @@ static void usage()
+ 	printf("\t--force_feeds <file>	Specify feeds file.\n");
+ 	printf("\t-c			Remove configuration files when removing.\n");
+ 	printf("\t--remove_conf		Remove configuration files when removing.\n");
+-
++#ifdef OPKG_EXT
++	printf("\t-j, --json-output	Output in JSON format\n");
++#endif
+ 	printf("\n");
+ 
+ 	printf
+@@ -409,6 +440,71 @@ static void usage()
+ 	exit(1);
+ }
+ 
++#ifdef OPKG_EXT
++static void opkg_msg_cb(int level, const char *fmt, va_list ap)
++{
++	char *tmp = NULL;
++	int res = -1;
++	va_list ap2;
++
++	va_copy(ap2, ap);
++	res = vasprintf(&tmp, fmt, ap2);
++	va_end(ap2);
++
++	if (res < 0) {
++		return;
++	}
++
++	if (tmp[res - 1] == '\n') {
++		if (res == 1) {
++			free(tmp);
++
++			return;
++		}
++
++		tmp[res - 1] = '\0';
++	}
++
++	switch (level) {
++	case NOTICE:
++		if (g_log_b.head) {
++			blobmsg_add_string(&g_log_b, NULL, tmp);
++		}
++		break;
++	case ERROR:
++		if (g_err_b.head) {
++			blobmsg_add_string(&g_err_b, NULL, tmp);
++		}
++		break;
++	default:
++		if (g_log_b.head) {
++			blobmsg_add_string(&g_log_b, NULL, tmp);
++		}
++		break;
++	}
++
++	free(tmp);
++}
++
++static void fwd_stdout_to_stderr(void)
++{
++	if (g_stdout < 0) {
++		g_stdout = dup(STDOUT_FILENO);
++		if (g_stdout < 0) {
++			fprintf(stderr, "Failed to duplicate stdout: %s\n", strerror(errno));
++
++			return;
++		}
++	}
++
++	if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) {
++		fprintf(stderr, "Failed to redirect stdout to stderr: %s\n", strerror(errno));
++
++		return;
++	}
++}
++#endif
++
+ int main(int argc, char *argv[])
+ {
+ 	int opts, err = -1;
+@@ -417,6 +513,22 @@ int main(int argc, char *argv[])
+ 	int nocheckfordirorfile = 0;
+ 	int noreadfeedsfile = 0;
+ 
++#ifdef OPKG_EXT
++	if (getuid() != 0 && setuid(0) < 0) {
++		fprintf(stderr, "Unable to setuid to root: %s\n", strerror(errno));
++
++		return 1;
++	}
++
++	if (getgid() != 0 ) {
++		if (setgid(0) < 0 || initgroups("root", 0) < 0) {
++			fprintf(stderr, "Unable to setgid to root: %s\n", strerror(errno));
++
++			return 1;
++		}
++	}
++#endif
++
+ 	if (opkg_conf_init())
+ 		goto err0;
+ 
+@@ -430,12 +542,43 @@ int main(int argc, char *argv[])
+ 
+ 	cmd_name = argv[opts++];
+ 
++#ifdef OPKG_EXT
++	const char *nolock =  getenv("OPKG_NO_LOCK");
++	if (nolock && strcmp(nolock, "1") == 0 && strcmp(cmd_name, "list_feeds")) {
++		fprintf(stderr, "OPKG_NO_LOCK is set, but the command '%s' does not support it.\n", cmd_name);
++		goto err0;
++	}
++	if (conf->json_output) {
++		if (strcmp(cmd_name, "install") &&
++				strcmp(cmd_name, "remove") &&
++				strcmp(cmd_name, "update") &&
++				strcmp(cmd_name, "list") &&
++				strcmp(cmd_name, "list_installed") &&
++				strcmp(cmd_name, "whatdepends") &&
++				strcmp(cmd_name, "list_feeds") &&
++				strcmp(cmd_name, "cleanup_feeds")) {
++			fprintf(stderr, "JSON output is not supported for command '%s'\n", cmd_name);
++
++			goto err0;
++		}
++		conf->opkg_vmessage = opkg_msg_cb;
++
++		blob_buf_init(&g_b, 0);
++		blob_buf_init(&g_err_b, BLOBMSG_TYPE_ARRAY);
++		blob_buf_init(&g_log_b, BLOBMSG_TYPE_ARRAY);
++		fwd_stdout_to_stderr();
++	}
++#endif
++
+ 	if (!strcmp(cmd_name, "install") ||
+ 	    !strcmp(cmd_name, "print-architecture") ||
+ 	    !strcmp(cmd_name, "print_architecture") ||
+ 	    !strcmp(cmd_name, "print-installation-architecture") ||
+ 	    !strcmp(cmd_name, "print_installation_architecture") ||
+ 	    !strcmp(cmd_name, "compare_versions") ||
++#ifdef OPKG_EXT
++	    !strcmp(cmd_name, "cleanup_feeds") ||
++#endif
+ 	    !strcmp(cmd_name, "compare-versions"))
+ 		nocheckfordirorfile = 1;
+ 
+@@ -484,13 +627,38 @@ int main(int argc, char *argv[])
+ 	}
+ 
+ 	err = opkg_cmd_exec(cmd, argc - opts, (const char **)(argv + opts));
++#ifdef OPKG_EXT
++	if (conf->json_output) {
++		if (blobmsg_data_len(g_err_b.head) > 0) {
++			blobmsg_add_field(&g_b, blobmsg_type(g_err_b.head), "errors",
++						blobmsg_data(g_err_b.head), blobmsg_data_len(g_err_b.head));
++		}
++
++		if (blobmsg_data_len(g_log_b.head) > 0) {
++			blobmsg_add_field(&g_b, blobmsg_type(g_log_b.head), "log",
++						blobmsg_data(g_log_b.head), blobmsg_data_len(g_log_b.head));
++		}
+ 
++		char *buff = blobmsg_format_json_indent(g_b.head, true, 0);
++		if (buff && g_stdout >= 0) {
++			write(g_stdout, buff, strlen(buff));
++			free(buff);
++		}
++	}
++#endif
+ err1:
+ 	opkg_conf_deinit();
+ 
+ err0:
+ 	print_error_list();
+ 	free_error_list();
++#ifdef OPKG_EXT
++	if (conf->json_output) {
++		blob_buf_free(&g_b);
++		blob_buf_free(&g_err_b);
++		blob_buf_free(&g_log_b);
++	}
++#endif
+ 
+ 	return err;
+ }
+Index: opkg-2021-06-13-1bf042dd/src/CMakeLists.txt
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/src/CMakeLists.txt
++++ opkg-2021-06-13-1bf042dd/src/CMakeLists.txt
+@@ -13,8 +13,12 @@ ELSE()
+ 	FIND_LIBRARY(ubox NAMES ubox)
+ ENDIF()
+ 
++IF(BUILD_OPKG_EXT)
++	FIND_LIBRARY(blobmsg_json NAMES blobmsg_json)
++ENDIF()
++
+ ADD_EXECUTABLE(opkg-cl opkg-cl.c)
+-TARGET_LINK_LIBRARIES(opkg-cl opkg bb ${ubox})
++TARGET_LINK_LIBRARIES(opkg-cl opkg bb ${ubox} ${blobmsg_json})
+ 
+ CHECK_LIBRARY_EXISTS(pthread pthread_create "" NEED_PTHREAD)
+ IF(NEED_PTHREAD)
+Index: opkg-2021-06-13-1bf042dd/libopkg/opkg_cmd.c
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/libopkg/opkg_cmd.c
++++ opkg-2021-06-13-1bf042dd/libopkg/opkg_cmd.c
+@@ -738,7 +738,8 @@ static int opkg_list_find_cmd_sort(const
+ 	return strcmp(pkg_a->name, pkg_b->name);
+ }
+ 
+-static int opkg_list_find_cmd(int argc, char **argv, int use_desc)
++static int opkg_list_find_cmd(int argc, char **argv, int use_desc,
++		uint8_t status)
+ {
+ 	int i;
+ 	struct opkg_list_find_cmd_args args = {
+@@ -749,8 +750,10 @@ static int opkg_list_find_cmd(int argc,
+ 	args.set_status = 0;
+ 	pkg_hash_load_feeds(SF_NEED_DETAIL, opkg_list_find_cmd_cb, &args);
+ 
+-	args.set_status = 1;
+-	pkg_hash_load_status_files(opkg_list_find_cmd_cb, &args);
++	if (status) {
++		args.set_status = 1;
++		pkg_hash_load_status_files(opkg_list_find_cmd_cb, &args);
++	}
+ 
+ 	if (args.n_items > 1)
+ 		qsort(args.items, args.n_items, sizeof(args.items[0]),
+@@ -777,17 +780,188 @@ static int opkg_list_find_cmd(int argc,
+ 	return 0;
+ }
+ 
++#ifdef OPKG_EXT
++static int opkg_list_find_cmd_json(int argc, char **argv, int use_desc,
++			uint8_t status)
++{
++	int i;
++	void *tbl = NULL, *tbl2 = NULL;
++	struct opkg_list_find_cmd_args args = {
++		.use_desc = use_desc,
++		.pkg_name = (argc > 0) ? argv[0] : NULL
++	};
++
++	args.set_status = 0;
++	pkg_hash_load_feeds(SF_NEED_DETAIL, opkg_list_find_cmd_cb, &args);
++	if (status) {
++		args.set_status = 1;
++		pkg_hash_load_status_files(opkg_list_find_cmd_cb, &args);
++	}
++
++	if (args.n_items > 1)
++		qsort(args.items, args.n_items, sizeof(args.items[0]),
++		      opkg_list_find_cmd_sort);
++
++	tbl = blobmsg_open_table(&g_b, "packages");
++	for (i = 0; i < args.n_items; i++) {
++		tbl2 = blobmsg_open_table(&g_b, args.items[i]->name);
++		blobmsg_add_string(&g_b, "name", args.items[i]->name);
++		blobmsg_add_string(&g_b, "version", args.items[i]->version);
++
++		if (conf->size) {
++			blobmsg_add_u64(&g_b, "size", args.items[i]->size);
++		}
++
++		if (args.items[i]->description) {
++			blobmsg_add_string(&g_b, "description", args.items[i]->description);
++		}
++
++		free(args.items[i]);
++		blobmsg_close_table(&g_b, tbl2);
++	}
++
++	blobmsg_close_table(&g_b, tbl);
++	free(args.items);
++
++	return 0;
++}
++#endif
++
+ static int opkg_list_cmd(int argc, char **argv)
+ {
+-	return opkg_list_find_cmd(argc, argv, 0);
++#ifdef OPKG_EXT
++	if (conf->json_output) {
++		return opkg_list_find_cmd_json(argc, argv, 0, 1);
++	}
++#endif
++
++	return opkg_list_find_cmd(argc, argv, 0, 1);
+ }
+ 
+ static int opkg_find_cmd(int argc, char **argv)
+ {
+-	return opkg_list_find_cmd(argc, argv, 1);
++#ifdef OPKG_EXT
++	if (conf->json_output) {
++		return opkg_list_find_cmd_json(argc, argv, 1, 1);
++	}
++#endif
++
++	return opkg_list_find_cmd(argc, argv, 1, 1);
+ }
+ 
+-static int opkg_list_installed_cmd(int argc, char **argv)
++#ifdef OPKG_EXT
++static void print_pkg_to_blob(struct blob_buf *b, pkg_t *pkg)
++{
++	compound_depend_t *dep = NULL;
++	const char *p = NULL;
++	char *str = NULL;
++	void *arr = NULL;
++	int i = 0;
++
++	blobmsg_add_string(b, "Package", pkg->name);
++
++	if (pkg->src) {
++		blobmsg_add_string(b, "src", pkg->src->name);
++	}
++
++	dep = pkg_get_depends(pkg, DEPEND);
++	if (dep) {
++		arr = blobmsg_open_array(b, "Depends");
++		for (int i = 0; dep && dep->type; i++, dep++) {
++			if (dep->type != DEPEND) {
++				continue;
++			}
++			str = pkg_depend_str(pkg, i);
++
++			blobmsg_add_string(b, NULL, str);
++			free(str);
++		}
++
++		blobmsg_close_array(b, arr);
++	}
++
++	p = pkg_get_string(pkg, PKG_APPNAME);
++	if (p) {
++		blobmsg_add_string(b, "AppName", p);
++	}
++
++	p = pkg_get_string(pkg, PKG_ROUTER);
++	if (p) {
++		blobmsg_add_string(b, "Router", p);
++	}
++
++	p = pkg_get_string(pkg, PKG_HW_INFO);
++	if (p) {
++		blobmsg_add_string(b, "HWInfo", p);
++	}
++
++	p = pkg_get_string(pkg, PKG_TLT_NAME);
++	if (p) {
++		blobmsg_add_string(b, "tlt_name", p);
++	}
++
++	p = pkg_get_string(pkg, PKG_FIRMWARE);
++	if (p) {
++		blobmsg_add_string(b, "Firmware", p);
++	}
++
++	p = pkg_get_string(pkg, PKG_LICENSE);
++	if (p) {
++		blobmsg_add_string(b, "License", p);
++	}
++
++	i = pkg_get_int(pkg, PKG_HIDDEN);
++	if (i) {
++		blobmsg_add_u8(b, "Hidden", (uint8_t)i);
++	}
++
++	i = pkg_get_int(pkg, PKG_NETWORK_RESTART);
++	if (i) {
++		blobmsg_add_u8(b, "pkg_network_restart", (uint8_t)i);
++	}
++
++	i = pkg_get_int(pkg, PKG_REBOOT);
++	if (i) {
++		blobmsg_add_u8(b, "pkg_reboot", (uint8_t)i);
++	}
++
++	p = pkg_get_string(pkg, PKG_DESCRIPTION);
++	if (p) {
++		blobmsg_add_string(b, "Description", p);
++	}
++
++	i = pkg_get_int(pkg, PKG_SIZE);
++	if (i) {
++		blobmsg_add_u32(b, "Size", (unsigned long) i);
++	}
++
++	p = pkg_get_sha256(pkg);
++	if (p) {
++		blobmsg_add_string(b, "SHA256sum", p);
++	}
++
++	str = pkg_version_str_alloc(pkg);
++	if (str) {
++		blobmsg_add_string(b, "Version", str);
++		free(str);
++	}
++
++	blobmsg_add_u32(b, "Installed-Size",
++			(unsigned long) pkg_get_int(pkg, PKG_INSTALLED_SIZE));
++}
++
++static void print_pkg_json(pkg_t *pkg)
++{
++	void *tbl = NULL;
++
++	tbl = blobmsg_open_table(&g_b, pkg->name);
++	print_pkg_to_blob(&g_b, pkg);
++	blobmsg_close_table(&g_b, tbl);
++}
++
++#endif
++
++static int _opkg_list_installed_cmd(int argc, char **argv, void (*print_cb)(pkg_t *pkg))
+ {
+ 	int i;
+ 	pkg_vec_t *available;
+@@ -805,7 +979,7 @@ static int opkg_list_installed_cmd(int a
+ 		/* if we have package name or pattern and pkg does not match, then skip it */
+ 		if (pkg_name && fnmatch(pkg_name, pkg->name, conf->nocase))
+ 			continue;
+-		print_pkg(pkg);
++		print_cb(pkg);
+ 	}
+ 
+ 	pkg_vec_free(available);
+@@ -813,6 +987,17 @@ static int opkg_list_installed_cmd(int a
+ 	return 0;
+ }
+ 
++static int opkg_list_installed_cmd(int argc, char **argv)
++{
++#ifdef OPKG_EXT
++	if (conf->json_output) {
++		return _opkg_list_installed_cmd(argc, argv, print_pkg_json);
++	}
++#endif
++
++	return _opkg_list_installed_cmd(argc, argv, print_pkg);
++}
++
+ static int opkg_list_changed_conffiles_cmd(int argc, char **argv)
+ {
+ 	int i;
+@@ -921,11 +1106,21 @@ static int opkg_info_status_cmd(int argc
+ 
+ static int opkg_info_cmd(int argc, char **argv)
+ {
++#ifdef OPKG_EXT
++	if (conf->json_output) {
++		return opkg_list_find_cmd_json(argc, argv, 0, 1);
++	}
++#endif
+ 	return opkg_info_status_cmd(argc, argv, 0);
+ }
+ 
+ static int opkg_status_cmd(int argc, char **argv)
+ {
++#ifdef OPKG_EXT
++	if (conf->json_output) {
++		return opkg_list_find_cmd_json(argc, argv, 1, 1);
++	}
++#endif
+ 	return opkg_info_status_cmd(argc, argv, 1);
+ }
+ 
+@@ -1430,6 +1625,86 @@ static int opkg_print_architecture_cmd(i
+ 	return 0;
+ }
+ 
++#ifdef OPKG_EXT
++static int opkg_cleanup_feeds_cmd(int argc, char **argv)
++{
++	char *list_file = NULL, *lists_dir = NULL;
++	pkg_src_list_elt_t *iter = NULL;
++	pkg_src_t *src = NULL;
++
++	lists_dir = conf->restrict_to_default_dest ?
++	    conf->default_dest->lists_dir : conf->lists_dir;
++
++	for (iter = void_list_first(&conf->pkg_src_list); iter;
++	    	iter = void_list_next(&conf->pkg_src_list, iter)) {
++		src = (pkg_src_t *) iter->data;
++
++		sprintf_alloc(&list_file, "%s/%s", lists_dir, src->name);
++		if (file_exists(list_file)) {
++			unlink(list_file);
++		}
++
++		free(list_file);
++		sprintf_alloc(&list_file, "%s/%s.sig", lists_dir, src->name);
++		if (file_exists(list_file)) {
++			unlink(list_file);
++		}
++
++		free(list_file);
++	}
++
++	return 0;
++}
++
++static void opkg_list_feeds_json_cb(pkg_t *pkg, void *priv)
++{
++	char *name = priv;
++	void *tbl = NULL;
++
++	/* if we have package name or pattern and pkg does not match, then skip it */
++	if (name && fnmatch(name, pkg->name, conf->nocase)) {
++		return;
++	}
++
++	tbl = blobmsg_open_table(&g_b, pkg->name);
++	print_pkg_to_blob(&g_b, pkg);
++	blobmsg_close_table(&g_b, tbl);
++
++	pkg_deinit(pkg);
++	free(pkg);
++}
++
++static void opkg_list_feeds_cb(pkg_t *pkg, void *priv)
++{
++	char *name = priv;
++
++	/* if we have package name or pattern and pkg does not match, then skip it */
++	if (name && fnmatch(name, pkg->name, conf->nocase)) {
++		return;
++	}
++
++	print_pkg(pkg);
++	pkg_deinit(pkg);
++	free(pkg);
++}
++
++static int opkg_list_feeds_cmd(int argc, char **argv)
++{
++	void *tbl = NULL;
++
++	if (conf->json_output) {
++		tbl = blobmsg_open_table(&g_b, "packages");
++		pkg_hash_load_feeds(SF_NEED_DETAIL, opkg_list_feeds_json_cb, (argc > 0) ? argv[0] : NULL);
++		blobmsg_close_table(&g_b, tbl);
++
++		return 0;
++	}
++
++	return pkg_hash_load_feeds(SF_NEED_DETAIL, opkg_list_feeds_cb, (argc > 0) ? argv[0] : NULL);
++}
++
++#endif
++
+ /* XXX: CLEANUP: The usage strings should be incorporated into this
+    array for easier maintenance */
+ static opkg_cmd_t cmds[] = {
+@@ -1496,6 +1771,10 @@ static opkg_cmd_t cmds[] = {
+ 	 PFM_DESCRIPTION | PFM_SOURCE},
+ 	{"whatconflicts", 1, (opkg_cmd_fun_t) opkg_whatconflicts_cmd,
+ 	 PFM_DESCRIPTION | PFM_SOURCE},
++#ifdef OPKG_EXT
++	{"cleanup_feeds", 0, (opkg_cmd_fun_t) opkg_cleanup_feeds_cmd, 0},
++	{"list_feeds", 0, (opkg_cmd_fun_t) opkg_list_feeds_cmd, PFM_SOURCE},
++#endif
+ };
+ 
+ opkg_cmd_t *opkg_cmd_find(const char *name)
+Index: opkg-2021-06-13-1bf042dd/libopkg/opkg_conf.c
+===================================================================
+--- opkg-2021-06-13-1bf042dd.orig/libopkg/opkg_conf.c
++++ opkg-2021-06-13-1bf042dd/libopkg/opkg_conf.c
+@@ -492,7 +492,10 @@ int opkg_conf_load(void)
+ 	}
+ 
+ 	globfree(&globbuf);
+-
++#ifdef OPKG_EXT
++	const char *nolock =  getenv("OPKG_NO_LOCK");
++	if (!nolock || strcmp(nolock, "1")) {
++#endif
+ 	if (conf->offline_root)
+ 		sprintf_alloc(&lock_file, "%s/%s", conf->offline_root,
+ 			      OPKGLOCKFILE);
+@@ -513,7 +516,11 @@ int opkg_conf_load(void)
+ 		lock_fd = -1;
+ 		goto err2;
+ 	}
+-
++#ifdef OPKG_EXT
++	} else {
++		lock_fd = -1;
++	}
++#endif
+ 	if (conf->tmp_dir)
+ 		tmp_dir_base = conf->tmp_dir;
+ 	else

@@ -1,0 +1,25 @@
+#!/bin/sh
+. /lib/functions.sh
+
+check_instance() {
+	local section="$1" enabled
+	config_get "enabled" "$section" "enabled" 0
+
+	[ "$enabled" = 0 ] && return 0
+	enabled_instances="$enabled_instances $section"
+}
+
+build_data() {
+	local data="" id
+	for id in $enabled_instances; do
+		printf '%s{"id":"%s", "enabled":"1"}' "$data" "$id"
+		data=","
+	done
+}
+
+config_load ipsec
+config_foreach "check_instance" "remote"
+[ -n "$enabled_instances" ] || exit 0
+api put "/ipsec/config/" '{"data":['"$(build_data)"']}'
+
+exit 0

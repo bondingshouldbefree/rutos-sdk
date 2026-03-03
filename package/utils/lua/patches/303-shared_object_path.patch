@@ -1,0 +1,26 @@
+From f0791b82360677fde227fe52687b7281f4cb4d9c Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Wed, 19 Feb 2025 14:38:27 +0200
+Subject: [PATCH 1/1] fix shared obj include dirs
+
+---
+ src/luaconf.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/luaconf.h b/src/luaconf.h
+index f3ad6e8..55ec85e 100644
+--- a/src/luaconf.h
++++ b/src/luaconf.h
+@@ -108,7 +108,8 @@
+ 		            LUA_LOCAL_ROOT LUA_CDIR"?/init.lua"
+ 
+ #define LUA_CPATH_DEFAULT \
+-	"./?.so;"  LUA_CDIR"?.so;" LUA_CDIR"loadall.so"
++	"./?.so;" LUA_CDIR"?.so;" LUA_LOCAL_ROOT LUA_LDIR"?.so;" \
++	LUA_LOCAL_ROOT LUA_CDIR"?.so;" LUA_CDIR"loadall.so;"
+ #endif
+ 
+ 
+-- 
+2.48.1
+

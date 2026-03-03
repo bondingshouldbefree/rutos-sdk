@@ -1,0 +1,39 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=99
+STOP=10
+
+CONFIG=impulse_counter
+APP=/usr/sbin/impulse_counter
+FLASH_DIR=/usr/local/usr/share/icounter
+
+if [ ! -x "$APP" ]; then
+	APP="/usr/local$APP"
+fi
+
+ENABLED=$(uci -q get impulse_counter.general.enabled)
+
+if [ "$ENABLED" = "1" ]; then
+	start_service() {
+		procd_open_instance
+		[ -d "$FLASH_DIR" ] || {
+			mkdir -p "$FLASH_DIR"
+			chown icounter:icounter "$FLASH_DIR"
+		}
+		procd_set_param file /etc/config/$CONFIG
+		procd_set_param command $APP
+		procd_set_param user icounter
+		procd_set_param respawn ${respawn_threshold:-0} ${respawn_timeout:-6} ${respawn_retry:-0}
+		procd_close_instance
+	}
+fi
+
+reload_service(){
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger "impulse_counter"
+}

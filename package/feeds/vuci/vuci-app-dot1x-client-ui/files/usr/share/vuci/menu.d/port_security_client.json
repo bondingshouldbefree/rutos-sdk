@@ -1,0 +1,20 @@
+{
+  "network/ports": {
+    "title": "Ports",
+    "index": 100
+  },
+  "network/ports/port_security_client": {
+    "title": "802.1X Client",
+    "index": 20,
+    "view": "network/Dot1xClient",
+    "acls": ["network/ports/port_security"],
+    "depends": {
+      "packages": {
+        "anyOf": ["dot1x-client"]
+      },
+      "board": {
+		"allOf": ["has_ethernet"]
+      }
+    }
+  }
+}

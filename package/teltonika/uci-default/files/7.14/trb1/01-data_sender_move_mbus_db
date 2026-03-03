@@ -1,0 +1,21 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+migrate_mbus_db() {
+	local section="$1"
+	local mbus_db
+
+	config_get mbus_db "$section" mbus_db
+
+	if [ "$mbus_db" == "/usr/share/mbus_db" ]; then
+		uci_set data_sender "$section" mbus_db "/usr/local/share/mbus_db"
+	fi
+}
+
+config_load data_sender
+config_foreach migrate_mbus_db input
+
+uci_commit data_sender
+
+exit 0

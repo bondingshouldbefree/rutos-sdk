@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"modbus_client.app":{"methods":["status"]},"modbus_client.rpc":{"methods":["tcp.test","serial.test","get_tags"]}}}

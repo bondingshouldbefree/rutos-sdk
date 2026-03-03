@@ -1,0 +1,15 @@
+#!/bin/sh
+rm -rf /tmp/config.check
+mkdir -p /tmp/config.check
+for config in /etc/config/*; do
+	file=${config##*/}
+	uci show "${file##*/}" > /tmp/config.check/$file
+done
+MD5FILE=/tmp/config.md5
+[ -f $MD5FILE ] && {
+	for c in $(md5sum -c $MD5FILE 2>/dev/null| grep FAILED | cut -d: -f1); do
+		ubus call service event "{ \"type\": \"config.change\", \"data\": { \"package\": \"$(basename $c)\" }}"
+	done
+}
+md5sum /tmp/config.check/* > $MD5FILE
+rm -rf /tmp/config.check

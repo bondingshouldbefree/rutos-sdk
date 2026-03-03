@@ -1,0 +1,11 @@
+--- a/Makefile
++++ b/Makefile
+@@ -39,7 +39,7 @@ install-lib:
+ 	install -m 0644 -C -b platform/$(PLATFORM)/sqm.conf $(DESTDIR)/etc/sqm/sqm.conf
+ 	install -m 0644  src/functions.sh src/defaults.sh \
+ 		src/*.qos src/*.help $(USRDIR)$(PREFIX)/lib/sqm
+-	install -m 0744  src/start-sqm src/stop-sqm src/update-available-qdiscs \
++	install -m 0755  src/start-sqm src/stop-sqm src/update-available-qdiscs \
+ 		$(USRDIR)$(PREFIX)/lib/sqm
+ 
+ .PHONY: uninstall

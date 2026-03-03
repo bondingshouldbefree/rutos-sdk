@@ -1,0 +1,25 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+fix_planet_permissions() {
+	local section="$1"
+	local planet_file
+
+	config_get planet_file "$section" "custom_planet_file"
+	[ -n "$planet_file" ] || return 0
+	[ -e "$planet_file" ] || return 0
+
+	chmod 0660 "$planet_file"
+	chgrp zerotier "$planet_file" 2>/dev/null
+}
+
+iterate_instance_networks() {
+	local section="$1"
+	config_foreach fix_planet_permissions "network_${section}"
+}
+
+config_load zerotier
+config_foreach iterate_instance_networks "instance"
+
+exit 0

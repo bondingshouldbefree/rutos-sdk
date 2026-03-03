@@ -1,0 +1,30 @@
+From 638e799d57aaf62fcea56a249a7f69e4cdc6ee53 Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Mon, 9 Dec 2024 17:25:25 +0200
+Subject: [PATCH 1/1] fix fw3/fw4 detection of nf_conntrack_pptp module
+
+---
+ net/netfilter/nf_conntrack_pptp.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+--- a/net/netfilter/nf_conntrack_pptp.c
++++ b/net/netfilter/nf_conntrack_pptp.c
+@@ -34,6 +34,7 @@
+ #include <net/netfilter/nf_conntrack_zones.h>
+ #include <linux/netfilter/nf_conntrack_proto_gre.h>
+ #include <linux/netfilter/nf_conntrack_pptp.h>
++#include <linux/moduleparam.h>
+ 
+ #define NF_CT_PPTP_VERSION "3.1"
+ 
+@@ -45,6 +46,10 @@ MODULE_ALIAS_NFCT_HELPER("pptp");
+ 
+ static DEFINE_SPINLOCK(nf_pptp_lock);
+ 
++static int fw_detect = 0;
++module_param(fw_detect, int, S_IRUGO);
++MODULE_PARM_DESC(fw_detect, "Dummy parameter so we're detected by fw3 and fw4");
++
+ const struct nf_nat_pptp_hook __rcu *nf_nat_pptp_hook;
+ EXPORT_SYMBOL_GPL(nf_nat_pptp_hook);
+ 

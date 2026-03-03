@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"dnp3_outstation":{"methods":["status"]},"dnp3_client":{"methods":["status"]},"dnp3_client.rpc":{"methods":["tcp.test","serial.test","get_tags"]}}}

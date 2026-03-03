@@ -1,0 +1,3 @@
+/etc/cert-enroll.d                 certificates:certificates     660       r
+/etc/cert-enroll.d                 -                             770       -
+/etc/cert-enroll.d/cert-install.d  -                             770       r

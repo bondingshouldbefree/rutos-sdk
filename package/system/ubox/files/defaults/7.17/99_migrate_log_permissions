@@ -1,0 +1,15 @@
+#!/bin/sh
+
+LOGDB_PATH="/log/log.db"
+
+if [ -d "$LOGDB_PATH" ]; then
+    chown logd:logd "$LOGDB_PATH"
+fi
+
+if uci get system.system.log_file >/dev/null 2>&1; then
+    LOG_FILE=$(uci get system.system.log_file)
+    LOG_DIR=$(dirname "$LOG_FILE")
+    [ -d "$LOG_DIR" ] && chown logd:logd "$LOG_DIR"
+fi
+
+exit 0

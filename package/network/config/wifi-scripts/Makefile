@@ -1,0 +1,63 @@
+#
+# Copyright (C) 2024 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
+include $(TOPDIR)/rules.mk
+
+PKG_NAME:=wifi-scripts
+PKG_VERSION:=1.0
+PKG_RELEASE:=8
+PKG_LICENSE:=GPL-2.0-only
+
+PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+
+include $(INCLUDE_DIR)/package.mk
+
+define Package/wifi-scripts
+  SECTION:=utils
+  CATEGORY:=Base system
+  DEPENDS:=+netifd
+  TITLE:=Wi-Fi configuration scripts
+  PKGARCH:=all
+endef
+
+define Package/wifi-scripts-lite
+  SECTION:=utils
+  CATEGORY:=Base system
+  DEPENDS:=+netifd
+  TITLE:=Wi-Fi configuration scripts
+  PKGARCH:=all
+endef
+
+define Package/wifi-scripts/description
+ A set of scripts that handle setup and configuration of Wi-Fi devices.
+endef
+
+define Build/Prepare
+endef
+
+define Build/Configure
+endef
+
+define Build/Compile
+endef
+
+define Package/wifi-scripts/install
+	$(INSTALL_DIR) $(1)
+	$(CP) ./files/* $(1)/
+
+	# remove rfkill script if not supported
+	$(if $(CONFIG_RFKILL_SUPPORT),,\
+		$(RM) $(1)/etc/rc.button/rfkill)
+endef
+
+define Package/wifi-scripts-lite/install
+	$(INSTALL_DIR) $(1)/sbin
+	$(CP) ./files/sbin/wifi $(1)/sbin/
+endef
+
+$(eval $(call BuildPackage,wifi-scripts))
+$(eval $(call BuildPackage,wifi-scripts-lite))

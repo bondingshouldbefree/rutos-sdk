@@ -1,0 +1,13 @@
+Index: mwan3-2.10.12/files/etc/init.d/mwan3
+===================================================================
+--- mwan3-2.10.12.orig/files/etc/init.d/mwan3
++++ mwan3-2.10.12/files/etc/init.d/mwan3
+@@ -84,6 +84,8 @@ check_tables() {
+ 	config_load network
+ 	config_foreach compare interface "$tid"
+ 
++	[ -e "/etc/config/tailscale" ] && [ "$tid" = "52" ] && ret=1
++
+ 	return "$ret"
+ }
+ 

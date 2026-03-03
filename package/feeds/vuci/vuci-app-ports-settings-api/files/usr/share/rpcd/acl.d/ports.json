@@ -1,0 +1,1 @@
+{"network/ports/ports_settings":{"description":"port status and configuration","read":{"api":{"/ports_settings/*":["*"]}},"write":{"api":["/ports_settings/*"]},"exception":["/ports_settings/status/*"]}}

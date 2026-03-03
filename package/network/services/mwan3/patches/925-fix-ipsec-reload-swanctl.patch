@@ -1,0 +1,24 @@
+--- a/files/usr/share/15-mwan3
++++ b/files/usr/share/15-mwan3
+@@ -114,12 +114,19 @@ mwan3_flush_conntrack "$IFNAME" "$ACTION
+ 
+ flush_conntrack() {
+ 	ipsec_enabled
+-	local conn_name="${1%_*}"
++	local conn_name="${1%_*}" child_connections timeout=10
+ 
+ 	config_get ipsec_enabled "$conn_name" enabled 0
+ 	[ "$MWAN3_STARTUP" != "init" ] && [ "$enabled" = "1" ] || return 0
+ 	echo f > /proc/net/nf_conntrack
+-	ipsec down "${conn_name}-${1}"
++	child_connections="$(/etc/init.d/swanctl get_child_conn ${conn_name})"
++	logger -t "ipsec" "mwan3 is terminating IPSec connection $conn_name"
++	swanctl --terminate --ike "$conn_name" --timeout "$timeout"
++	swanctl --initiate --ike "$conn_name" --timeout "$timeout"
++	for child in $child_connections; do
++		logger -t "ipsec" "mwan3 is initiating IPSec child connection $child"
++		swanctl --initiate --child "$child" --timeout "$timeout"
++	done
+ }
+ 
+ ipsec_routes() {

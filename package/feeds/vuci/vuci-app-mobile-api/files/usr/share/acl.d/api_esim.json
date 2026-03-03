@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"esim.modem*":{"methods":["status","rename","delete","download","process_notifications","clear_errors"]},"service":{"methods":["event"]}}}

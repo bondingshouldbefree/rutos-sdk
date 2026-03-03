@@ -1,0 +1,21 @@
+net: netfilter: flowtables: check 'NF_FLOW_HW' for offloading
+
+Use 'NF_FLOW_HW' bit to determine if TC offload is needed.
+Here added as scalable solution to make sure XFRM-type flows aren't
+submitted to TC offload code, as they are not supported.
+
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -535,10 +535,8 @@ void flow_offload_refresh(struct nf_flow
+ 	else
+ 		return;
+ 
+-	if (likely(!nf_flowtable_hw_offload(flow_table)))
+-		return;
+-
+-	nf_flow_offload_add(flow_table, flow);
++	if (test_bit(NF_FLOW_HW, &flow->flags))
++		nf_flow_offload_add(flow_table, flow);
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_refresh);
+ 

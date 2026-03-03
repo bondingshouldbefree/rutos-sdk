@@ -1,0 +1,332 @@
+Index: uhttpd-2021-03-21-15346de8/listen.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/listen.c
++++ uhttpd-2021-03-21-15346de8/listen.c
+@@ -143,7 +143,7 @@ int uh_socket_bind(const char *host, con
+ 	};
+ 
+ 	if ((status = getaddrinfo(host, port, &hints, &addrs)) != 0) {
+-		fprintf(stderr, "getaddrinfo(): %s\n", gai_strerror(status));
++		h_log(L_ERROR, "getaddrinfo(): %s\n", gai_strerror(status));
+ 		return 0;
+ 	}
+ 
+Index: uhttpd-2021-03-21-15346de8/main.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/main.c
++++ uhttpd-2021-03-21-15346de8/main.c
+@@ -272,6 +272,7 @@ int main(int argc, char **argv)
+ 	signal(SIGPIPE, SIG_IGN);
+ 	uh_plugin_setup_sighup();
+ 
++	logger_init(L_SYSTEM, L_TYPE_SYSLOG, "uhttpd");
+ 	while ((ch = getopt(argc, argv, "A:abC:c:Dd:E:e:fh:H:I:i:K:k:L:l:m:N:n:P:p:qRFr:Ss:T:t:U:u:Xx:y:")) != -1) {
+ 		switch(ch) {
+ #ifdef HAVE_TLS
+@@ -304,7 +305,7 @@ int main(int argc, char **argv)
+ 		case 'P':
+ 		case 'q':
+ 		case 's':
+-			fprintf(stderr, "uhttpd: TLS support not compiled, "
++			h_log(L_ERROR, "uhttpd: TLS support not compiled, "
+ 			                "ignoring -%c\n", ch);
+ 			break;
+ #endif
+@@ -320,7 +321,7 @@ int main(int argc, char **argv)
+ 
+ 		case 'h':
+ 			if (!realpath(optarg, uh_buf)) {
+-				fprintf(stderr, "Error: Invalid directory %s: %s\n",
++				h_log(L_ERROR, "Error: Invalid directory %s: %s\n",
+ 						optarg, strerror(errno));
+ 				exit(1);
+ 			}
+@@ -329,7 +330,7 @@ int main(int argc, char **argv)
+ 
+ 		case 'H':
+ 			if (uh_handler_add(optarg)) {
+-				fprintf(stderr, "Error: Failed to load handler script %s\n",
++				h_log(L_ERROR, "Error: Failed to load handler script %s\n",
+ 					optarg);
+ 				exit(1);
+ 			}
+@@ -337,7 +338,7 @@ int main(int argc, char **argv)
+ 
+ 		case 'E':
+ 			if (optarg[0] != '/') {
+-				fprintf(stderr, "Error: Invalid error handler: %s\n",
++				h_log(L_ERROR, "Error: Invalid error handler: %s\n",
+ 						optarg);
+ 				exit(1);
+ 			}
+@@ -346,7 +347,7 @@ int main(int argc, char **argv)
+ 
+ 		case 'I':
+ 			if (optarg[0] == '/') {
+-				fprintf(stderr, "Error: Invalid index page: %s\n",
++				h_log(L_ERROR, "Error: Invalid index page: %s\n",
+ 						optarg);
+ 				exit(1);
+ 			}
+@@ -381,7 +382,7 @@ int main(int argc, char **argv)
+ 		case 'y':
+ 			alias = calloc(1, sizeof(*alias));
+ 			if (!alias) {
+-				fprintf(stderr, "Error: failed to allocate alias\n");
++				h_log(L_ERROR, "Error: failed to allocate alias\n");
+ 				exit(1);
+ 			}
+ 			alias->alias = strdup(optarg);
+@@ -395,7 +396,7 @@ int main(int argc, char **argv)
+ 			optarg = strdup(optarg);
+ 			port = strchr(optarg, '=');
+ 			if (optarg[0] != '.' || !port) {
+-				fprintf(stderr, "Error: Invalid interpreter: %s\n",
++				h_log(L_ERROR, "Error: Invalid interpreter: %s\n",
+ 						optarg);
+ 				exit(1);
+ 			}
+@@ -437,7 +438,7 @@ int main(int argc, char **argv)
+ 
+ 			/* opt now contains strlen(optarg) -- no need to re-scan */
+ 			if (uh_urldecode(port, opt, optarg, opt) < 0) {
+-				fprintf(stderr, "uhttpd: invalid encoding\n");
++				h_log(L_ERROR, "uhttpd: invalid encoding\n");
+ 				return -1;
+ 			}
+ 
+@@ -466,14 +467,14 @@ int main(int argc, char **argv)
+ 		case 'L':
+ 			if (ch == 'l') {
+ 				if (lua_prefix)
+-					fprintf(stderr, "uhttpd: Ignoring previous -%c %s\n",
++					h_log(L_WARNING, "uhttpd: Ignoring previous -%c %s\n",
+ 					        ch, lua_prefix);
+ 
+ 				lua_prefix = optarg;
+ 			}
+ 			else {
+ 				if (lua_handler)
+-					fprintf(stderr, "uhttpd: Ignoring previous -%c %s\n",
++					h_log(L_WARNING, "uhttpd: Ignoring previous -%c %s\n",
+ 					        ch, lua_handler);
+ 
+ 				lua_handler = optarg;
+@@ -489,7 +490,7 @@ int main(int argc, char **argv)
+ #else
+ 		case 'l':
+ 		case 'L':
+-			fprintf(stderr, "uhttpd: Lua support not compiled, "
++			h_log(L_WARNING, "uhttpd: Lua support not compiled, "
+ 			                "ignoring -%c\n", ch);
+ 			break;
+ #endif
+@@ -519,7 +520,7 @@ int main(int argc, char **argv)
+ 		case 'U':
+ 		case 'X':
+ 		case 'e':
+-			fprintf(stderr, "uhttpd: UBUS support not compiled, "
++			h_log(L_WARNING, "uhttpd: UBUS support not compiled, "
+ 			                "ignoring -%c\n", ch);
+ 			break;
+ #endif
+@@ -532,7 +533,7 @@ int main(int argc, char **argv)
+ 
+ 	if (!conf.docroot) {
+ 		if (!realpath(".", uh_buf)) {
+-			fprintf(stderr, "Error: Unable to determine work dir\n");
++			h_log(L_ERROR, "Error: Unable to determine work dir\n");
+ 			return 1;
+ 		}
+ 		conf.docroot = strdup(uh_buf);
+@@ -541,14 +542,14 @@ int main(int argc, char **argv)
+ 	init_defaults_post();
+ 
+ 	if (!bound) {
+-		fprintf(stderr, "Error: No sockets bound, unable to continue\n");
++		h_log(L_ERROR, "Error: No sockets bound, unable to continue\n");
+ 		return 1;
+ 	}
+ 
+ #ifdef HAVE_TLS
+ 	if (n_tls) {
+ 		if (!tls_crt || !tls_key) {
+-			fprintf(stderr, "Please specify a certificate and "
++			h_log(L_WARNING, "Please specify a certificate and "
+ 					"a key file to enable SSL support\n");
+ 			return 1;
+ 		}
+@@ -559,7 +560,7 @@ int main(int argc, char **argv)
+ 
+ #ifdef HAVE_LUA
+ 	if (lua_handler || lua_prefix) {
+-		fprintf(stderr, "Need handler and prefix to enable Lua support\n");
++		h_log(L_WARNING, "Need handler and prefix to enable Lua support\n");
+ 		return 1;
+ 	}
+ 
+Index: uhttpd-2021-03-21-15346de8/plugin.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/plugin.c
++++ uhttpd-2021-03-21-15346de8/plugin.c
+@@ -74,13 +74,13 @@ int uh_plugin_init(const char *name)
+ 	if (!found) {
+ 		info = calloc(1, sizeof(*info));
+ 		if (!info) {
+-			fprintf(stderr, "Could not allocate memory for plugin info\n");
++			h_log(L_ERROR, "Could not allocate memory for plugin info\n");
+ 			return -ENOMEM;
+ 		}
+ 		info->filename = strdup(name);
+ 		if (!info->filename) {
+ 			free(info);
+-			fprintf(stderr, "Could not allocate memory for plugin filename\n");
++			h_log(L_ERROR, "Could not allocate memory for plugin filename\n");
+ 			return -ENOMEM;
+ 		}
+ 		list_add(&info->list, &plugin_infos);
+@@ -89,14 +89,14 @@ int uh_plugin_init(const char *name)
+ 
+ 	dlh = dlopen(name, RTLD_LAZY | RTLD_GLOBAL);
+ 	if (!dlh) {
+-		fprintf(stderr, "Could not open plugin %s: %s\n", name, dlerror());
++		h_log(L_ERROR, "Could not open plugin %s: %s\n", name, dlerror());
+ 		return -ENOENT;
+ 	}
+ 
+ 	sym = "uhttpd_plugin";
+ 	p = dlsym(dlh, sym);
+ 	if (!p) {
+-		fprintf(stderr, "Could not find symbol '%s' in plugin '%s'\n", sym, name);
++		h_log(L_ERROR, "Could not find symbol '%s' in plugin '%s': %s\n", sym, name, dlerror());
+ 		return -ENOENT;
+ 	}
+ 
+@@ -142,7 +142,7 @@ static void reload_plugins(int signum)
+ 			free(info->filename);
+ 			list_del(&info->list);
+ 			free(info);
+-			fprintf(stderr, "Plugin unloaded: %s\n", info->filename);
++			h_log(L_INFO, "Plugin unloaded: %s\n", info->filename);
+ 		}
+ 	}
+ 
+@@ -152,7 +152,7 @@ static void reload_plugins(int signum)
+ 		list_for_each_entry(info, &plugin_infos, list) {
+ 			if (info->filename && strcmp(info->filename, filenames[i]) == 0 && info->plugin && info->plugin->post_init) {
+ 				info->plugin->post_init();
+-				fprintf(stderr, "Plugin loaded: %s\n", filenames[i]);
++				h_log(L_INFO, "Plugin reloaded: %s\n", filenames[i]);
+ 				break;
+ 			}
+ 		}
+Index: uhttpd-2021-03-21-15346de8/tls.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/tls.c
++++ uhttpd-2021-03-21-15346de8/tls.c
+@@ -41,19 +41,19 @@ int uh_tls_init(const char *key, const c
+ 	_init = true;
+ 	dlh = dlopen("libustream-ssl." LIB_EXT, RTLD_LAZY | RTLD_LOCAL);
+ 	if (!dlh) {
+-		fprintf(stderr, "Failed to load ustream-ssl library: %s\n", dlerror());
++		h_log(L_ERROR, "Failed to load ustream-ssl library: %s\n", dlerror());
+ 		return -ENOENT;
+ 	}
+ 
+ 	ops = dlsym(dlh, "ustream_ssl_ops");
+ 	if (!ops) {
+-		fprintf(stderr, "Could not find required symbol 'ustream_ssl_ops' in ustream-ssl library\n");
++		h_log(L_ERROR, "Could not find required symbol 'ustream_ssl_ops' in ustream-ssl library\n");
+ 		return -ENOENT;
+ 	}
+ 
+ 	ctx = ops->context_new(true);
+ 	if (!ctx) {
+-		fprintf(stderr, "Failed to initialize ustream-ssl\n");
++		h_log(L_ERROR, "Failed to initialize ustream-ssl");
+ 		return -EINVAL;
+ 	}
+ 	
+@@ -61,12 +61,12 @@ int uh_tls_init(const char *key, const c
+ 
+ 	if (ops->context_set_crt_file(ctx, crt) ||
+ 	    ops->context_set_key_file(ctx, key)) {
+-		fprintf(stderr, "Failed to load certificate/key files\n");
+-		return -EINVAL;
++			h_log(L_CRIT, "Failed to load certificate/key files\n");
++			return -EINVAL;
+ 	}
+ 
+ 	if (ciphers && ops->context_set_ciphers(ctx, ciphers)) {
+-		fprintf(stderr, "No recognized ciphers in cipher list\n");
++		h_log(L_CRIT, "Failed to set cipher list");
+ 		return -EINVAL;
+ 	}
+ 
+Index: uhttpd-2021-03-21-15346de8/uhttpd.h
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/uhttpd.h
++++ uhttpd-2021-03-21-15346de8/uhttpd.h
+@@ -29,6 +29,7 @@
+ #include <libubox/ustream.h>
+ #include <libubox/blob.h>
+ #include <libubox/utils.h>
++#include <tlt_logger.h>
+ #ifdef HAVE_UBUS
+ #include <libubus.h>
+ #include <json-c/json.h>
+@@ -288,6 +289,8 @@ extern const char * const http_versions[
+ extern const char * const http_methods[];
+ extern struct dispatch_handler cgi_dispatch;
+ 
++void h_log(int priority, const char* format, ...);
++
+ void uh_index_add(const char *filename);
+ 
+ bool uh_accept_client(int fd, bool tls);
+Index: uhttpd-2021-03-21-15346de8/utils.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/utils.c
++++ uhttpd-2021-03-21-15346de8/utils.c
+@@ -299,13 +299,25 @@ int uh_set_caps()
+ 	cap_value_t newcaps[2] = { CAP_NET_ADMIN, CAP_NET_RAW };
+ 
+ 	if (cap_set_flag(caps, CAP_INHERITABLE, 2, newcaps, CAP_SET) == -1) {
+-		fprintf(stderr, "Failed to set inheritable capabilities: %s", strerror(errno));
++		h_log(L_ERROR, "Failed to set inheritable capabilities: %s", strerror(errno));
+ 		res = -1;
+ 	}
+ 	if (cap_set_proc(caps) == -1) {
+-		fprintf(stderr, "Failed to process inheritable capabilities: %s", strerror(errno));
++		h_log(L_ERROR, "Failed to set capabilities: %s", strerror(errno));
+ 		res = -1;
+ 	}
+ 
+ 	return res;
+ }
++
++void h_log(int priority, const char* format, ...)
++{
++    va_list args;
++    char printbuf[1024];
++
++    va_start(args, format);
++    vsnprintf(printbuf, sizeof(printbuf), format, args);
++    va_end(args);
++
++    _log(priority, "%s", printbuf);
++}
+\ No newline at end of file
+Index: uhttpd-2021-03-21-15346de8/CMakeLists.txt
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/CMakeLists.txt
++++ uhttpd-2021-03-21-15346de8/CMakeLists.txt
+@@ -37,7 +37,7 @@ ENDIF()
+ 
+ ADD_EXECUTABLE(uhttpd ${SOURCES})
+ FIND_LIBRARY(libjson NAMES json-c json)
+-TARGET_LINK_LIBRARIES(uhttpd ubox dl json_script blobmsg_json ubus ${libjson} ${LIBS} cap)
++TARGET_LINK_LIBRARIES(uhttpd ubox dl json_script blobmsg_json ubus ${libjson} ${LIBS} cap tlt_logger)
+ 
+ SET(PLUGINS "")
+ IF(LUA_SUPPORT)

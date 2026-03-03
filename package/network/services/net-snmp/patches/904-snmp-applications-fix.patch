@@ -1,0 +1,48 @@
+Index: net-snmp-5.9.1/apps/snmpusm.c
+===================================================================
+--- net-snmp-5.9.1.orig/apps/snmpusm.c
++++ net-snmp-5.9.1/apps/snmpusm.c
+@@ -19,6 +19,6 @@
+ #include <net-snmp/net-snmp-config.h>
+ #include <net-snmp/net-snmp-includes.h>
+ #include <net-snmp/library/snmp_openssl.h>
+-#if defined(HAVE_OPENSSL_DH_H) && defined(HAVE_LIBCRYPTO)
++#if defined(HAVE_OPENSSL_DH_H) && defined(HAVE_LIBCRYPTO) && OPENSSL_VERSION_NUMBER < 0x30000000L
+ #include <openssl/dh.h>
+ #endif /* HAVE_OPENSSL_DH_H && HAVE_LIBCRYPTO */
+@@ -103,7 +103,7 @@ usmUserStatus[MAX_OID_LEN] = {1, 3, 6, 1
+ /* diffie helman change key objects */
+ usmDHUserAuthKeyChange[MAX_OID_LEN] = {1, 3, 6, 1, 3, 101, 1, 1, 2, 1, 1 },
+ usmDHUserPrivKeyChange[MAX_OID_LEN] = {1, 3, 6, 1, 3, 101, 1, 1, 2, 1, 3 },
+-#if defined(HAVE_OPENSSL_DH_H) && defined(HAVE_LIBCRYPTO)
++#if defined(HAVE_OPENSSL_DH_H) && defined(HAVE_LIBCRYPTO) && OPENSSL_VERSION_NUMBER < 0x30000000L
+ usmDHUserOwnAuthKeyChange[MAX_OID_LEN] = {1, 3, 6, 1, 3, 101, 1, 1, 2, 1, 2 },
+ usmDHUserOwnPrivKeyChange[MAX_OID_LEN] = {1, 3, 6, 1, 3, 101, 1, 1, 2, 1, 4 },
+ #endif /* HAVE_OPENSSL_DH_H && HAVE_LIBCRYPTO */
+@@ -179,7 +179,7 @@ setup_oid(oid * it, size_t * len, u_char
+ #endif
+ }
+ 
+-#if defined(HAVE_OPENSSL_DH_H) && defined(HAVE_LIBCRYPTO)
++#if defined(HAVE_OPENSSL_DH_H) && defined(HAVE_LIBCRYPTO) && OPENSSL_VERSION_NUMBER < 0x30000000L
+ int
+ get_USM_DH_key(netsnmp_variable_list *vars, netsnmp_variable_list *dhvar,
+                size_t outkey_len,
+@@ -866,7 +866,7 @@ main(int argc, char *argv[])
+         snmp_pdu_add_variable(pdu, usmUserStatus, name_length,
+                               ASN_INTEGER, (u_char *) & longvar,
+                               sizeof(longvar));
+-#if defined(HAVE_OPENSSL_DH_H) && defined(HAVE_LIBCRYPTO)
++#if defined(HAVE_OPENSSL_DH_H) && defined(HAVE_LIBCRYPTO) && OPENSSL_VERSION_NUMBER < 0x30000000L
+     } else if (strcmp(argv[arg], CMD_CHANGEKEY_NAME) == 0) {
+         /*
+          * change the key of a user if DH is available
+@@ -1036,7 +1036,7 @@ main(int argc, char *argv[])
+     }
+ 
+     exitval = 0;
+-#if defined(HAVE_OPENSSL_DH_H) && defined(HAVE_LIBCRYPTO)
++#if defined(HAVE_OPENSSL_DH_H) && defined(HAVE_LIBCRYPTO) && OPENSSL_VERSION_NUMBER < 0x30000000L
+   begone:
+ #endif /* HAVE_OPENSSL_DH_H && HAVE_LIBCRYPTO */
+     if (response)

@@ -1,0 +1,16 @@
+Index: ubox-2020-10-25-9ef88681/log/logdb.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/logdb.c
++++ ubox-2020-10-25-9ef88681/log/logdb.c
+@@ -478,6 +478,11 @@ static int execute_action(sqlite3 *conn,
+ 
+ int db_action(int action, sqlite3_stmt **stmt)
+ {
++	struct stat st;
++	if (stat(DB, &st) != 0) {
++		return 0;
++	}
++
+ 	if (g_vc_running) {
+ 		return SQLITE_ERROR;
+ 	}

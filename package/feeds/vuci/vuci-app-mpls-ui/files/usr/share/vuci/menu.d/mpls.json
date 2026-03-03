@@ -1,0 +1,13 @@
+{
+  "network/routes/mpls": {
+    "title": "MPLS",
+    "index": 60
+  },
+  "network/routes/mpls/ldp": {
+    "title": "LDP",
+    "index": 10,
+    "view": "network/ldp",
+    "acls": ["network/routes/ldp"],
+    "main_page": true
+  }
+}

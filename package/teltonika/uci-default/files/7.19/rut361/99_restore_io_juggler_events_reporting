@@ -1,0 +1,26 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+PACKAGE_FILE="/etc/package_restore.txt"
+
+io_juggler_enb="0"
+events_reporting_enb="0"
+
+check_if_enabled() {
+	local sec="$1"
+
+	config_get io_juggler "$sec" "io_juggler"
+	config_get events_reporting "$sec" "events_reporting"
+	config_get enabled "$sec" "enabled"
+	[ "$io_juggler" == "1" ] && [ "$enabled" == "1" ] && io_juggler_enb="1"
+	[ "$events_reporting" == "1" ] && [ "$enabled" == "1" ] && events_reporting_enb="1"
+}
+
+config_load event_juggler
+config_foreach check_if_enabled event
+
+[ "$events_reporting_enb" == "1" ] && echo "events_reporting - Events reporting" >>"$PACKAGE_FILE"
+[ "$io_juggler_enb" == "1" ] && echo "io_juggler - I/O Juggler" >>"$PACKAGE_FILE"
+
+exit 0

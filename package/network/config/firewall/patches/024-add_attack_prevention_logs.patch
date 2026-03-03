@@ -1,0 +1,78 @@
+--- a/options.h
++++ b/options.h
+@@ -259,6 +259,7 @@ struct fw3_limit
+ 	int rate;
+ 	int burst;
+ 	enum fw3_limit_unit unit;
++	bool log_overlimit;
+ };
+ 
+ struct fw3_time
+--- a/rules.c
++++ b/rules.c
+@@ -49,6 +49,7 @@ const struct fw3_option fw3_rule_opts[]
+ 
+ 	FW3_OPT("limit",               limit,     rule,     limit),
+ 	FW3_OPT("limit_burst",         int,       rule,     limit.burst),
++	FW3_OPT("limit_log_overlimit", bool,      rule,     limit.log_overlimit),
+ 
+ 	FW3_OPT("utc_time",            bool,      rule,     time.utc),
+ 	FW3_OPT("start_date",          date,      rule,     time.datestart),
+@@ -480,6 +481,49 @@ set_comment(struct fw3_ipt_rule *r, cons
+ 		fw3_ipt_rule_comment(r, "@rule[%u]", num);
+ }
+ 
++static void add_overlimit_logging(struct fw3_ipt_handle *handle, struct fw3_rule *rule, int num,
++				  struct fw3_protocol *proto, struct fw3_address *sip,
++				  struct fw3_address *dip, struct fw3_port *sport, struct fw3_port *dport,
++				  struct fw3_mac *mac, struct fw3_icmptype *icmptype, struct fw3_device *idev,
++				  struct fw3_device *odev)
++{
++	if (rule->limit.rate <= 0 || !rule->limit.log_overlimit)
++		return;
++
++	struct fw3_ipt_rule *r;
++	struct fw3_limit log_limit;
++	char log_prefix[29];
++
++	log_limit.rate = 1;
++	log_limit.burst = 5;
++	log_limit.log_overlimit = false;
++	log_limit.unit = FW3_LIMIT_UNIT_SECOND;
++
++	if (rule->name)
++		snprintf(log_prefix, sizeof(log_prefix), "%s overlimit ", rule->name);
++	else
++		snprintf(log_prefix, sizeof(log_prefix), "@rule[%u] overlimit ", num);
++
++	r = fw3_ipt_rule_create(handle, proto, idev, odev, sip, dip);
++	fw3_ipt_rule_sport_dport(r, sport, dport);
++	fw3_ipt_rule_device(r, rule->device, rule->direction_out);
++	fw3_ipt_rule_icmptype(r, icmptype);
++	fw3_ipt_rule_mac(r, mac);
++	fw3_ipt_rule_ipset(r, &rule->ipset);
++	fw3_ipt_rule_helper(r, &rule->helper);
++	fw3_ipt_rule_limit(r, &log_limit);
++	fw3_ipt_rule_time(r, &rule->time);
++	fw3_ipt_rule_mark(r, &rule->mark);
++	fw3_ipt_rule_dscp(r, &rule->dscp);
++	fw3_ipt_rule_tcpmss(r, &rule->tcpmss);
++	set_target(r, rule, handle->family);
++	fw3_ipt_rule_target(r, "LOG");
++	fw3_ipt_rule_addarg(r, false, "--log-prefix", log_prefix);
++	fw3_ipt_rule_extra(r, rule->extra);
++	set_comment(r, log_prefix, num);
++	append_chain(r, rule);
++}
++
+ static void
+ print_rule(struct fw3_ipt_handle *handle, struct fw3_state *state,
+            struct fw3_rule *rule, int num, struct fw3_protocol *proto,
+@@ -570,6 +614,7 @@ print_rule(struct fw3_ipt_handle *handle
+ 		fw3_ipt_rule_extra(r, rule->extra);
+ 		set_comment(r, rule->name, num);
+ 		append_chain(r, rule);
++		add_overlimit_logging(handle, rule, num, proto, sip, dip, sport, dport, mac, icmptype, idev, odev);
+ 	}
+ }
+ 

@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"system":{"methods":["board","info"]},"port_events":{"methods":["show"]},"serial":{"methods":["usb_adapters"]}}}

@@ -1,0 +1,27 @@
+#!/bin/sh
+. /lib/functions.sh
+
+fix_ownership() {
+    [ -f "$1" ] && {
+        chown certificates:certificates "$1"
+        chmod 0660 "$1"
+    }
+}
+
+migrate_dot1x_section() {
+    local section="$1"
+    local client_cert ca_cert private_key
+
+    config_get client_cert "$section" client_cert
+    config_get ca_cert "$section" ca_cert
+    config_get private_key "$section" private_key
+
+    [ -n "$client_cert" ] && fix_ownership "$client_cert"
+    [ -n "$ca_cert" ] && fix_ownership "$ca_cert"
+    [ -n "$private_key" ] && fix_ownership "$private_key"
+}
+
+config_load dot1x
+
+config_foreach migrate_dot1x_section port
+exit 0

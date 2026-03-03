@@ -1,0 +1,87 @@
+{
+  "site_manager/devices": {
+    "title": "Devices",
+    "index": 10
+  },
+  "site_manager/devices/overview": {
+    "title": "Overview",
+    "index": 10,
+    "view": "site_manager/SitemanDevices",
+    "acls": [
+      "services/site_manager"
+    ],
+    "files": [
+      "/etc/config/siteman_devices"
+    ]
+  },
+  "site_manager/devices/groups": {
+    "title": "Groups",
+    "index": 20,
+    "view": "site_manager/SitemanGroups",
+    "acls": [
+      "services/site_manager"
+    ],
+    "files": [
+      "/etc/config/siteman_groups"
+    ]
+  },
+  "site_manager/auto_reboot": {
+    "title": "Auto Reboot",
+    "index": 30
+  },
+  "site_manager/auto_reboot/ping_wget": {
+    "title": "Ping/Wget Reboot",
+    "index": 1,
+    "view": "site_manager/SitemanPingReboot",
+    "acls": [
+      "services/site_manager"
+    ],
+    "files": [
+      "/etc/config/siteman_ping_reboot"
+    ]
+  },
+  "site_manager/auto_reboot/scheduler": {
+    "title": "Reboot Scheduler",
+    "index": 2,
+    "view": "site_manager/SitemanPeriodicReboot",
+    "acls": [
+      "services/site_manager"
+    ],
+    "files": [
+      "/etc/config/siteman_periodic_reboot"
+    ]
+  },
+  "site_manager/wireless": {
+    "title": "Wireless",
+    "index": 40,
+    "view": "site_manager/SitemanWireless",
+    "acls": [
+      "services/site_manager"
+    ],
+    "files": [
+      "/etc/config/siteman_wireless"
+    ]
+  },
+  "site_manager/devices/settings": {
+    "title": "General Settings",
+    "index": 60,
+    "view": "site_manager/SitemanSettings",
+    "acls": [
+      "services/site_manager"
+    ],
+    "files": [
+      "/etc/config/siteman"
+    ]
+  },
+  "site_manager/vlan": {
+    "title": "VLAN",
+    "index": 50,
+    "view": "site_manager/SitemanVlan",
+    "acls": [
+      "services/site_manager"
+    ],
+    "files": [
+      "/etc/config/siteman_vlan"
+    ]
+  }
+}

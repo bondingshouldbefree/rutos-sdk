@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. /lib/functions.sh
+PACKAGE_FILE="/etc/package_restore.txt"
+
+[ -f "/usr/lib/opkg/info/uhttpd-mod-ubus.control" ] && exit 0
+grep -qsF 'json_rpc_support - JSON-RPC support' "$PACKAGE_FILE" && exit 0
+[ "$(uci_get uhttpd main ubus_prefix)" = "/ubus" ] || exit 0
+
+echo "json_rpc_support - JSON-RPC support" >> "$PACKAGE_FILE"
+
+exit 0

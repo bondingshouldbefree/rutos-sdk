@@ -1,0 +1,1 @@
+{"system/maintenance/reset":{"description":"reset configuration","read":{"api":{"/backup/status/*":["*"]}},"write":{"api":["/backup/actions/create_default/*","/backup/actions/remove_default/*","/backup/actions/reset_settings/*"]}}}

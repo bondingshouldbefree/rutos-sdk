@@ -1,0 +1,112 @@
+--- a/interface.c
++++ b/interface.c
+@@ -765,8 +765,9 @@ interface_proto_event_cb(struct interfac
+ 		if (!iface->l3_dev.dev)
+ 			interface_set_l3_dev(iface, iface->main_dev.dev);
+ 
+-		interface_ip_set_enabled(&iface->config_ip, true);
++		// Load protocol IP settings before so static routes can be applied correctly
+ 		interface_ip_set_enabled(&iface->proto_ip, true);
++		interface_ip_set_enabled(&iface->config_ip, true);
+ 		system_flush_routes();
+ 		iface->state = IFS_UP;
+ 		iface->start_time = system_get_rtime();
+@@ -1039,8 +1040,8 @@ interface_set_l3_dev(struct interface *i
+ 			if (device_claim(&iface->l3_dev) < 0)
+ 				return;
+ 		}
+-		interface_ip_set_enabled(&iface->config_ip, enabled);
+ 		interface_ip_set_enabled(&iface->proto_ip, enabled);
++		interface_ip_set_enabled(&iface->config_ip, enabled);
+ 	}
+ }
+ 
+--- a/interface-ip.c
++++ b/interface-ip.c
+@@ -29,6 +29,53 @@
+ #include "ubus.h"
+ #include "system.h"
+ 
++#ifdef DEBUG
++
++static void log_if_addr(const union if_addr *addr, enum device_addr_flags flags, const char *label)
++{
++	char buf[INET6_ADDRSTRLEN];
++	if ((flags & DEVADDR_INET6) == DEVADDR_INET6) {
++		if (inet_ntop(AF_INET6, &addr->in6, buf, sizeof(buf)))
++			DPRINTF("  %s (IPv6): %s\n", label, buf);
++		else
++			DPRINTF("  %s (IPv6): <invalid>\n", label);
++	} else {
++		if (inet_ntop(AF_INET, &addr->in, buf, sizeof(buf)))
++			DPRINTF("  %s (IPv4): %s\n", label, buf);
++		else
++			DPRINTF("  %s (IPv4): <invalid>\n", label);
++	}
++}
++
++#define LOG_ROUTE(route) \
++{ \
++	if(route != NULL) { \
++		DPRINTF("device_route: %p\n", (void *)route); \
++		DPRINTF("  iface: %p\n", (void *)route->iface); \
++		DPRINTF("  enabled: %d\n", route->enabled); \
++		DPRINTF("  keep: %d\n", route->keep); \
++		DPRINTF("  failed: %d\n", route->failed); \
++		log_if_addr(&route->nexthop, route->flags, "nexthop"); \
++		DPRINTF("  mtu: %d\n", route->mtu); \
++		DPRINTF("  type: %u\n", route->type); \
++		DPRINTF("  proto: %u\n", route->proto); \
++		DPRINTF("  valid_until: %ld\n", (long)route->valid_until); \
++		DPRINTF("  flags: %d\n", route->flags); \
++		DPRINTF("  metric: %u\n", route->metric); \
++		DPRINTF("  table: %u\n", route->table); \
++		DPRINTF("  mask: %u\n", route->mask); \
++		DPRINTF("  sourcemask: %u\n", route->sourcemask); \
++		log_if_addr(&route->addr, route->flags, "addr"); \
++		log_if_addr(&route->source, route->flags, "source"); \
++	} \
++}
++
++#else
++
++#define LOG_ROUTE(route) {}
++
++#endif
++
+ static const struct blobmsg_policy route_attr[__ROUTE_MAX] = {
+ 	[ROUTE_INTERFACE] = { .name = "interface", .type = BLOBMSG_TYPE_STRING },
+ 	[ROUTE_TARGET] = { .name = "target", .type = BLOBMSG_TYPE_STRING },
+@@ -847,10 +894,14 @@ __interface_update_route(struct interfac
+ 
+ 	if (node_new) {
+ 		bool _enabled = enable_route(ip, route_new);
+-
++		int rv = 0;
+ 		if (!(route_new->flags & DEVADDR_EXTERNAL) && !keep && _enabled)
+-			if (system_add_route(dev, route_new))
++			if ((rv = system_add_route(dev, route_new))) {
+ 				route_new->failed = true;
++				_enabled = false;
++				DPRINTF("Failed to add route: %s\n", strerror(rv));
++				LOG_ROUTE(route_new);
++			}
+ 
+ 		route_new->iface = iface;
+ 		route_new->enabled = _enabled;
+@@ -1631,9 +1682,13 @@ interface_ip_set_route_enabled(struct in
+ 
+ 	if (enabled) {
+ 		interface_set_route_info(ip->iface, route);
+-
+-		if (system_add_route(dev, route))
++		int rv = 0;
++		if ((rv = system_add_route(dev, route))) {
+ 			route->failed = true;
++			enabled = false;
++			DPRINTF("Failed to add route: %s\n", strerror(rv));
++			LOG_ROUTE(route);
++		}
+ 	} else
+ 		system_del_route(dev, route);
+ 

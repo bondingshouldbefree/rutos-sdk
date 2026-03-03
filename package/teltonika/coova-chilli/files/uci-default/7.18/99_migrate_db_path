@@ -1,0 +1,17 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+fix_dbpath() {
+    local section="$1"
+    local dbpath
+
+    config_get dbpath "$section" dbpath
+    [ "$dbpath" = "/var/hotspot.db" ] && {
+        uci_set chilli "$section" dbpath "/var/run/chilli/hotspot.db"
+    }
+}
+
+config_load chilli
+config_foreach fix_dbpath chilli
+uci_commit chilli

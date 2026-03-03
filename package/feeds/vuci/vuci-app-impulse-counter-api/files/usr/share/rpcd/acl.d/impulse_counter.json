@@ -1,0 +1,1 @@
+{"services/io/impulse_counter":{"description":"Impulse counter configuration","read":{"api":{"/impulse_counter/*":["*"],"/impulse_counter/historic//*":["*"],"/io/*":["*"]}},"write":{"api":["/impulse_counter/*"]},"source":["/impulse_counter/*"]}}

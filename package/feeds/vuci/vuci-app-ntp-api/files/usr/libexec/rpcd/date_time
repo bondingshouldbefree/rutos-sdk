@@ -1,0 +1,30 @@
+#!/bin/sh
+
+. /usr/share/libubox/jshn.sh
+
+show () {
+	json_init
+	json_add_string output "$1"
+	json_add_string exit_code "$2"
+	json_dump
+}
+
+main () {
+	case "$1" in
+		list) echo '{ "set_time": { "timestamp": "str" } }' ;;
+		call)
+			case "$2" in
+				set_time)
+					read input;
+					timestamp="$(jsonfilter -s $input -e '@.timestamp')"
+					date_str="$(date -d "@$timestamp" +"%Y-%m-%d %H:%M:%S")"
+					res="$(/bin/date -s "$date_str")"
+					code=$?
+					show "$res" "$code"
+				;;
+			esac
+		;;
+	esac
+}
+
+main "$@"

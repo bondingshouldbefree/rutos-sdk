@@ -1,0 +1,2 @@
+/etc/ssl/certs          certificates:certificates       664       r
+/etc/ssl/certs          certificates:certificates       775       -

@@ -1,0 +1,10 @@
+--- a/device.c
++++ b/device.c
+@@ -1366,6 +1366,7 @@ device_dump_status(struct blob_buf *b, s
+ 		system_if_dump_info(dev, b);
+ 
+ 	if (dev->active) {
++		system_if_get_settings(dev, &dev->settings);
+ 		device_merge_settings(dev, &st);
+ 		if (st.flags & DEV_OPT_MASTER) {
+ 			char buf[64], *devname;

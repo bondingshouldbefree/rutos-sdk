@@ -1,0 +1,29 @@
+Index: coova-chilli-2025-07-21/src/dhcp.c
+===================================================================
+--- coova-chilli-2025-07-21.orig/src/dhcp.c
++++ coova-chilli-2025-07-21/src/dhcp.c
+@@ -3908,24 +3908,6 @@ int dhcp_receive_ip(struct dhcp_ctx *ctx
+   }
+ 
+   /*
+-   * Do not drop all fragments, only if they have DF bit.
+-   * Note: this is as in SVN before R462 / git e4a934 (2012-03-01 15:46:22).
+-   */
+-
+-  if (iph_tot_len > _options.mtu && (pack_iph->opt_off_high & 64)) {
+-    uint8_t icmp_pack[1500];
+-    if (_options.debug)
+-      chilli_log(LOG_DEBUG,
+-             "%s(%d): ICMP frag forbidden for IP packet with length %d > %d", __FUNCTION__, __LINE__,
+-             iph_tot_len, _options.mtu);
+-    dhcp_send(this, ctx->idx, pack_ethh->src, icmp_pack,
+-	      icmpfrag(conn, icmp_pack, sizeof(icmp_pack), pack));
+-    OTHER_SENDING(conn, pkt_iphdr(icmp_pack));
+-    OTHER_RECEIVED(conn, pack_iph);
+-    return 0;
+-  }
+-
+-  /*
+    *  Chop off any trailer length
+    */
+   if (len > (size_t) eth_tot_len) {

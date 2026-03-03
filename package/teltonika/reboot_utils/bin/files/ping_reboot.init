@@ -1,0 +1,53 @@
+#!/bin/sh /etc/rc.common
+
+START=95
+STOP=10
+USE_PROCD=1
+
+WDIR="/var/run/preboot"
+EXEC_DIR="/usr/libexec/reboot_utils"
+CRONTAB_FILE=/etc/crontabs/preboot
+ENABLED=0
+
+check_if_enabled() {
+    local enable
+    config_get enable "$1" enable 0
+    [ "$enable" -eq 1 ] && ENABLED=1
+}
+
+clear_crontab() {
+    sed -i '/sbin\/ping_reboot/d' ${CRONTAB_FILE} 2>/dev/null
+}
+
+start_service() {
+    clear_crontab
+
+    config_load ping_reboot
+    config_foreach check_if_enabled "ping_reboot"
+
+    [ "$ENABLED" -eq 0 ] && return
+    #Remove once preinit is fixed on TSWOS.
+    [ -d ${WDIR} ] || {
+        mkdir -p ${WDIR}
+        chown preboot:preboot ${WDIR}
+    }
+
+    ${EXEC_DIR}/ping_reboot_init.sh &
+}
+
+stop_service() {
+    init_pid=$(pgrep -f "${EXEC_DIR}/ping_reboot_init.sh")
+    [ "$init_pid" != "" ] && kill -9 "$init_pid"
+
+    pid_list=$(pgrep -f "/usr/sbin/ping_reboot.sh")
+    for pid in $pid_list; do
+        kill -9 "$pid"
+    done
+
+    clear_crontab
+    /etc/init.d/cron restart
+}
+
+service_triggers() {
+    procd_add_reload_trigger "ping_reboot"
+}

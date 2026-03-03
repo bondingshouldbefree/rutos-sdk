@@ -1,0 +1,12 @@
+{
+  "network/dns": {
+    "title": "DNS",
+    "index": 120
+  },
+  "network/dns/general": {
+    "title": "General",
+    "index": 1,
+    "view": "network/DNS",
+    "acls": ["network/dns/general"]
+  }
+}

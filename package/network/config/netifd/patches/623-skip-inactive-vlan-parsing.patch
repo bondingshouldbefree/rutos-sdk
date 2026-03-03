@@ -1,0 +1,48 @@
+--- a/device.c
++++ b/device.c
+@@ -1331,7 +1331,7 @@ device_create(const char *name, struct d
+ void
+ device_dump_status(struct blob_buf *b, struct device *dev)
+ {
+-	struct device_settings st;
++	struct device_settings st = {0};
+ 	void *c, *s;
+ 
+ 	if (!dev) {
+@@ -1360,14 +1360,17 @@ device_dump_status(struct blob_buf *b, s
+ 	if (dev->tags)
+ 		blobmsg_add_blob(b, dev->tags);
+ 
+-	system_if_get_settings(dev, &dev->settings);
+-	device_merge_settings(dev, &st);
++	if (dev->active) {
++		system_if_get_settings(dev, &dev->settings);
++		device_merge_settings(dev, &st);
++	}
++
+ 	if (st.flags & DEV_OPT_MACADDR)
+ 		blobmsg_add_string(b, "macaddr", format_macaddr(st.macaddr));
+ 
+-	if (dev->type->dump_info)
++	if (dev->active && dev->type->dump_info)
+ 		dev->type->dump_info(dev, b);
+-	else
++	else if (dev->active)
+ 		system_if_dump_info(dev, b);
+ 
+ 	if (dev->active) {
+--- a/vlandev.c
++++ b/vlandev.c
+@@ -239,7 +239,11 @@ vlandev_dump_info(struct device *dev, st
+ 
+ 	mvdev = container_of(dev, struct vlandev_device, dev);
+ 	blobmsg_add_string(b, "parent", mvdev->parent.dev->ifname);
+-	system_if_dump_info(dev, b);
++
++	if (dev->active) {
++		system_if_dump_info(dev, b);
++	}
++
+ 	blobmsg_add_u32(b, "vid", mvdev->config.vid);
+ 	vlandev_qos_mapping_dump(b, "ingress_qos_mapping", &mvdev->config.ingress_qos_mapping_list);
+ 	vlandev_qos_mapping_dump(b, "egress_qos_mapping", &mvdev->config.egress_qos_mapping_list);

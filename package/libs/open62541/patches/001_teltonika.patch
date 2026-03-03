@@ -1,0 +1,95 @@
+diff --git a/include/open62541/types.h b/include/open62541/types.h
+index dda4a1445..5465920d1 100644
+--- a/include/open62541/types.h
++++ b/include/open62541/types.h
+@@ -1280,6 +1280,7 @@ typedef struct {
+     const UA_String *serverUris;
+     size_t serverUrisSize;
+     UA_Boolean useReversible;
++    UA_Boolean bareIrreversibleVariant;
+ 
+     UA_Boolean prettyPrint;   /* Add newlines and spaces for legibility */
+ 
+diff --git a/src/ua_types_encoding_json.c b/src/ua_types_encoding_json.c
+index 98750ba50..e54839774 100644
+--- a/src/ua_types_encoding_json.c
++++ b/src/ua_types_encoding_json.c
+@@ -1074,7 +1074,10 @@ ENCODE_JSON(Variant) {
+     if(src->type == &UA_TYPES[UA_TYPES_VARIANT] && !isArray)
+         wrapEO = true;
+ 
+-    status ret = writeJsonObjStart(ctx);
++    status ret = UA_STATUSCODE_GOOD;
++    if (!ctx->bareIrreversibleVariant) {
++        ret = writeJsonObjStart(ctx);
++    }
+ 
+     if(ctx->useReversible) {
+         /* Write the NodeId for the reversible form */
+@@ -1089,15 +1092,21 @@ ENCODE_JSON(Variant) {
+         /* Not builtin. Can it be encoded? Wrap in extension object. */
+         if(src->arrayDimensionsSize > 1)
+             return UA_STATUSCODE_BADNOTIMPLEMENTED;
+-        ret |= writeJsonKey(ctx, UA_JSONKEY_BODY);
++        if (!ctx->bareIrreversibleVariant) {
++            ret |= writeJsonKey(ctx, UA_JSONKEY_BODY);
++        }
+         ret |= Variant_encodeJsonWrapExtensionObject(src, isArray, ctx);
+     } else if(!isArray) {
+         /* Unwrapped scalar */
+-        ret |= writeJsonKey(ctx, UA_JSONKEY_BODY);
++        if (!ctx->bareIrreversibleVariant) {
++            ret |= writeJsonKey(ctx, UA_JSONKEY_BODY);
++        }
+         ret |= encodeJsonJumpTable[src->type->typeKind](ctx, src->data, src->type);
+     } else if(ctx->useReversible) {
+         /* Reversible array */
+-        ret |= writeJsonKey(ctx, UA_JSONKEY_BODY);
++        if (!ctx->bareIrreversibleVariant) {
++            ret |= writeJsonKey(ctx, UA_JSONKEY_BODY);
++        }
+         ret |= encodeJsonArray(ctx, src->data, src->arrayLength, src->type);
+         if(hasDimensions) {
+             ret |= writeJsonKey(ctx, UA_JSONKEY_DIMENSION);
+@@ -1106,7 +1115,9 @@ ENCODE_JSON(Variant) {
+         }
+     } else {
+         /* Non-Reversible array */
+-        ret |= writeJsonKey(ctx, UA_JSONKEY_BODY);
++        if (!ctx->bareIrreversibleVariant) {
++            ret |= writeJsonKey(ctx, UA_JSONKEY_BODY);
++        }
+         if(src->arrayDimensionsSize > 1) {
+             size_t index = 0;
+             size_t dimensionIndex = 0;
+@@ -1118,7 +1129,9 @@ ENCODE_JSON(Variant) {
+         }
+     }
+ 
+-    ret |= writeJsonObjEnd(ctx);
++    if (!ctx->bareIrreversibleVariant) {
++        ret |= writeJsonObjEnd(ctx);
++    }
+     return ret;
+ }
+ 
+@@ -1313,6 +1326,7 @@ UA_encodeJson(const void *src, const UA_DataType *type, UA_ByteString *outBuf,
+         ctx.serverUris = options->serverUris;
+         ctx.serverUrisSize = options->serverUrisSize;
+         ctx.useReversible = options->useReversible;
++        ctx.bareIrreversibleVariant = options->bareIrreversibleVariant;
+         ctx.prettyPrint = options->prettyPrint;
+         ctx.unquotedKeys = options->unquotedKeys;
+         ctx.stringNodeIds = options->stringNodeIds;
+diff --git a/src/ua_types_encoding_json.h b/src/ua_types_encoding_json.h
+index 2d34913f1..d32e7b845 100644
+--- a/src/ua_types_encoding_json.h
++++ b/src/ua_types_encoding_json.h
+@@ -27,6 +27,7 @@ typedef struct {
+     uint16_t depth; /* How often did we en-/decoding recurse? */
+     UA_Boolean commaNeeded[UA_JSON_ENCODING_MAX_RECURSION];
+     UA_Boolean useReversible;
++    UA_Boolean bareIrreversibleVariant;
+     UA_Boolean calcOnly; /* Only compute the length of the decoding */
+ 
+     size_t namespacesSize;

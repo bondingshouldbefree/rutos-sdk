@@ -1,0 +1,12 @@
+--- a/Makefile 	2024-11-08 10:13:44.128841806 +0200
++++ b/Makefile 	2024-11-08 10:13:53.125336440 +0200
+Upstream-Status: Inappropriate [local build fix]
+@@ -19,7 +19,7 @@
+ 	$(O_COMPILE)
+ 
+ $(LIBNAME): common.o lpcre2.o lpcre2_f.o
+-	$(CC) -Wall $(LLUA) -lpcre2-8  -shared -fPIC $(DEFINES) -o $@ $^ $(INCLUDES)
++	$(CC) -Wall $(LLUA) -lpcre2-8  -shared -fPIC $(DEFINES) $(LDFLAGS) -o $@ $^ $(INCLUDES)
+ 
+ clean:
+ 	$(RM) ./*.o

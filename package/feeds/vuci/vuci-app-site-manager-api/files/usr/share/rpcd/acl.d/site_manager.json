@@ -1,0 +1,1 @@
+{"services/site_manager":{"description":"Site manager","read":{"api":{"/site_manager/*":["*"]}},"write":{"api":["/site_manager/*"]}}}

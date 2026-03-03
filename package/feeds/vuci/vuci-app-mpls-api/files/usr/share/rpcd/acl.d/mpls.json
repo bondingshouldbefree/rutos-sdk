@@ -1,0 +1,1 @@
+{"network/routes/ldp":{"description":"LDP configuration","read":{"api":{"/mpls/ldp/*":["*"],"/basic/network/devices/status/*":["*"],"/interfaces/basic/status/*":["id","device","name","up"]}},"write":{"api":["/mpls/ldp/*"]}}}

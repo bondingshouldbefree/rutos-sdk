@@ -1,0 +1,223 @@
+--- a/drivers/leds/led-core.c
++++ b/drivers/leds/led-core.c
+@@ -116,7 +116,8 @@ static void led_timer_function(struct ti
+ 		}
+ 	}
+ 
+-	mod_timer(&led_cdev->blink_timer, jiffies + msecs_to_jiffies(delay));
++	led_cdev->next_blink += msecs_to_jiffies(delay);
++	mod_timer(&led_cdev->blink_timer, led_cdev->next_blink);
+ }
+ 
+ static void set_brightness_delayed_set_brightness(struct led_classdev *led_cdev,
+@@ -179,7 +180,8 @@ static void set_brightness_delayed(struc
+ 
+ static void led_set_software_blink(struct led_classdev *led_cdev,
+ 				   unsigned long delay_on,
+-				   unsigned long delay_off)
++				   unsigned long delay_off,
++				   unsigned long *offset)
+ {
+ 	int current_brightness;
+ 
+@@ -191,6 +193,7 @@ static void led_set_software_blink(struc
+ 
+ 	led_cdev->blink_delay_on = delay_on;
+ 	led_cdev->blink_delay_off = delay_off;
++	led_cdev->blink_offset = offset ? *offset : 0;
+ 
+ 	/* never on - just set to off */
+ 	if (!delay_on) {
+@@ -205,14 +208,29 @@ static void led_set_software_blink(struc
+ 		return;
+ 	}
+ 
++	if (offset) {
++		unsigned long cycle = msecs_to_jiffies(
++			led_cdev->blink_delay_on + led_cdev->blink_delay_off);
++		unsigned long new_offset =
++			msecs_to_jiffies(led_cdev->blink_offset);
++		led_cdev->next_blink =
++			((jiffies + cycle - new_offset) / cycle) * cycle +
++			new_offset;
++
++		led_set_brightness_nosleep(led_cdev, LED_OFF);
++	} else {
++		led_cdev->next_blink = jiffies + 1;
++	}
++
+ 	set_bit(LED_BLINK_SW, &led_cdev->work_flags);
+-	mod_timer(&led_cdev->blink_timer, jiffies + 1);
++	mod_timer(&led_cdev->blink_timer, led_cdev->next_blink);
+ }
+ 
+ 
+ static void led_blink_setup(struct led_classdev *led_cdev,
+ 		     unsigned long *delay_on,
+-		     unsigned long *delay_off)
++		     unsigned long *delay_off,
++		     unsigned long *offset)
+ {
+ 	if (!test_bit(LED_BLINK_ONESHOT, &led_cdev->work_flags) &&
+ 	    led_cdev->blink_set &&
+@@ -223,7 +241,7 @@ static void led_blink_setup(struct led_c
+ 	if (!*delay_on && !*delay_off)
+ 		*delay_on = *delay_off = 500;
+ 
+-	led_set_software_blink(led_cdev, *delay_on, *delay_off);
++	led_set_software_blink(led_cdev, *delay_on, *delay_off, offset);
+ }
+ 
+ void led_init_core(struct led_classdev *led_cdev)
+@@ -234,9 +252,10 @@ void led_init_core(struct led_classdev *
+ }
+ EXPORT_SYMBOL_GPL(led_init_core);
+ 
+-void led_blink_set(struct led_classdev *led_cdev,
+-		   unsigned long *delay_on,
+-		   unsigned long *delay_off)
++void led_blink_set_offset(struct led_classdev *led_cdev,
++			  unsigned long *delay_on,
++			  unsigned long *delay_off,
++			  unsigned long *offset)
+ {
+ 	del_timer_sync(&led_cdev->blink_timer);
+ 
+@@ -244,7 +263,15 @@ void led_blink_set(struct led_classdev *
+ 	clear_bit(LED_BLINK_ONESHOT, &led_cdev->work_flags);
+ 	clear_bit(LED_BLINK_ONESHOT_STOP, &led_cdev->work_flags);
+ 
+-	led_blink_setup(led_cdev, delay_on, delay_off);
++	led_blink_setup(led_cdev, delay_on, delay_off, offset);
++}
++EXPORT_SYMBOL_GPL(led_blink_set_offset);
++
++void led_blink_set(struct led_classdev *led_cdev,
++		   unsigned long *delay_on,
++		   unsigned long *delay_off)
++{
++	led_blink_set_offset(led_cdev, delay_on, delay_off, 0);
+ }
+ EXPORT_SYMBOL_GPL(led_blink_set);
+ 
+@@ -265,7 +292,7 @@ void led_blink_set_oneshot(struct led_cl
+ 	else
+ 		clear_bit(LED_BLINK_INVERT, &led_cdev->work_flags);
+ 
+-	led_blink_setup(led_cdev, delay_on, delay_off);
++	led_blink_setup(led_cdev, delay_on, delay_off, NULL);
+ }
+ EXPORT_SYMBOL_GPL(led_blink_set_oneshot);
+ 
+@@ -290,6 +317,7 @@ void led_stop_software_blink(struct led_
+ 	del_timer_sync(&led_cdev->blink_timer);
+ 	led_cdev->blink_delay_on = 0;
+ 	led_cdev->blink_delay_off = 0;
++	led_cdev->next_blink = 0;
+ 	clear_bit(LED_BLINK_SW, &led_cdev->work_flags);
+ }
+ EXPORT_SYMBOL_GPL(led_stop_software_blink);
+--- a/include/linux/leds.h
++++ b/include/linux/leds.h
+@@ -171,7 +171,8 @@ struct led_classdev {
+ 	struct list_head	 node;			/* LED Device list */
+ 	const char		*default_trigger;	/* Trigger to use */
+ 
+-	unsigned long		 blink_delay_on, blink_delay_off;
++	unsigned long		 blink_delay_on, blink_delay_off, blink_offset;
++	unsigned long		 next_blink;
+ 	struct timer_list	 blink_timer;
+ 	int			 blink_brightness;
+ 	int			 new_blink_brightness;
+@@ -336,6 +337,9 @@ struct led_classdev *__must_check devm_o
+  */
+ void led_blink_set(struct led_classdev *led_cdev, unsigned long *delay_on,
+ 		   unsigned long *delay_off);
++void led_blink_set_offset(struct led_classdev *led_cdev,
++			  unsigned long *delay_on, unsigned long *delay_off,
++			  unsigned long *offset);
+ 
+ /**
+  * led_blink_set_nosleep - set blinking, guaranteed to not sleep
+--- a/drivers/leds/trigger/ledtrig-timer.c
++++ b/drivers/leds/trigger/ledtrig-timer.c
+@@ -34,7 +34,8 @@ static ssize_t led_delay_on_store(struct
+ 	if (ret)
+ 		return ret;
+ 
+-	led_blink_set(led_cdev, &state, &led_cdev->blink_delay_off);
++	led_blink_set_offset(led_cdev, &state, &led_cdev->blink_delay_off,
++			     &led_cdev->blink_offset);
+ 	led_cdev->blink_delay_on = state;
+ 
+ 	return size;
+@@ -59,18 +60,48 @@ static ssize_t led_delay_off_store(struc
+ 	if (ret)
+ 		return ret;
+ 
+-	led_blink_set(led_cdev, &led_cdev->blink_delay_on, &state);
++	led_blink_set_offset(led_cdev, &led_cdev->blink_delay_on, &state,
++			     &led_cdev->blink_offset);
+ 	led_cdev->blink_delay_off = state;
+ 
+ 	return size;
+ }
+ 
++static ssize_t led_offset_show(struct device *dev,
++			       struct device_attribute *attr, char *buf)
++{
++	struct led_classdev *led_cdev = led_trigger_get_led(dev);
++
++	return sprintf(buf, "%lu\n", led_cdev->blink_offset);
++}
++
++static ssize_t led_offset_store(struct device *dev,
++				struct device_attribute *attr, const char *buf,
++				size_t size)
++{
++	struct led_classdev *led_cdev = led_trigger_get_led(dev);
++	unsigned long state;
++	ssize_t ret;
++
++	ret = kstrtoul(buf, 10, &state);
++	if (ret)
++		return ret;
++
++	led_blink_set_offset(led_cdev, &led_cdev->blink_delay_on,
++			     &led_cdev->blink_delay_off, &state);
++	led_cdev->blink_offset = state;
++
++	return size;
++}
++
+ static DEVICE_ATTR(delay_on, 0664, led_delay_on_show, led_delay_on_store);
+ static DEVICE_ATTR(delay_off, 0664, led_delay_off_show, led_delay_off_store);
++static DEVICE_ATTR(offset, 0664, led_offset_show, led_offset_store);
+ 
+ static struct attribute *timer_trig_attrs[] = {
+ 	&dev_attr_delay_on.attr,
+ 	&dev_attr_delay_off.attr,
++	&dev_attr_offset.attr,
+ 	NULL
+ };
+ ATTRIBUTE_GROUPS(timer_trig);
+@@ -93,6 +124,7 @@ static void pattern_init(struct led_clas
+ 
+ 	led_cdev->blink_delay_on = pattern[0];
+ 	led_cdev->blink_delay_off = pattern[1];
++	led_cdev->blink_offset = 0;
+ 	/* led_blink_set() called by caller */
+ 
+ out:
+@@ -110,8 +142,9 @@ static int timer_trig_activate(struct le
+ 		led_cdev->flags &= ~LED_INIT_DEFAULT_TRIGGER;
+ 	}
+ 
+-	led_blink_set(led_cdev, &led_cdev->blink_delay_on,
+-		      &led_cdev->blink_delay_off);
++	led_blink_set_offset(led_cdev, &led_cdev->blink_delay_on,
++			     &led_cdev->blink_delay_off,
++			     &led_cdev->blink_offset);
+ 
+ 	return 0;
+ }

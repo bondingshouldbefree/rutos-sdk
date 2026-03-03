@@ -1,0 +1,136 @@
+--- a/device.h
++++ b/device.h
+@@ -280,6 +280,7 @@ struct device {
+ 	bool wireless_proxyarp;
+ 	bool wireless_isolate;
+ 	bool bpdu_filter;
++	bool port_disabled;
+ 
+ 	struct interface *config_iface;
+ 	struct device_vlan_range *extra_vlan;
+@@ -365,6 +366,7 @@ static inline struct device *device_get(
+ 	return __device_get(name, create, true);
+ }
+ 
++void device_fill_default_settings(struct device *dev);
+ void device_add_user(struct device_user *dep, struct device *dev);
+ void device_remove_user(struct device_user *dep);
+ const char *device_event_name(enum device_event ev);
+--- a/port_link.c
++++ b/port_link.c
+@@ -84,13 +84,13 @@ release:
+ }
+ 
+ static int
+-set_port_state(const char *ifname, bool state) {
+-
+-	struct device *dev = device_find(ifname);
++set_device_state(struct device *dev, bool state)
++{
+ 	if (!dev) {
+ 		return EXIT_FAILURE;
+ 	}
+ 
++	dev->port_disabled = !state;
+ 	return dev->set_state(dev, state);
+ }
+ 
+@@ -101,7 +101,12 @@ cleanup_and_restore_port(struct port_ent
+ 		return;
+ 	}
+ 
+-	set_port_state(port_old->ifname, true);
++	if (port_old->dev.dev) {
++		port_old->dev.dev->port_disabled = false;
++	}
++
++	set_device_state(port_old->dev.dev, true);
++	device_remove_user(&port_old->dev);
+ 	uint32_t advert[__ETHTOOL_LINK_MODE_MASK_NBITS] = { 0 };
+ 	set_dev_link(port_old->ifname, true, false, 0, advert);
+ 
+@@ -112,9 +117,15 @@ static int
+ update_port_state(struct port_entry *port_old, struct port_entry *port_new)
+ {
+ 	int ret = EXIT_SUCCESS;
++	if (port_old->dev.dev) {
++		port_new->dev.cb = NULL;
++		port_new->dev.dev = NULL;
++		device_add_user(&port_new->dev, port_old->dev.dev);
++		device_remove_user(&port_old->dev);
++	}
+ 
+ 	if (port_old->enabled != port_new->enabled) {
+-		set_port_state(port_new->ifname, port_new->enabled);
++		set_device_state(port_new->dev.dev, port_new->enabled);
+ 
+ 		if (!port_new->enabled) {
+ 			goto end;
+@@ -156,7 +167,15 @@ port_entry_update(struct vlist_tree *tre
+ 		cleanup_and_restore_port(port_old);
+ 
+ 	} else if (node_new) {
+-		set_port_state(port_new->ifname, port_new->enabled);
++		struct device *dev = device_get(port_new->ifname, true);
++		if (dev) {
++			device_fill_default_settings(dev);
++			port_new->dev.cb = NULL;
++			port_new->dev.dev = NULL;
++			device_add_user(&port_new->dev, dev);
++		}
++
++		set_device_state(dev, port_new->enabled);
+ 		set_dev_link(port_new->ifname, port_new->autoneg, port_new->duplex, port_new->speed, port_new->advert);
+ 	}
+ }
+--- a/system-linux.c
++++ b/system-linux.c
+@@ -2634,6 +2634,8 @@ void system_if_apply_settings_after_up(s
+ 
+ int system_if_up(struct device *dev)
+ {
++	if (dev->port_disabled)
++		return 0;
+ 	return system_if_flags(dev->ifname, IFF_UP, 0);
+ }
+ 
+--- a/port_link.h
++++ b/port_link.h
+@@ -22,6 +22,7 @@ struct port_entry {
+ 	uint32_t advert[__ETHTOOL_LINK_MODE_MASK_NBITS];
+ 
+ 	char *ifname;
++	struct device_user dev;
+ 
+ 	struct vlist_node node;
+ };
+--- a/device.c
++++ b/device.c
+@@ -682,8 +682,7 @@ void __device_broadcast_event(struct dev
+ 	netifd_ubus_device_notify(ev_name, b.head, -1);
+ }
+ 
+-static void
+-device_fill_default_settings(struct device *dev)
++void device_fill_default_settings(struct device *dev)
+ {
+ 	struct device_settings *s = &dev->settings;
+ 	struct ether_addr *ea;
+--- a/config.c
++++ b/config.c
+@@ -1013,6 +1013,7 @@ config_init_all(void)
+ 	config_init = true;
+ 
+ 	device_reset_config();
++	config_init_ports();
+ 	config_init_devices(true);
+ 	config_init_vlans();
+ 	config_init_devices(false);
+@@ -1032,7 +1033,6 @@ config_init_all(void)
+ 	interface_start_pending();
+ 	wireless_start_pending(0);
+ 
+-	config_init_ports();
+ 	vlist_flush(&port_entries);
+ 
+ 	return ret;

@@ -1,0 +1,231 @@
+--- a/src/openvpn/dco.c
++++ b/src/openvpn/dco.c
+@@ -42,8 +42,8 @@
+ #include "ssl_ncp.h"
+ #include "tun.h"
+ 
+-#ifdef HAVE_LIBCAPNG
+-#include <cap-ng.h>
++#ifdef HAVE_LIBCAP
++#include <sys/capability.h>
+ #endif
+ 
+ static int
+@@ -359,27 +359,41 @@ dco_check_startup_option(int msglevel, c
+     }
+ #endif /* if defined(_WIN32) */
+ 
+-#if defined(HAVE_LIBCAPNG)
++#if defined(HAVE_LIBCAP)
+     /* DCO can't operate without CAP_NET_ADMIN. To retain it when switching user
+      * we need CAP_SETPCAP. CAP_NET_ADMIN also needs to be part of the permitted set
+      * of capabilities in order to retain it.
+      */
+     if (o->username)
+     {
+-        if (!capng_have_capability(CAPNG_EFFECTIVE, CAP_SETPCAP))
++        cap_flag_value_t cap_value;
++        cap_t caps = cap_get_proc();
++        if (!caps)
++        {
++            msg(msglevel, "--user specified but failed to get cap. "
++                "Disabling data channel offload");
++            return false;
++        }
++
++        if (cap_get_flag(caps, CAP_SETPCAP, CAP_EFFECTIVE, &cap_value) == -1 || cap_value != CAP_SET)
+         {
+             msg(msglevel, "--user specified but lacking CAP_SETPCAP. "
+                 "Cannot retain CAP_NET_ADMIN. Disabling data channel offload");
++            cap_free(caps);
+             return false;
+         }
+-        if (!capng_have_capability(CAPNG_PERMITTED, CAP_NET_ADMIN))
++
++        if (cap_get_flag(caps, CAP_NET_ADMIN, CAP_PERMITTED, &cap_value) == -1 || cap_value != CAP_SET)
+         {
+             msg(msglevel, "--user specified but not permitted to retain CAP_NET_ADMIN. "
+                 "Disabling data channel offload");
++            cap_free(caps);
+             return false;
+         }
++
++        cap_free(caps);
+     }
+-#endif /* if defined(HAVE_LIBCAPNG) */
++#endif /* if defined(HAVE_LIBCAP) */
+ 
+     if (o->mode == MODE_SERVER && o->topology != TOP_SUBNET)
+     {
+--- a/src/openvpn/platform.c
++++ b/src/openvpn/platform.c
+@@ -44,8 +44,8 @@
+ #include <direct.h>
+ #endif
+ 
+-#ifdef HAVE_LIBCAPNG
+-#include <cap-ng.h>
++#ifdef HAVE_LIBCAP
++#include <sys/capability.h>
+ #include <sys/prctl.h>
+ #endif
+ 
+@@ -220,9 +220,11 @@ platform_user_group_set(const struct pla
+ {
+     int keep_caps = need_keep_caps(c);
+     unsigned int err_flags = (keep_caps > 0) ? M_FATAL : M_NONFATAL;
+-#ifdef HAVE_LIBCAPNG
++#ifdef HAVE_LIBCAP
+     int new_gid = -1, new_uid = -1;
+     int res;
++    cap_t caps;
++    cap_value_t cap_list[1] = {CAP_NET_ADMIN};
+ 
+     if (keep_caps == 0)
+     {
+@@ -242,39 +244,62 @@ platform_user_group_set(const struct pla
+         new_uid = user_state->uid;
+     }
+ 
+-    /* Prepare capabilities before dropping UID/GID */
+-    capng_clear(CAPNG_SELECT_BOTH);
+-    res = capng_update(CAPNG_ADD, CAPNG_EFFECTIVE | CAPNG_PERMITTED, CAP_NET_ADMIN);
+-    if (res < 0)
++    /* Enable capability retention before dropping privileges */
++    if (prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0) < 0)
+     {
+-        msg(err_flags, "capng_update(CAP_NET_ADMIN) failed: %d", res);
++        msg(err_flags, "Failed to set PR_SET_KEEPCAPS");
+         goto fallback;
+     }
+ 
+-    /* Change to new UID/GID.
+-     * capng_change_id() internally calls capng_apply() to apply prepared capabilities.
+-     */
+-    res = capng_change_id(new_uid, new_gid, CAPNG_DROP_SUPP_GRP);
+-    if (res == -4 || res == -6)
++    /* Drop group privileges first */
++    if (new_gid >= 0 && setgid(new_gid) < 0)
++    {
++        msg(M_ERR, "setgid('%s') failed", group_state->groupname);
++        return;
++    }
++
++    /* Drop user privileges */
++    if (new_uid >= 0 && setuid(new_uid) < 0)
+     {
+-        /* -4 and -6 mean failure of setuid/gid respectively.
+-         * There is no point for us to continue if those failed. */
+-        msg(M_ERR, "capng_change_id('%s','%s') failed: %d",
+-            user_state->username, group_state->groupname, res);
++        msg(M_ERR, "setuid('%s') failed", user_state->username);
++        return;
+     }
+-    else if (res == -3)
++
++    /* Initialize capabilities */
++    caps = cap_init();
++    if (!caps)
+     {
+-        msg(M_NONFATAL | M_ERRNO, "capng_change_id() failed applying capabilities");
+-        msg(err_flags, "NOTE: previous error likely due to missing capability CAP_SETPCAP.");
++        msg(M_ERR, "cap_init() failed");
+         goto fallback;
+     }
+-    else if (res < 0)
++
++    /* Clear existing capabilities before modifying */
++    if (cap_clear(caps) == -1)
+     {
+-        msg(err_flags | M_ERRNO, "capng_change_id('%s','%s') failed retaining capabilities: %d",
+-            user_state->username, group_state->groupname, res);
++        msg(M_ERR, "Failed to clear capabilities");
++        cap_free(caps);
+         goto fallback;
+     }
+ 
++    /* Add CAP_NET_ADMIN to the permitted and effective sets */
++    if (cap_set_flag(caps, CAP_PERMITTED, 1, cap_list, CAP_SET) == -1 ||
++        cap_set_flag(caps, CAP_EFFECTIVE, 1, cap_list, CAP_SET) == -1)
++    {
++        msg(M_ERR, "Failed to set CAP_NET_ADMIN capability");
++        cap_free(caps);
++        goto fallback;
++    }
++
++    /* Apply the modified capability set */
++    if (cap_set_proc(caps) < 0)
++    {
++        msg(M_ERR, "cap_set_proc() failed");
++        cap_free(caps);
++        goto fallback;
++    }
++
++    cap_free(caps);
++
+     if (new_uid >= 0)
+     {
+         msg(M_INFO, "UID set to %s", user_state->username);
+@@ -288,14 +313,12 @@ platform_user_group_set(const struct pla
+     return;
+ 
+ fallback:
+-    /* capng_change_id() can leave this flag clobbered on failure
+-     * This is working around a bug in libcap-ng, which can leave the flag set
+-     * on failure: https://github.com/stevegrubb/libcap-ng/issues/33 */
++    /* Ensure that KEEPCAPS flag is cleared if the process fails */
+     if (prctl(PR_GET_KEEPCAPS) && prctl(PR_SET_KEEPCAPS, 0) < 0)
+     {
+         msg(M_ERR, "Clearing KEEPCAPS flag failed");
+     }
+-#endif  /* HAVE_LIBCAPNG */
++#endif  /* HAVE_LIBCAP */
+ 
+     if (keep_caps)
+     {
+--- a/configure.ac
++++ b/configure.ac
+@@ -870,21 +870,21 @@ if test "$enable_dco" != "no"; then
+ fi
+ 
+ dnl
+-dnl Depend on libcap-ng on Linux
++dnl Depend on libcap on Linux
+ dnl
+ case "$host" in
+ 	*-*-linux*)
+ 		# We require pkg-config
+-		PKG_CHECK_MODULES([LIBCAPNG],
+-				  [libcap-ng],
++		PKG_CHECK_MODULES([LIBCAP],
++				  [libcap],
+ 				  [],
+-				  [AC_MSG_ERROR([libcap-ng package not found. Is the development package and pkg-config ${pkg_config_found} installed?])]
++				  [AC_MSG_ERROR([libcap package not found. Is the development package and pkg-config ${pkg_config_found} installed?])]
+ 		)
+ 		AC_CHECK_HEADER([sys/prctl.h],,[AC_MSG_ERROR([sys/prctl.h not found!])])
+ 
+-		CFLAGS="${CFLAGS} ${LIBCAPNG_CFLAGS}"
+-		LIBS="${LIBS} ${LIBCAPNG_LIBS}"
+-		AC_DEFINE(HAVE_LIBCAPNG, 1, [Enable libcap-ng support])
++		CFLAGS="${CFLAGS} ${LIBCAP_CFLAGS}"
++		LIBS="${LIBS} ${LIBCAP_LIBS}"
++		AC_DEFINE(HAVE_LIBCAP, 1, [Enable libcap support])
+ 	;;
+ esac
+ 
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -264,10 +264,10 @@ function(add_library_deps target)
+         )
+ 
+     if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+-        pkg_search_module(libcapng REQUIRED libcap-ng IMPORTED_TARGET)
++        pkg_search_module(libcap REQUIRED libcap IMPORTED_TARGET)
+         pkg_search_module(libnl REQUIRED libnl-genl-3.0 IMPORTED_TARGET)
+ 
+-        target_link_libraries(${target} PUBLIC PkgConfig::libcapng PkgConfig::libnl)
++        target_link_libraries(${target} PUBLIC PkgConfig::libcap PkgConfig::libnl)
+     endif ()
+ 
+ endfunction()

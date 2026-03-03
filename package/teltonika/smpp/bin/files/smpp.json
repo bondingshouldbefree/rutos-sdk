@@ -1,0 +1,19 @@
+{
+    "user": "smppd",
+    "subscribe": [ "gsm.modem*" ],
+    "listen": [ "ubus.object.add" ],
+    "access": {
+        "gsm": {
+            "methods": [
+                "info"
+            ]
+        },
+        "gsm.modem*": {
+            "methods": [
+                "info",
+                "send_sms",
+                "read_sms"
+            ]
+        }
+    }
+}

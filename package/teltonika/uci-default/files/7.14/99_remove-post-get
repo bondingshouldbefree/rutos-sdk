@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [ -f /etc/config/post_get ]; then
+	rm /etc/config/post_get
+fi
+
+[ -f /etc/package_restore.txt ] && {
+	sed -i '/io_post_get - I\/O POST\/GET/d' /etc/package_restore.txt
+	sed -i '/mobile_post_get - Mobile POST\/GET/d' /etc/package_restore.txt
+}
+
+exit 0

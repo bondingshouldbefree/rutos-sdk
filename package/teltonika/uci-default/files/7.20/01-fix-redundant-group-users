@@ -1,0 +1,39 @@
+#!/bin/sh
+
+echo "Searching for redundant group users in /etc/group..."
+
+# process each group line
+while IFS=: read -r gname gpass gid gmembers; do
+    if [ -z "$gmembers" ]; then
+        echo "$gname:$gpass:$gid:"
+        continue
+    fi
+
+    new_members=""
+
+    for member in $(echo "$gmembers" | tr ',' ' '); do
+        user_pgid="$(awk -F: -v u="$member" '$1 == u {print $4; exit}' /etc/passwd)"
+
+        if [ -z "$user_pgid" ] || [ "$user_pgid" = "$gid" ]; then
+            continue
+        fi
+
+        if [ -z "$new_members" ]; then
+            new_members="$member"
+        else
+            new_members="$new_members,$member"
+        fi
+    done
+
+    echo "$gname:$gpass:$gid:$new_members"
+done < /etc/group > /tmp/group.new
+
+orig_lines=$(wc -l < /etc/group)
+new_lines=$(wc -l < /tmp/group.new)
+
+if [ "$new_lines" -ne "$orig_lines" ]; then
+    echo "ERROR: /etc/group line count mismatch (orig: $orig_lines, new: $new_lines)"
+    exit 1
+fi
+
+mv /tmp/group.new /etc/group

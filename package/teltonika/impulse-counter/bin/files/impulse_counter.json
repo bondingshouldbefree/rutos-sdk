@@ -1,0 +1,11 @@
+{
+	"user": "icounter",
+	"access": {
+                "ioman.gpio.*": {
+                        "methods": [ "counter", "update" ]
+                }
+        },
+        "listen": [
+                "ubus.object.add"
+        ]
+}

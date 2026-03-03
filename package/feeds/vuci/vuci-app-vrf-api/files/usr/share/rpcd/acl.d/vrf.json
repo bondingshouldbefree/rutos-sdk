@@ -1,0 +1,1 @@
+{"network/vrf":{"description":"vrf configuration","read":{"api":{"/vrf/*":["*"],"/basic/network/devices/status/*":["name","type"],"/bgp/instance/config/*":["vrf"]}},"write":{"api":["/vrf/*"]},"source":["/vrf/*"],"exception":["/vrf/config/*"]}}

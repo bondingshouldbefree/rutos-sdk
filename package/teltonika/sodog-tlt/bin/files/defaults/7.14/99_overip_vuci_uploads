@@ -1,0 +1,4 @@
+if [ -n "$(find /etc/vuci-uploads -maxdepth 1 -name 'cbid.rs_overip.*')" ]; then
+	chown sodog:sodog /etc/vuci-uploads/cbid.rs_overip.*
+	chmod 0660 /etc/vuci-uploads/cbid.rs_overip.*
+fi

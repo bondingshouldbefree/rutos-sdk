@@ -1,0 +1,4 @@
+/etc/default-config            root:users       0660         cd,r
+/etc/default-config            root:users       0770         -
+/etc/backup                    root:users       0660         cd,r
+/etc/backup                    root:users       0770         -

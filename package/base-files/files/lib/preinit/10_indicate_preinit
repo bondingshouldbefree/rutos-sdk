@@ -1,0 +1,8 @@
+# Do not remove this
+# /tmp/board.json is needed for hotplug symlinks
+
+preinit_config_board() {
+	EARLY_INIT=1 /bin/board_detect /tmp/board.json
+}
+
+boot_hook_add preinit_main preinit_config_board

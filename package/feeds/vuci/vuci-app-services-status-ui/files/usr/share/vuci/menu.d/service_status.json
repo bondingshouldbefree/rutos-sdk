@@ -1,0 +1,8 @@
+{
+    "status/services": {
+        "title": "Services",
+        "acls": [ "status/services" ],
+        "view": "status/Services",
+        "index": 45
+    }
+}

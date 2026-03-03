@@ -1,0 +1,15 @@
+#!/bin/sh
+. /lib/functions.sh
+CONFIG="bacnet_router"
+
+migrate_rule() {
+	enabled=$(uci -q get "$CONFIG"."$1".enabled);
+	[ -n "$enabled" ] && return
+	uci -q set "$CONFIG"."$1".enabled='1'
+}
+
+config_load "$CONFIG"
+config_foreach migrate_rule "port"
+uci_commit "$CONFIG"
+
+exit 0

@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"ip_block":{"methods":["reload","show","clear","unblock_mac","unblock_phone","unblock"]},"rc":{"methods":["init"]}}}

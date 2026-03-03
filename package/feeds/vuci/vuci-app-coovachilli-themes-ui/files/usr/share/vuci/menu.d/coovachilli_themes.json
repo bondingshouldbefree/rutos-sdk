@@ -1,0 +1,12 @@
+{
+  "services/hotspot": {
+    "title": "Hotspot",
+    "index": 190
+  },
+  "services/hotspot/landing": {
+    "title": "Landing Page",
+    "index": 30,
+    "view": "services/HotspotLandingpage",
+    "acls": ["services/hotspot/landing"]
+  }
+}

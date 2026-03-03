@@ -1,0 +1,1 @@
+{"services/iec60870_server":{"description":"IEC 60870-5 Server configuration","read":{"api":{"/iec60870/server/*":["*"],"/system/device/status":["*"],"/serial/status":["*"],"/io/status":["*"],"/firewall/config":["name"]}},"write":{"api":["/iec60870/server/*"]}}}

@@ -1,0 +1,78 @@
+-- Interface-based VLAN --
+
+iVlanGroup OBJECT-GROUP
+	OBJECTS { iVlanCount,
+		  iVlanIndex,
+		  iVlanName,
+		  iVlanType,
+		  iVlanIfName,
+		  iVlanVID }
+	STATUS current
+	DESCRIPTION "Interface-based VLAN SNMP group defined according to RFC 2580"
+	::= { teltonikaSnmpGroups 9 }
+
+iVlanCount OBJECT-TYPE
+	SYNTAX      INTEGER
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "Amount of interface-based virtual networks."
+	::= { vlan 3 }
+
+iVlanTable OBJECT-TYPE
+	SYNTAX      SEQUENCE OF IVlanEntry
+	MAX-ACCESS  not-accessible
+	STATUS      current
+	DESCRIPTION "A list interface-based virtual networks."
+	::= { vlan 4 }
+
+iVlanEntry OBJECT-TYPE
+	SYNTAX      IVlanEntry
+	MAX-ACCESS  not-accessible
+	STATUS      current
+	DESCRIPTION "An entry containing information about an interface-based VLAN."
+	INDEX   { iVlanIndex }
+	::= { iVlanTable 1 }
+
+IVlanEntry ::=
+	SEQUENCE {
+	iVlanIndex  INTEGER,
+	iVlanName   DisplayString,
+	iVlanType   DisplayString,
+	iVlanIfName DisplayString,
+	iVlanVID    INTEGER
+	}
+
+iVlanIndex OBJECT-TYPE
+	SYNTAX     INTEGER (0..65535)
+	MAX-ACCESS read-only
+	STATUS     current
+	DESCRIPTION "The index of an iface-based VLAN."
+	::= { iVlanEntry 1 }
+
+iVlanName OBJECT-TYPE
+	SYNTAX     DisplayString
+	MAX-ACCESS read-only
+	STATUS     current
+	DESCRIPTION "The name of an iface-based VLAN."
+	::= { iVlanEntry 2 }
+
+iVlanType OBJECT-TYPE
+	SYNTAX     DisplayString
+	MAX-ACCESS read-only
+	STATUS     current
+	DESCRIPTION "The type of an iface-based VLAN."
+	::= { iVlanEntry 3 }
+
+iVlanIfName OBJECT-TYPE
+	SYNTAX     DisplayString
+	MAX-ACCESS read-only
+	STATUS     current
+	DESCRIPTION "The interface name of an iface-based VLAN."
+	::= { iVlanEntry 4 }
+
+iVlanVID OBJECT-TYPE
+	SYNTAX     INTEGER
+	MAX-ACCESS read-only
+	STATUS     current
+	DESCRIPTION "The VLAN ID of an iface-based VLAN."
+	::= { iVlanEntry 5 }

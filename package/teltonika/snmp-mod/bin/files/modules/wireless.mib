@@ -1,0 +1,214 @@
+-- Wireless --
+
+-- Wireless Radios
+
+radioGroup OBJECT-GROUP
+	OBJECTS { radioCount,
+		  radioIndex,
+		  radioName,
+		  radioUpState,
+		  radioDisabledState,
+		  radioChannel }
+	STATUS current
+	DESCRIPTION "Radio SNMP group defined according to RFC 2580"
+	::= { teltonikaSnmpGroups 7 }
+
+radioCount  OBJECT-TYPE
+	SYNTAX      INTEGER
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "Amount of wireless radios"
+	::= { wireless 1 }
+
+radioTable OBJECT-TYPE
+	SYNTAX      SEQUENCE OF RadioEntry
+	MAX-ACCESS  not-accessible
+	STATUS      current
+	DESCRIPTION "A list of wireless radios."
+	::= { wireless 2 }
+
+radioEntry OBJECT-TYPE
+	SYNTAX      RadioEntry
+	MAX-ACCESS  not-accessible
+	STATUS      current
+	DESCRIPTION "An entry containing information of a particular wireless radio."
+	INDEX   { radioIndex }
+	::= { radioTable 1 }
+
+RadioEntry ::=
+	SEQUENCE {
+		radioIndex         INTEGER,
+		radioName          DisplayString,
+		radioUpState       INTEGER,
+		radioDisabledState INTEGER,
+		radioChannel       DisplayString
+	}
+
+radioIndex OBJECT-TYPE
+	SYNTAX      INTEGER (0..65535)
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "A unique value, greater than zero, for each wireless radio."
+	::= { radioEntry 1 } 
+
+radioName OBJECT-TYPE
+	SYNTAX      DisplayString
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "The name of the wireless radio."
+	::= { radioEntry 2 } 
+
+radioUpState OBJECT-TYPE
+	SYNTAX      INTEGER
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "Is the radio currently turned on?"
+	::= { radioEntry 3 } 
+
+radioDisabledState OBJECT-TYPE
+	SYNTAX      INTEGER
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "Is the radio currently disabled?"
+	::= { radioEntry 4 } 
+
+radioChannel OBJECT-TYPE
+	SYNTAX      DisplayString
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "Current active channel of the wireless radio."
+	::= { radioEntry 5 }
+
+-- Wireless Interfaces
+
+wIfaceGroup OBJECT-GROUP
+	OBJECTS { wIfaceCount,
+		  wIfaceIndex,
+		  wIfaceSSID,
+		  wIfaceHidden,
+		  wIfaceEncryption,
+		  wIfaceMode,
+		  wIfaceClientCount,
+		  wIfaceClientIndex,
+		  wIfaceClientInterfaceIndex,
+		  wIfaceClientMAC }
+	STATUS current
+	DESCRIPTION "Wireless interface SNMP group defined according to RFC 2580"
+	::= { teltonikaSnmpGroups 8 }
+
+wIfaceCount OBJECT-TYPE
+	SYNTAX      INTEGER
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "Amount of wireless interfaces"
+	::= { wireless 3 }
+
+wIfaceTable OBJECT-TYPE
+	SYNTAX SEQUENCE OF WIfaceEntry
+	MAX-ACCESS  not-accessible
+	STATUS      current
+	DESCRIPTION "A list of wireless interfaces."
+	::= { wireless 4 }
+
+wIfaceEntry OBJECT-TYPE
+	SYNTAX WIfaceEntry
+	MAX-ACCESS  not-accessible
+	STATUS      current
+	DESCRIPTION "An entry containing information of a particular wireless interface."
+	INDEX   { wIfaceIndex }
+	::= { wIfaceTable 1 }
+
+WIfaceEntry ::=
+	SEQUENCE {
+	wIfaceIndex        INTEGER,
+	wIfaceSSID         DisplayString,
+	wIfaceHidden       INTEGER,
+	wIfaceEncryption   DisplayString,
+	wIfaceMode         DisplayString,
+	wIfaceClientCount  INTEGER
+	}
+
+wIfaceIndex OBJECT-TYPE
+	SYNTAX      INTEGER (0..65535)
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "A unique value, greater than zero, for each wireless interface."
+	::= { wIfaceEntry 1 } 
+
+wIfaceSSID OBJECT-TYPE
+	SYNTAX      DisplayString
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "The SSID of a wireless interface."
+	::= { wIfaceEntry 2 }
+
+wIfaceHidden OBJECT-TYPE
+	SYNTAX      INTEGER
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "Is the wireless interface hidden?"
+	::= { wIfaceEntry 3 }
+
+wIfaceEncryption OBJECT-TYPE
+	SYNTAX      DisplayString
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "The encryption used by the wireless interface"
+	::= { wIfaceEntry 4 }
+
+wIfaceMode OBJECT-TYPE
+	SYNTAX      DisplayString
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "The mode of the wireless interface."
+	::= { wIfaceEntry 5 }
+
+wIfaceClientCount OBJECT-TYPE
+	SYNTAX      INTEGER
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "How many clients are connected to the interface (only for access points and meshes)."
+	::= { wIfaceEntry 6 }
+
+wIfaceClientTable OBJECT-TYPE
+	SYNTAX SEQUENCE OF WIfaceClientEntry
+	MAX-ACCESS  not-accessible
+	STATUS      current
+	DESCRIPTION "A list of wireless interfaces' clients."
+	::= { wireless 5 }
+
+wIfaceClientEntry OBJECT-TYPE
+	SYNTAX WIfaceClientEntry
+	MAX-ACCESS  not-accessible
+	STATUS      current
+	DESCRIPTION "An entry containing information of a particular wireless interface's client."
+	INDEX   { wIfaceClientIndex }
+	::= { wIfaceClientTable 1 }
+
+WIfaceClientEntry ::=
+	SEQUENCE {
+	wIfaceClientIndex        INTEGER,
+	wIfaceClientInterfaceIndex  INTEGER,
+	wIfaceClientMAC   DisplayString
+	}
+
+wIfaceClientIndex OBJECT-TYPE
+	SYNTAX      INTEGER (0..65535)
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "A unique value, greater than zero, for each wireless interface's client."
+	::= { wIfaceClientEntry 1 }
+
+wIfaceClientInterfaceIndex OBJECT-TYPE
+	SYNTAX      INTEGER
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "Wireless inteface's index from wIfaceTable to which client is connected."
+	::= { wIfaceClientEntry 2 }
+
+wIfaceClientMAC OBJECT-TYPE
+	SYNTAX      DisplayString
+	MAX-ACCESS  read-only
+	STATUS      current
+	DESCRIPTION "Client's MAC address."
+	::= { wIfaceClientEntry 3 }

@@ -1,0 +1,17 @@
+{
+	"services/modbus": {
+		"title": "Modbus",
+		"index": 120
+	},
+	"services/modbus/tcp_over_serial": {
+		"title": "Modbus TCP over Serial Gateway",
+		"index": 60,
+		"view": "services/ModbusTCPOverSerial",
+		"acls": [ "services/modbus/tcp_over_serial" ],
+		"depends": {
+			"board": {
+				"anyOf": ["has_usb", "has_rs232", "has_rs485", "has_console"]
+			}
+		}
+	}
+}

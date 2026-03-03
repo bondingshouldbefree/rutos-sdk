@@ -1,0 +1,23 @@
+{
+  "services/sd_usb_tools": {
+    "title": "SD & USB Tools",
+    "index": 70
+  },
+  "services/sd_usb_tools/samba": {
+    "title": "Network Shares",
+    "index": 30
+  },
+  "services/sd_usb_tools/samba/general": {
+    "title": "General",
+    "acls": ["services/sd_usb_tools/samba/general"],
+    "view": "services/Samba",
+    "index": 10,
+    "main_page": true
+  },
+  "services/sd_usb_tools/samba/users": {
+    "title": "Users",
+    "acls": ["services/sd_usb_tools/samba/users"],
+    "view": "services/SambaUsers",
+    "index": 20
+  }
+}

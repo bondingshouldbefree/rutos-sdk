@@ -1,0 +1,260 @@
+Index: uhttpd-2021-03-21-15346de8/main.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/main.c
++++ uhttpd-2021-03-21-15346de8/main.c
+@@ -270,6 +270,7 @@ int main(int argc, char **argv)
+ 	uh_dispatch_add(&cgi_dispatch);
+ 	init_defaults_pre();
+ 	signal(SIGPIPE, SIG_IGN);
++	uh_plugin_setup_sighup();
+ 
+ 	while ((ch = getopt(argc, argv, "A:abC:c:Dd:E:e:fh:H:I:i:K:k:L:l:m:N:n:P:p:qRFr:Ss:T:t:U:u:Xx:y:")) != -1) {
+ 		switch(ch) {
+Index: uhttpd-2021-03-21-15346de8/plugin.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/plugin.c
++++ uhttpd-2021-03-21-15346de8/plugin.c
+@@ -18,13 +18,28 @@
+  */
+ 
+ #include <dlfcn.h>
++#include <signal.h>
++#include <string.h>
++#include <stdlib.h>
++#include <unistd.h>
+ #include "uhttpd.h"
+ #include "plugin.h"
+ 
+-static LIST_HEAD(plugins);
++#define BASE_PLUGIN_PATH "/usr/lib/"
++#define ADDITIONAL_PLUGIN_PATH "/usr/local/usr/lib/"
++
++struct plugin_info {
++	struct uhttpd_plugin *plugin;
++	void *dlh;
++	char *filename;
++	struct list_head list;
++};
++
++static LIST_HEAD(plugin_infos);
+ 
+ static const struct uhttpd_ops ops = {
+ 	.dispatch_add = uh_dispatch_add,
++	.dispatch_remove = uh_dispatch_remove,
+ 	.path_match = uh_path_match,
+ 	.create_process = uh_create_process,
+ 	.get_process_vars = uh_get_process_vars,
+@@ -42,6 +57,35 @@ int uh_plugin_init(const char *name)
+ 	struct uhttpd_plugin *p;
+ 	const char *sym;
+ 	void *dlh;
++	struct plugin_info *info;
++	char path[256];
++	int found = 0;
++
++	snprintf(path, sizeof(path), "%s%s", BASE_PLUGIN_PATH, name);
++	if (access(path, F_OK) == 0) {
++		found = 1;
++	} else {
++		snprintf(path, sizeof(path), "%s%s", ADDITIONAL_PLUGIN_PATH, name);
++		if (access(path, F_OK) == 0) {
++			found = 1;
++		}
++	}
++
++	if (!found) {
++		info = calloc(1, sizeof(*info));
++		if (!info) {
++			fprintf(stderr, "Could not allocate memory for plugin info\n");
++			return -ENOMEM;
++		}
++		info->filename = strdup(name);
++		if (!info->filename) {
++			free(info);
++			fprintf(stderr, "Could not allocate memory for plugin filename\n");
++			return -ENOMEM;
++		}
++		list_add(&info->list, &plugin_infos);
++		return 0;
++	}
+ 
+ 	dlh = dlopen(name, RTLD_LAZY | RTLD_GLOBAL);
+ 	if (!dlh) {
+@@ -56,15 +100,70 @@ int uh_plugin_init(const char *name)
+ 		return -ENOENT;
+ 	}
+ 
+-	list_add(&p->list, &plugins);
++	info = calloc(1, sizeof(*info));
++	if (!info) {
++		dlclose(dlh);
++		return -ENOMEM;
++	}
++	info->plugin = p;
++	info->dlh = dlh;
++	info->filename = strdup(name);
++	list_add(&info->list, &plugin_infos);
++
+ 	return p->init(&ops, &conf);
+ }
+ 
+ void uh_plugin_post_init(void)
+ {
+-	struct uhttpd_plugin *p;
++	struct plugin_info *info;
+ 
+-	list_for_each_entry(p, &plugins, list)
+-		if (p->post_init)
+-			p->post_init();
++	list_for_each_entry(info, &plugin_infos, list)
++		if (info->plugin && info->plugin->post_init)
++			info->plugin->post_init();
++}
++
++static void reload_plugins(int signum)
++{
++	struct plugin_info *info;
++	char *filenames[32];
++	int count = 0;
++
++	struct plugin_info *tmp;
++	list_for_each_entry_safe(info, tmp, &plugin_infos, list) {
++		if (!info->plugin) {
++			filenames[count++] = strdup(info->filename);
++			free(info->filename);
++			list_del(&info->list);
++			free(info);
++		} else if (info->plugin->free) {
++			filenames[count++] = strdup(info->filename);
++			info->plugin->free();
++			dlclose(info->dlh);
++			free(info->filename);
++			list_del(&info->list);
++			free(info);
++			fprintf(stderr, "Plugin unloaded: %s\n", info->filename);
++		}
++	}
++
++	for (int i = 0; i < count; i++) {
++		uh_plugin_init(filenames[i]);
++		struct plugin_info *info;
++		list_for_each_entry(info, &plugin_infos, list) {
++			if (info->filename && strcmp(info->filename, filenames[i]) == 0 && info->plugin && info->plugin->post_init) {
++				info->plugin->post_init();
++				fprintf(stderr, "Plugin loaded: %s\n", filenames[i]);
++				break;
++			}
++		}
++		free(filenames[i]);
++	}
++}
++
++void uh_plugin_setup_sighup(void)
++{
++	struct sigaction sa;
++	memset(&sa, 0, sizeof(sa));
++	sa.sa_handler = reload_plugins;
++	sigaction(SIGHUP, &sa, NULL);
+ }
+Index: uhttpd-2021-03-21-15346de8/uhttpd.h
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/uhttpd.h
++++ uhttpd-2021-03-21-15346de8/uhttpd.h
+@@ -326,6 +326,7 @@ void uh_close_fds(void);
+ 
+ void uh_interpreter_add(const char *ext, const char *path);
+ void uh_dispatch_add(struct dispatch_handler *d);
++void uh_dispatch_remove(struct dispatch_handler *d);
+ 
+ void uh_relay_open(struct client *cl, struct relay *r, int fd, int pid);
+ void uh_relay_close(struct relay *r, int ret);
+@@ -338,6 +339,7 @@ bool uh_create_process(struct client *cl
+ 
+ int uh_plugin_init(const char *name);
+ void uh_plugin_post_init(void);
++void uh_plugin_setup_sighup(void);
+ 
+ int uh_handler_add(const char *file);
+ int uh_handler_run(struct client *cl, char **url, bool fallback);
+Index: uhttpd-2021-03-21-15346de8/plugin.h
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/plugin.h
++++ uhttpd-2021-03-21-15346de8/plugin.h
+@@ -21,6 +21,7 @@
+ 
+ struct uhttpd_ops {
+ 	void (*dispatch_add)(struct dispatch_handler *d);
++	void (*dispatch_remove)(struct dispatch_handler *d);
+ 	bool (*path_match)(const char *prefix, const char *url);
+ 
+ 	bool (*create_process)(struct client *cl, struct path_info *pi, char *url,
+@@ -42,4 +43,5 @@ struct uhttpd_plugin {
+ 
+ 	int (*init)(const struct uhttpd_ops *ops, struct config *conf);
+ 	void (*post_init)(void);
++	void (*free)(void);
+ };
+Index: uhttpd-2021-03-21-15346de8/ubus.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/ubus.c
++++ uhttpd-2021-03-21-15346de8/ubus.c
+@@ -35,6 +35,7 @@ static const struct uhttpd_ops *ops;
+ static struct config *_conf;
+ #define conf (*_conf)
+ 
++static struct dispatch_handler ubus_dispatch;
+ static struct ubus_context *ctx;
+ static struct blob_buf buf;
+ 
+@@ -983,10 +984,8 @@ uh_ubus_check_url(const char *url)
+ static int
+ uh_ubus_init(void)
+ {
+-	static struct dispatch_handler ubus_dispatch = {
+-		.check_url = uh_ubus_check_url,
+-		.handle_request = uh_ubus_handle_request,
+-	};
++	ubus_dispatch.check_url = uh_ubus_check_url;
++	ubus_dispatch.handle_request = uh_ubus_handle_request;
+ 
+ 	ctx = ubus_connect(conf.ubus_socket);
+ 	if (!ctx) {
+@@ -996,7 +995,6 @@ uh_ubus_init(void)
+ 
+ 	ops->dispatch_add(&ubus_dispatch);
+ 
+-	uloop_done();
+ 	return 0;
+ }
+ 
+@@ -1013,7 +1011,14 @@ static void uh_ubus_post_init(void)
+ 	ubus_add_uloop(ctx);
+ }
+ 
++static void uh_ubus_plugin_free(void)
++{
++	ops->dispatch_remove(&ubus_dispatch);
++	ubus_free(ctx);
++}
++
+ struct uhttpd_plugin uhttpd_plugin = {
+ 	.init = uh_ubus_plugin_init,
+ 	.post_init = uh_ubus_post_init,
++	.free = uh_ubus_plugin_free,
+ };
+Index: uhttpd-2021-03-21-15346de8/file.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/file.c
++++ uhttpd-2021-03-21-15346de8/file.c
+@@ -761,6 +761,11 @@ void uh_dispatch_add(struct dispatch_han
+ 	list_add_tail(&d->list, &dispatch_handlers);
+ }
+ 
++void uh_dispatch_remove(struct dispatch_handler *d)
++{
++	list_del(&d->list);
++}
++
+ static struct dispatch_handler *
+ dispatch_find(const char *url, struct path_info *pi)
+ {

@@ -1,0 +1,25 @@
+From 24129587557aaa3a5819602bcd04c3a3689fc82e Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Thu, 23 Jan 2025 16:07:59 +0200
+Subject: [PATCH 1/1] disable resetting uid
+
+---
+ ether-wake.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ether-wake.c b/ether-wake.c
+index 1b545b0..62aa06e 100644
+--- a/ether-wake.c
++++ b/ether-wake.c
+@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
+ 		perm_failure++;
+ 	}
+ 	/* Don't revert if debugging allows a normal user to get the raw socket. */
+-	setuid(getuid());
++	//setuid(getuid());
+ 
+ 	/* We look up the station address before reporting failure so that
+ 	   errors may be reported even when run as a normal user.
+-- 
+2.47.0
+

@@ -1,0 +1,20 @@
+{
+	"user": "ds",
+	"access": {
+		"gsm": {
+			"methods": [ "info" ]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info"
+			]
+		},
+		"mdcollect": {
+			"methods": [
+				"get",
+				"get_raw",
+				"get_raw_total"
+			]
+		}
+	}
+}

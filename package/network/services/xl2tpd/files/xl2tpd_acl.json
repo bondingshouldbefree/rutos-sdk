@@ -1,0 +1,11 @@
+{
+  "user": "xl2tpd",
+  "access": {
+    "network.interface": {
+      "methods": ["notify_proto"]
+    },
+    "ip": {
+      "methods": ["ip"]
+    }
+  }
+}

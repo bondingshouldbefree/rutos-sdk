@@ -1,0 +1,213 @@
+Index: libiwinfo-2025-02-06-9cec6b4d/Makefile
+===================================================================
+--- libiwinfo-2025-02-06-9cec6b4d.orig/Makefile
++++ libiwinfo-2025-02-06-9cec6b4d/Makefile
+@@ -32,6 +32,11 @@ ifneq ($(filter madwifi,$(IWINFO_BACKEND
+ 	IWINFO_LIB_OBJ += iwinfo_madwifi.o
+ endif
+ 
++ifneq ($(filter qcawifi,$(IWINFO_BACKENDS)),)
++	IWINFO_CFLAGS  += -DUSE_QCAWIFI
++	IWINFO_LIB_OBJ += iwinfo_qcawifi.o
++endif
++
+ ifneq ($(filter nl80211,$(IWINFO_BACKENDS)),)
+ 	IWINFO_CFLAGS      += -DUSE_NL80211
+ 	IWINFO_CLI_LDFLAGS += -lnl-tiny
+Index: libiwinfo-2025-02-06-9cec6b4d/include/iwinfo.h
+===================================================================
+--- libiwinfo-2025-02-06-9cec6b4d.orig/include/iwinfo.h
++++ libiwinfo-2025-02-06-9cec6b4d/include/iwinfo.h
+@@ -430,6 +430,7 @@ extern const struct iwinfo_ops madwifi_o
+ extern const struct iwinfo_ops nl80211_ops;
+ extern const struct iwinfo_ops wl_ops;
+ extern const struct iwinfo_ops ralink_ops;
++extern const struct iwinfo_ops qcawifi_ops;
+ 
+ #include "iwinfo/utils.h"
+ 
+Index: libiwinfo-2025-02-06-9cec6b4d/iwinfo_lib.c
+===================================================================
+--- libiwinfo-2025-02-06-9cec6b4d.orig/iwinfo_lib.c
++++ libiwinfo-2025-02-06-9cec6b4d/iwinfo_lib.c
+@@ -389,7 +389,7 @@ const struct iwinfo_iso3166_label IWINFO
+ };
+ 
+ static const struct iwinfo_ops *backends[] = {
+-#ifdef USE_NL80211
++#if defined(USE_NL80211) && !defined(USE_QCAWIFI)
+ 	&nl80211_ops,
+ #endif
+ #ifdef USE_MADWIFI
+@@ -404,6 +404,9 @@ static const struct iwinfo_ops *backends
+ #ifdef USE_WEXT
+ 	&wext_ops,
+ #endif
++#ifdef USE_QCAWIFI
++	&qcawifi_ops,
++#endif
+ };
+ 
+ const char * iwinfo_type(const char *ifname)
+Index: libiwinfo-2025-02-06-9cec6b4d/iwinfo_lua.c
+===================================================================
+--- libiwinfo-2025-02-06-9cec6b4d.orig/iwinfo_lua.c
++++ libiwinfo-2025-02-06-9cec6b4d/iwinfo_lua.c
+@@ -761,6 +761,36 @@ LUA_WRAP_STRUCT_OP(madwifi,mbssid_suppor
+ LUA_WRAP_STRUCT_OP(madwifi,hardware_id)
+ #endif
+ 
++#ifdef USE_QCAWIFI
++/* Madwifi */
++LUA_WRAP_INT_OP(qcawifi,channel)
++LUA_WRAP_INT_OP(qcawifi,frequency)
++LUA_WRAP_INT_OP(qcawifi,frequency_offset)
++LUA_WRAP_INT_OP(qcawifi,txpower)
++LUA_WRAP_INT_OP(qcawifi,txpower_offset)
++LUA_WRAP_INT_OP(qcawifi,bitrate)
++LUA_WRAP_INT_OP(qcawifi,signal)
++LUA_WRAP_INT_OP(qcawifi,noise)
++LUA_WRAP_INT_OP(qcawifi,quality)
++LUA_WRAP_INT_OP(qcawifi,quality_max)
++LUA_WRAP_STRING_OP(qcawifi,ssid)
++LUA_WRAP_STRING_OP(qcawifi,bssid)
++LUA_WRAP_STRING_OP(qcawifi,country)
++LUA_WRAP_STRING_OP(qcawifi,hardware_name)
++LUA_WRAP_STRING_OP(qcawifi,phyname)
++LUA_WRAP_STRUCT_OP(qcawifi,mode)
++LUA_WRAP_STRUCT_OP(qcawifi,assoclist)
++LUA_WRAP_STRUCT_OP(qcawifi,txpwrlist)
++LUA_WRAP_STRUCT_OP(qcawifi,scanlist)
++LUA_WRAP_STRUCT_OP(qcawifi,freqlist)
++LUA_WRAP_STRUCT_OP(qcawifi,countrylist)
++LUA_WRAP_STRUCT_OP(qcawifi,hwmodelist)
++LUA_WRAP_STRUCT_OP(qcawifi,htmodelist)
++LUA_WRAP_STRUCT_OP(qcawifi,encryption)
++LUA_WRAP_STRUCT_OP(qcawifi,mbssid_support)
++LUA_WRAP_STRUCT_OP(qcawifi,hardware_id)
++#endif
++
+ #ifdef USE_NL80211
+ /* NL80211 */
+ LUA_WRAP_INT_OP(nl80211,channel)
+@@ -916,6 +946,39 @@ static const luaL_reg R_madwifi[] = {
+ };
+ #endif
+ 
++#ifdef USE_QCAWIFI
++/* Madwifi table */
++static const luaL_reg R_qcawifi[] = {
++	LUA_REG(qcawifi,channel),
++	LUA_REG(qcawifi,frequency),
++	LUA_REG(qcawifi,frequency_offset),
++	LUA_REG(qcawifi,txpower),
++	LUA_REG(qcawifi,txpower_offset),
++	LUA_REG(qcawifi,bitrate),
++	LUA_REG(qcawifi,signal),
++	LUA_REG(qcawifi,noise),
++	LUA_REG(qcawifi,quality),
++	LUA_REG(qcawifi,quality_max),
++	LUA_REG(qcawifi,mode),
++	LUA_REG(qcawifi,ssid),
++	LUA_REG(qcawifi,bssid),
++	LUA_REG(qcawifi,country),
++	LUA_REG(qcawifi,assoclist),
++	LUA_REG(qcawifi,txpwrlist),
++	LUA_REG(qcawifi,scanlist),
++	LUA_REG(qcawifi,freqlist),
++	LUA_REG(qcawifi,countrylist),
++	LUA_REG(qcawifi,hwmodelist),
++	LUA_REG(qcawifi,htmodelist),
++	LUA_REG(qcawifi,encryption),
++	LUA_REG(qcawifi,mbssid_support),
++	LUA_REG(qcawifi,hardware_id),
++	LUA_REG(qcawifi,hardware_name),
++	LUA_REG(qcawifi,phyname),
++	{ NULL, NULL }
++};
++#endif
++
+ #ifdef USE_NL80211
+ /* NL80211 table */
+ static const luaL_reg R_nl80211[] = {
+@@ -1044,6 +1107,15 @@ LUALIB_API int luaopen_iwinfo(lua_State
+ 	lua_setfield(L, -2, "madwifi");
+ #endif
+ 
++#ifdef USE_QCAWIFI
++	luaL_newmetatable(L, IWINFO_QCAWIFI_META);
++	luaL_register(L, NULL, R_common);
++	luaL_register(L, NULL, R_qcawifi);
++	lua_pushvalue(L, -1);
++	lua_setfield(L, -2, "__index");
++	lua_setfield(L, -2, "qcawifi");
++#endif
++
+ #ifdef USE_NL80211
+ 	luaL_newmetatable(L, IWINFO_NL80211_META);
+ 	luaL_register(L, NULL, R_common);
+Index: libiwinfo-2025-02-06-9cec6b4d/include/iwinfo/lua.h
+===================================================================
+--- libiwinfo-2025-02-06-9cec6b4d.orig/include/iwinfo/lua.h
++++ libiwinfo-2025-02-06-9cec6b4d/include/iwinfo/lua.h
+@@ -37,6 +37,10 @@
+ #define IWINFO_MADWIFI_META	"iwinfo.madwifi"
+ #endif
+ 
++#ifdef USE_QCAWIFI
++#define IWINFO_QCAWIFI_META	"iwinfo.qcawifi"
++#endif
++
+ #ifdef USE_NL80211
+ #define IWINFO_NL80211_META	"iwinfo.nl80211"
+ #endif
+Index: libiwinfo-2025-02-06-9cec6b4d/iwinfo_nl80211.c
+===================================================================
+--- libiwinfo-2025-02-06-9cec6b4d.orig/iwinfo_nl80211.c
++++ libiwinfo-2025-02-06-9cec6b4d/iwinfo_nl80211.c
+@@ -919,8 +919,13 @@ static int __nl80211_hostapd_query(const
+ 	snprintf(buf, sizeof(buf), "/var/run/hostapd-%s.conf", phy);
+ 	fp = fopen(buf, "r");
+ 
+-	if (!fp)
+-		return 0;
++	if (!fp) {
++		snprintf(buf, sizeof(buf), "/var/run/hostapd-%s.conf", ifname);
++	        fp = fopen(buf, "r");
++
++		if (!fp)
++			return 0;
++	}
+ 
+ 	va_start(ap, ifname);
+ 
+@@ -1161,7 +1166,7 @@ static int __nl80211_wpactl_query(const
+ 	__nl80211_wpactl_query(ifname, ##__VA_ARGS__, NULL)
+ 
+ 
+-static char * nl80211_ifadd(const char *ifname)
++char * nl80211_ifadd(const char *ifname)
+ {
+ 	char path[PATH_MAX];
+ 	static char nif[IFNAMSIZ] = { 0 };
+@@ -1196,7 +1201,7 @@ static char * nl80211_ifadd(const char *
+ 	return NULL;
+ }
+ 
+-static void nl80211_ifdel(const char *ifname)
++void nl80211_ifdel(const char *ifname)
+ {
+ 	struct nl80211_msg_conveyor *req;
+ 
+Index: libiwinfo-2025-02-06-9cec6b4d/iwinfo_nl80211.h
+===================================================================
+--- libiwinfo-2025-02-06-9cec6b4d.orig/iwinfo_nl80211.h
++++ libiwinfo-2025-02-06-9cec6b4d/iwinfo_nl80211.h
+@@ -69,4 +69,7 @@ struct nl80211_array_buf {
+ 	int count;
+ };
+ 
++char * nl80211_ifadd(const char *ifname);
++void nl80211_ifdel(const char *ifname);
++
+ #endif

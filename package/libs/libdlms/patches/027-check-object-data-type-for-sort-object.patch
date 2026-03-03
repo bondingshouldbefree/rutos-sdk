@@ -1,0 +1,44 @@
+index cfb6241..f3d9d86 100644
+--- a/development/src/gxsetmalloc.c
++++ b/development/src/gxsetmalloc.c
+@@ -6716,25 +6716,28 @@ int cosem_setProfileGeneric(
+             }
+ 
+             object->sortObject = NULL;
+-            ret = oa_findByLN(&settings->objects, type, tmp->byteArr->data, &object->sortObject);
+-            if (ret != DLMS_ERROR_CODE_OK)
+-            {
+-                return ret;
+-            }
+-            if (object->sortObject == NULL)
++            if (type != DLMS_OBJECT_TYPE_NONE)
+             {
+-                ret = cosem_createObject(type, &object->sortObject);
++                ret = oa_findByLN(&settings->objects, type, tmp->byteArr->data, &object->sortObject);
+                 if (ret != DLMS_ERROR_CODE_OK)
+                 {
+                     return ret;
+                 }
+-                ret = cosem_setLogicalName(object->sortObject, tmp->byteArr->data);
+-                if (ret != DLMS_ERROR_CODE_OK)
++                if (object->sortObject == NULL)
+                 {
+-                    return ret;
++                    ret = cosem_createObject(type, &object->sortObject);
++                    if (ret != DLMS_ERROR_CODE_OK)
++                    {
++                        return ret;
++                    }
++                    ret = cosem_setLogicalName(object->sortObject, tmp->byteArr->data);
++                    if (ret != DLMS_ERROR_CODE_OK)
++                    {
++                        return ret;
++                    }
++                    //Add object to released objects list.
++                    ret = oa_push(&settings->releasedObjects, object->sortObject);
+                 }
+-                //Add object to released objects list.
+-                ret = oa_push(&settings->releasedObjects, object->sortObject);
+             }
+             ret = va_getByIndex(value->Arr, 2, &tmp);
+             if (ret != DLMS_ERROR_CODE_OK)

@@ -1,0 +1,4 @@
+/etc/config/snmpd	snmpd:snmpd 660
+/etc/snmp			snmpd:snmpd -   r
+/etc/snmp			snmpd:snmpd 775
+/etc/snmp/modules	snmpd:snmpd 775

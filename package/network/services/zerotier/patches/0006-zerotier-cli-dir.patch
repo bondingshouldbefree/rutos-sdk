@@ -1,0 +1,15 @@
+Index: zerotier-1.14.0/osdep/OSUtils.cpp
+===================================================================
+--- zerotier-1.14.0.orig/osdep/OSUtils.cpp
++++ zerotier-1.14.0/osdep/OSUtils.cpp
+@@ -443,8 +443,8 @@ std::string OSUtils::platformDefaultHome
+ 	// BSD likes /var/db instead of /var/lib
+ 	return std::string("/var/db/zerotier-one");
+ #else
+-	// Use /var/lib for Linux and other *nix
+-	return std::string("/var/lib/zerotier-one");
++	// Use /var/run/zerotier/lib/ for Home Directory on RUTOS
++	return std::string("/var/run/zerotier/lib/zerotier-one");
+ #endif
+ 
+ #endif

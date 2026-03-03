@@ -1,0 +1,92 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed Jan 14 16:39:25 2026 +0200
+Subject: HACK: Schedule MMC secure discard ops less aggressively
+
+eMMC secure discard operations can take a long time - with some chips requiring
+at least 2 seconds per request. During these requests eMMC device cannot accept
+any other read/write operations, resulting in a system-wide freeze as userspace
+processes become stuck waiting for IO. This can be significant enough to cause
+processes intended for servicing the watchdog timer to stall long enough to
+cause watchdog timeouts.
+
+To improve system responsiveness during eMMC secure erase, blkdev_issue_secure_erase
+is modified to issue erase commands one at a time, with a small sleep between 
+issuing of commands to allow any pending read/write operations to be submited
+to eMMC device before handling further secure erase operations. 
+Set bdev_max_secure_erase_sectors equal to erase group size for eMMC devices
+to ensure blk-mq layer does not split one secure erase operation into multiple
+calls to mmc driver.
+
+Together this (almost) guarantees read/write latencies no greater than the time it
+takes to execute one secure erase command, which is still not great, but is
+seemingly the best that can be done under these grim circumstances.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ block/blk-lib.c          |   19 +++++++++----------
+ drivers/mmc/core/queue.c |    2 +-
+ 2 files changed, 10 insertions(+), 11 deletions(-)
+
+--- a/block/blk-lib.c
++++ b/block/blk-lib.c
+@@ -7,6 +7,7 @@
+ #include <linux/bio.h>
+ #include <linux/blkdev.h>
+ #include <linux/scatterlist.h>
++#include <linux/delay.h>
+ 
+ #include "blk.h"
+ 
+@@ -305,8 +306,7 @@ int blkdev_issue_secure_erase(struct blo
+ {
+ 	sector_t bs_mask = (bdev_logical_block_size(bdev) >> 9) - 1;
+ 	unsigned int max_sectors = bdev_max_secure_erase_sectors(bdev);
+-	struct bio *bio = NULL;
+-	struct blk_plug plug;
++	struct bio *bio;
+ 	int ret = 0;
+ 
+ 	/* make sure that "len << SECTOR_SHIFT" doesn't overflow */
+@@ -321,24 +321,23 @@ int blkdev_issue_secure_erase(struct blo
+ 	if (bdev_read_only(bdev))
+ 		return -EPERM;
+ 
+-	blk_start_plug(&plug);
+ 	for (;;) {
+ 		unsigned int len = min_t(sector_t, nr_sects, max_sectors);
+ 
+-		bio = blk_next_bio(bio, bdev, 0, REQ_OP_SECURE_ERASE, gfp);
++		bio = bio_alloc(bdev, 0, REQ_OP_SECURE_ERASE, gfp);
+ 		bio->bi_iter.bi_sector = sector;
+ 		bio->bi_iter.bi_size = len << SECTOR_SHIFT;
+ 
+ 		sector += len;
+ 		nr_sects -= len;
+-		if (!nr_sects) {
+-			ret = submit_bio_wait(bio);
+-			bio_put(bio);
++		ret = submit_bio_wait(bio);
++		bio_put(bio);
++
++		if (!nr_sects)
+ 			break;
+-		}
+-		cond_resched();
++
++		msleep(10);
+ 	}
+-	blk_finish_plug(&plug);
+ 
+ 	return ret;
+ }
+--- a/drivers/mmc/core/queue.c
++++ b/drivers/mmc/core/queue.c
+@@ -189,7 +189,7 @@ static void mmc_queue_setup_discard(stru
+ 	if (card->pref_erase > max_discard)
+ 		q->limits.discard_granularity = SECTOR_SIZE;
+ 	if (mmc_can_secure_erase_trim(card))
+-		blk_queue_max_secure_erase_sectors(q, max_discard);
++		blk_queue_max_secure_erase_sectors(q, card->pref_erase);
+ 	if (mmc_can_trim(card) && card->erased_byte == 0)
+ 		blk_queue_max_write_zeroes_sectors(q, max_discard);
+ }

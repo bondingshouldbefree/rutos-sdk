@@ -1,0 +1,27 @@
+<html>
+    <%include("header")%>
+    <body>
+        <div class="main-body">
+            <div class="theme-picture">
+                <div class="picture-text"><div class="picture-title"><%:Hotspot%></div></div>
+            </div>
+            <div class="login-panel">
+                <div class="content">
+                    <div class="logo">
+                        <img src="<%=logo%>" alt="logo">
+                    </div>
+                    <div class="msg">
+                        <div class="msg-title"><%:Authorization successful!%></div>
+                    </div>
+                    <div class="form-container">
+                        <form action="" class="form">
+                            <div class="form-text">
+                                <%=translatef("Click here to %s logout%s", '<a href="http://%s:%s/logoff">' % {uamip, uamport}, '</a>')%>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

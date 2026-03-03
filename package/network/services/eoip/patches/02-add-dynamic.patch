@@ -1,0 +1,135 @@
+Index: eoip-1.0/eoip.c
+===================================================================
+--- eoip-1.0.orig/eoip.c
++++ eoip-1.0/eoip.c
+@@ -17,7 +17,7 @@ void setprocname(char *name, char **dst)
+ 
+ int main (int argc, char** argv) {
+   char src[INET6_ADDRSTRLEN], dst[INET6_ADDRSTRLEN], ifname[IFNAMSIZ];
+-  unsigned int tid = 0, mtu = 1500, daemon = 0;
++  unsigned int tid = 0, mtu = 1500, daemon = 0, dynamic = 0;
+   sa_family_t af = AF_INET;
+   in_port_t proto = PROTO_EOIP;
+   uid_t uid = 0;
+@@ -25,7 +25,7 @@ int main (int argc, char** argv) {
+   pid_t pid = 1;
+ 
+   if (argc < 2) {
+-    fprintf(stderr, "Usage: eoip [ OPTIONS ] IFNAME { remote RADDR } { local LADDR } [ id TID ]\n");
++    fprintf(stderr, "Usage: eoip [ OPTIONS ] IFNAME { remote RADDR } { local LADDR } [ id TID ] [ dynamic ]\n");
+     fprintf(stderr, "                               [ mtu MTU ] [ uid UID ] [ gid GID ] [ fork ]\n");
+     fprintf(stderr, "where: OPTIONS := { -4 | -6 }\n");
+     exit(1);
+@@ -45,6 +45,7 @@ int main (int argc, char** argv) {
+     if(!strcmp(argv[i], "id")) tid = atoi(argv[++i]);
+     if(!strcmp(argv[i], "local")) strncpy(src, argv[++i], INET6_ADDRSTRLEN);
+     if(!strcmp(argv[i], "remote")) strncpy(dst, argv[++i], INET6_ADDRSTRLEN);
++    if(!strcmp(argv[i], "dynamic")) dynamic = 1;
+     if(!strcmp(argv[i], "mtu")) mtu = atoi(argv[++i]);
+     if(!strcmp(argv[i], "gid")) gid = atoi(argv[++i]);
+     if(!strcmp(argv[i], "uid")) uid = atoi(argv[++i]);
+@@ -68,7 +69,7 @@ int main (int argc, char** argv) {
+   struct sockaddr_storage laddr, raddr;
+   socklen_t laddrlen, raddrlen;
+   populate_sockaddr(af, proto, src, &laddr, &laddrlen);
+-  populate_sockaddr(af, proto, dst, &raddr, &raddrlen);
++  if (!dynamic) populate_sockaddr(af, proto, dst, &raddr, &raddrlen);
+ 
+   // bind a sock
+   int sock_fd;
+@@ -101,7 +102,11 @@ int main (int argc, char** argv) {
+     exit(errno);
+   }
+ 
+-  fprintf(stderr, "[INFO] attached to %s, mode %s, remote %s, local %s, tid %d, mtu %d.\n", ifname, af == AF_INET6 ? "EoIPv6" : "EoIP", dst, src, tid, mtu);
++  if (dynamic) {
++    fprintf(stderr, "[INFO] attached to %s, mode %s, dynamic, local %s, tid %d, mtu %d.\n", ifname, af == AF_INET6 ? "EoIPv6" : "EoIP", src, tid, mtu);
++  } else {
++    fprintf(stderr, "[INFO] attached to %s, mode %s, remote %s, local %s, tid %d, mtu %d.\n", ifname, af == AF_INET6 ? "EoIPv6" : "EoIP", dst, src, tid, mtu);
++  }
+ 
+   // all set, let's get to work.
+   pid_t writer = 1, sender = 1, dead;
+@@ -132,6 +137,11 @@ int main (int argc, char** argv) {
+     #if defined(__linux__)
+       prctl(PR_SET_PDEATHSIG, SIGTERM);
+     #endif
++
++    if (dynamic) {
++      get_remote(af, sock_fd, tap_fd, tid, (struct sockaddr*) &raddr, &raddrlen);
++    }
++
+     if (!sender) {
+       setprocname("eoip: TAP listener", argv);
+       tap_listen(af, tap_fd, sock_fd, tid, (struct sockaddr*) &raddr, raddrlen);
+Index: eoip-1.0/sock.c
+===================================================================
+--- eoip-1.0.orig/sock.c
++++ eoip-1.0/sock.c
+@@ -94,3 +94,54 @@ void populate_sockaddr(sa_family_t af, i
+     inet_pton(af, addr, &dst_in6->sin6_addr);
+   }
+ }
++
++int get_remote(sa_family_t af, int fd, int tap_fd, int tid,
++                 struct sockaddr *raddr, socklen_t *raddrlen) {
++  uint8_t header[8], *buffer;
++  union packet packet;
++  int len;
++  struct sockaddr_storage saddr;
++  socklen_t saddrlen = sizeof(saddr);
++
++  // pre-build the header
++  eoip_header(af, tid, &header);
++
++  do {
++    len = recvfrom(fd, packet.buffer, sizeof(packet), 0, (struct sockaddr *) &saddr, &saddrlen);
++
++    if (af == AF_INET) {
++      buffer = packet.buffer;
++
++      // skip headres
++      buffer += packet.ip.ip_hl * 4;
++      len -= packet.ip.ip_hl * 4 + 8;
++
++      // sanity checks
++      if (
++        len <= 0                               || /* len left < header size */
++        memcmp(buffer, EOIP_MAGIC, 4)          || /* not a EOIP packet */
++        len != ntohs(((uint16_t *) buffer)[2]) || /* payload len mismatch */
++        ((uint16_t *) buffer)[3] != tid           /* tid mismatch */
++      ) continue;
++
++      buffer += 8;
++    } else {
++      /* check header, since tid and \x03 are already there, no other checks
++         required. */
++      if (len < 2 || memcmp(&packet.header, header, 2)) continue;
++      buffer = packet.buffer + 2;
++      len -= 2;
++    }
++
++    if (len <= 0) continue;
++    memcpy(raddr, &saddr, saddrlen);
++    *raddrlen = saddrlen;
++    fprintf(stderr, "[INFO] remote ip address will be used for connection in dynamic mode: %s\n",
++      af == AF_INET ?
++      inet_ntoa(((struct sockaddr_in *) raddr)->sin_addr) :
++      inet_ntop(AF_INET6, &((struct sockaddr_in6 *) raddr)->sin6_addr, (char[INET6_ADDRSTRLEN]){0}, INET6_ADDRSTRLEN)
++    );
++    return 0;
++
++  } while (1);
++}
+Index: eoip-1.0/sock.h
+===================================================================
+--- eoip-1.0.orig/sock.h
++++ eoip-1.0/sock.h
+@@ -24,4 +24,7 @@ void sock_listen(sa_family_t af, int fd,
+ void populate_sockaddr(sa_family_t af, in_port_t port, const char *addr,
+               struct sockaddr_storage *dst, socklen_t *addrlen);
+ 
++int get_remote(sa_family_t af, int fd, int tap_fd, int tid,
++              struct sockaddr *raddr, socklen_t *raddrlen);
++
+ #endif // EOIP_SOCK_H_

@@ -1,0 +1,1 @@
+{"network/ports/port_mirroring":{"description":"port mirroring configuration","read":{"api":{"/port_mirroring/*":["*"],"/ports_settings/status":["id","description"]}},"write":{"api":["/port_mirroring/*"]},"source":["/port_mirroring/*"]}}

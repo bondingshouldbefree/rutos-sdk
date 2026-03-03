@@ -1,0 +1,17 @@
+{
+    "system/admin/group": {
+        "title": "Recipients",
+        "index": 50
+    },
+    "system/admin/group/phone": {
+        "title": "Phone Groups",
+        "acls": ["system/admin/group/phone"],
+        "view": "system/PhoneGroups",
+        "index": 10,
+        "depends": {
+          "board": {
+            "allOf": ["has_mobile"]
+          }
+        }
+    }
+}

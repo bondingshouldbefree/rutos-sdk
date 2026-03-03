@@ -1,0 +1,8 @@
+{
+	"user": "ds",
+	"access": {
+		"gpsd": {
+			"methods": [ "position" ]
+		}
+	}
+}

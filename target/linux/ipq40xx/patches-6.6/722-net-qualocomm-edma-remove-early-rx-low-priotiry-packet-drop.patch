@@ -1,0 +1,60 @@
+--- a/drivers/net/ethernet/qualcomm/essedma/edma.c
++++ b/drivers/net/ethernet/qualcomm/essedma/edma.c
+@@ -560,9 +560,7 @@ static u16 edma_rx_complete(struct edma_
+ 	    sw_next_to_clean, hw_next_to_clean = 0, vlan = 0, ret_count = 0;
+ 	u32 data = 0;
+ 	u8 *vaddr;
+-	int port_id, i, drop_count = 0;
+-	u32 priority;
+-	u16 count = erdr->count, rfd_avail;
++	int port_id, i;
+ 	u8 queue_to_rxid[8] = {0, 0, 1, 1, 2, 2, 3, 3};
+ 
+ 	cleaned_count = erdr->pending_fill;
+@@ -639,46 +637,6 @@ static u16 edma_rx_complete(struct edma_
+ 			}
+ 			adapter = netdev_priv(netdev);
+ 
+-			/* This code is added to handle a usecase where high
+-			 * priority stream and a low priority stream are
+-			 * received simultaneously on DUT. The problem occurs
+-			 * if one of the  Rx rings is full and the corresponding
+-			 * core is busy with other stuff. This causes ESS CPU
+-			 * port to backpressure all incoming traffic including
+-			 * high priority one. We monitor free descriptor count
+-			 * on each CPU and whenever it reaches threshold (< 80),
+-			 * we drop all low priority traffic and let only high
+-			 * priotiy traffic pass through. We can hence avoid
+-			 * ESS CPU port to send backpressure on high priroity
+-			 * stream.
+-			 */
+-			priority = (rd->rrd1 >> EDMA_RRD_PRIORITY_SHIFT)
+-				& EDMA_RRD_PRIORITY_MASK;
+-			if (likely(!priority && !edma_cinfo->page_mode && (num_rfds <= 1))) {
+-				rfd_avail = (count + sw_next_to_clean - hw_next_to_clean - 1) & (count - 1);
+-				if (rfd_avail < EDMA_RFD_AVAIL_THR) {
+-					sw_desc->flags = EDMA_SW_DESC_FLAG_SKB_REUSE;
+-					sw_next_to_clean = (sw_next_to_clean + 1) & (erdr->count - 1);
+-					adapter->netdev->stats.rx_dropped++;
+-					cleaned_count++;
+-					drop_count++;
+-					if (drop_count == 3) {
+-						work_to_do--;
+-						(*work_done)++;
+-						drop_count = 0;
+-					}
+-					if (cleaned_count >= EDMA_RX_BUFFER_WRITE) {
+-						/* If buffer clean count reaches 16, we replenish HW buffers. */
+-						ret_count = edma_alloc_rx_buf(edma_cinfo, erdr, cleaned_count, queue_id);
+-						edma_write_reg(EDMA_REG_RX_SW_CONS_IDX_Q(queue_id),
+-							      sw_next_to_clean);
+-						cleaned_count = ret_count;
+-						erdr->pending_fill = ret_count;
+-					}
+-					continue;
+-				}
+-			}
+-
+ 			work_to_do--;
+ 			(*work_done)++;
+ 

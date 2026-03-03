@@ -1,0 +1,8 @@
+{
+	"services/data_sender": {
+		"title": "Data to Server",
+		"index": 90,
+		"view": "services/DataSender",
+		"acls": [ "services/data_sender" ]
+	}
+}

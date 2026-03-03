@@ -1,0 +1,3 @@
+/etc/config/dnp3_client dnp3_client:dnp3_client 660
+/usr/share/dnp3_client dnp3_client:dnp3_client 755 cd
+/usr/share/dnp3_client/dnp3.db dnp3_client:dnp3_client 660

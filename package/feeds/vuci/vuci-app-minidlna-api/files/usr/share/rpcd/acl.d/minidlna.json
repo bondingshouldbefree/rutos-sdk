@@ -1,0 +1,1 @@
+{"services/sd_usb_tools/minidlna":{"read":{"api":{"/minidlna/*":["*"],"/usb_tools/mount/options/*":["mountpoint"]}},"write":{"api":["/minidlna/*"]}}}
