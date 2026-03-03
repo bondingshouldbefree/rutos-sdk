@@ -1,0 +1,290 @@
+--- a/NOFORK_NOEXEC.lst
++++ b/NOFORK_NOEXEC.lst
+@@ -265,6 +265,7 @@ nl - runner
+ nmeter - longterm
+ nohup - noexec. spawner
+ nproc - NOFORK
++untpd - daemon
+ ntpd - daemon
+ nuke - noexec
+ od - runner
+--- a/libbb/Kbuild.src
++++ b/libbb/Kbuild.src
+@@ -127,6 +127,7 @@ lib-$(CONFIG_FEATURE_CHECK_NAMES) += die
+ lib-$(CONFIG_NC) += udp_io.o
+ lib-$(CONFIG_NETCAT) += udp_io.o
+ lib-$(CONFIG_DNSD) += udp_io.o
++lib-$(CONFIG_UNTPD) += udp_io.o
+ lib-$(CONFIG_NTPD) += udp_io.o
+ lib-$(CONFIG_TFTP) += udp_io.o
+ lib-$(CONFIG_TFTPD) += udp_io.o
+--- /dev/null
++++ b/networking/untpd.c
+@@ -0,0 +1,267 @@
++/*
++ * NTP server, based on ntpd from busybox
++ *
++*/
++//config:config UNTPD
++//config:	bool "untpd (22 kb)"
++//config:	default y
++//config:	help
++//config:	The NTP server daemon.
++
++//applet:IF_UNTPD(APPLET(untpd, BB_DIR_USR_SBIN, BB_SUID_DROP))
++
++//kbuild:lib-$(CONFIG_UNTPD) += untpd.o
++
++//usage:#define untpd_trivial_usage
++//usage:	"[-d]"
++//usage:#define untpd_full_usage "\n\n"
++//usage:       "NTP server"
++//usage:     "\n	-d	Verbose"
++
++#include "libbb.h"
++#include <math.h>
++#include <netinet/ip.h> /* For IPTOS_DSCP_AF21 definition */
++#include <sys/timex.h>
++#ifndef IPTOS_DSCP_AF21
++# define IPTOS_DSCP_AF21 0x48
++#endif
++
++#define KEYID_SIZE      sizeof(uint32_t)
++
++enum {
++	NTP_MD5_DIGESTSIZE    = 16,
++	NTP_MSGSIZE_NOAUTH    = 48,
++	NTP_MSGSIZE_MD5_AUTH  = NTP_MSGSIZE_NOAUTH + KEYID_SIZE + NTP_MD5_DIGESTSIZE,
++
++	/* Status Masks */
++	MODE_MASK       = (7 << 0),
++	VERSION_MASK    = (7 << 3),
++	VERSION_SHIFT   = 3,
++
++	/* Mode values */
++	MODE_SYM_ACT    = 1,    /* symmetric active */
++	MODE_SYM_PAS    = 2,    /* symmetric passive */
++	MODE_CLIENT     = 3,    /* client */
++	MODE_SERVER     = 4,    /* server */
++};
++
++//TODO: better base selection
++#define OFFSET_1900_1970 2208988800UL  /* 1970 - 1900 in seconds */
++
++typedef struct {
++	uint32_t int_partl;
++	uint32_t fractionl;
++} l_fixedpt_t;
++
++typedef struct {
++	uint16_t int_parts;
++	uint16_t fractions;
++} s_fixedpt_t;
++
++typedef struct {
++	uint8_t     m_status;     /* status of local clock and leap info */
++	uint8_t     m_stratum;
++	uint8_t     m_ppoll;      /* poll value */
++	int8_t      m_precision_exp;
++	s_fixedpt_t m_rootdelay;
++	s_fixedpt_t m_rootdisp;
++	uint32_t    m_refid;
++	l_fixedpt_t m_reftime;
++	l_fixedpt_t m_orgtime;
++	l_fixedpt_t m_rectime;
++	l_fixedpt_t m_xmttime;
++	uint32_t    m_keyid;
++	uint8_t     m_digest[NTP_MD5_DIGESTSIZE];
++} msg_t;
++
++struct globals {
++	double   cur_time;
++	unsigned opts;
++};
++
++#define PRESISION_EXP  -9
++#define G (*ptr_to_globals)
++#define VERB if (G.opts && 1 << 0)
++
++
++
++static double
++gettime1900d(void)
++{
++	struct timeval tv;
++	xgettimeofday(&tv);
++	G.cur_time = tv.tv_sec + (1.0e-6 * tv.tv_usec) + OFFSET_1900_1970;
++	return G.cur_time;
++}
++
++static NOINLINE void
++d_to_lfp(l_fixedpt_t *lfp, double d)
++{
++	uint32_t intl;
++	uint32_t frac;
++	intl = (uint32_t)d;
++	frac = (uint32_t)((d - intl) * UINT_MAX);
++	lfp->int_partl = htonl(intl);
++	lfp->fractionl = htonl(frac);
++}
++static NOINLINE void
++d_to_sfp(s_fixedpt_t *sfp, double d)
++{
++	uint16_t ints;
++	uint16_t frac;
++	ints = (uint16_t)d;
++	frac = (uint16_t)((d - ints) * USHRT_MAX);
++	sfp->int_parts = htons(ints);
++	sfp->fractions = htons(frac);
++}
++
++static int
++do_sendto(int fd,
++		const struct sockaddr *from, const struct sockaddr *to, socklen_t addrlen,
++		msg_t *msg, ssize_t len)
++{
++	ssize_t ret;
++
++	errno = 0;
++	if (!from) {
++		ret = sendto(fd, msg, len, MSG_DONTWAIT, to, addrlen);
++	} else {
++		ret = send_to_from(fd, msg, len, MSG_DONTWAIT, to, from, addrlen);
++	}
++	if (ret != len) {
++		bb_simple_perror_msg("send failed");
++		return -1;
++	}
++	return 0;
++}
++
++static NOINLINE void
++recv_and_process_client_pkt(int fd)
++{
++	ssize_t          size;
++	len_and_sockaddr *to;
++	struct sockaddr  *from;
++	msg_t            msg;
++	uint8_t          query_status;
++	l_fixedpt_t      query_xmttime;
++
++	to = get_sock_lsa(fd);
++	from = xzalloc(to->len);
++
++	size = recv_from_to(fd, &msg, sizeof(msg), MSG_DONTWAIT, from, &to->u.sa, to->len);
++	if (size != NTP_MSGSIZE_NOAUTH && size != NTP_MSGSIZE_MD5_AUTH)
++	{
++		char *addr;
++		if (size < 0) {
++			if (errno == EAGAIN)
++				goto bail;
++			bb_simple_perror_msg_and_die("recv");
++		}
++		addr = xmalloc_sockaddr2dotted_noport(from);
++		bb_error_msg("malformed packet received from %s: size %u", addr, (int)size);
++		free(addr);
++		goto bail;
++	}
++
++	/* Respond only to client and symmetric active packets */
++	if ((msg.m_status & MODE_MASK) != MODE_CLIENT
++	 && (msg.m_status & MODE_MASK) != MODE_SYM_ACT
++	) {
++		goto bail;
++	}
++
++	query_status = msg.m_status;
++	query_xmttime = msg.m_xmttime;
++
++	/* Build a reply packet */
++	memset(&msg, 0, sizeof(msg));
++	msg.m_status = (query_status & VERSION_MASK);
++	msg.m_status |= ((query_status & MODE_MASK) == MODE_CLIENT) ?
++			MODE_SERVER : MODE_SYM_PAS;
++	msg.m_stratum = 1;
++	msg.m_precision_exp = PRESISION_EXP;
++	/* this time was obtained between poll() and recv() */
++	d_to_lfp(&msg.m_rectime, G.cur_time);
++	d_to_lfp(&msg.m_xmttime, gettime1900d()); /* this instant */
++	d_to_lfp(&msg.m_reftime, G.cur_time);
++	msg.m_orgtime = query_xmttime;
++//simple code does not do this, fix simple code!
++	d_to_sfp(&msg.m_rootdisp, 0);
++	//version = (query_status & VERSION_MASK); /* ... >> VERSION_SHIFT - done below instead */
++	msg.m_refid = 0;
++	/* We reply from the local address packet was sent to,
++	 * this makes to/from look swapped here: */
++	do_sendto(fd, /*from:*/ &to->u.sa, /*to:*/ from, /*addrlen:*/ to->len,
++		&msg, size);
++	VERB {
++		char *addr;
++		addr = xmalloc_sockaddr2dotted_noport(from);
++		bb_error_msg("responded to query from %s", addr);
++		free(addr);
++	}
++
++ bail:
++	free(to);
++	free(from);
++}
++
++int untpd_main(int argc UNUSED_PARAM, char **argv) MAIN_EXTERNALLY_VISIBLE;
++int untpd_main(int argc UNUSED_PARAM, char **argv)
++{
++#undef G
++	int fd = -1;
++	struct globals G;
++	struct pollfd *pfd;
++
++	memset(&G, 0, sizeof(G));
++	SET_PTR_TO_GLOBALS(&G);
++
++	G.opts = getopt32(argv, "d");
++	bb_signals(0
++		| (1 << SIGTERM)
++		| (1 << SIGINT)
++		| (1 << SIGALRM)
++		, record_signo
++	);
++	bb_signals(0
++		| (1 << SIGPIPE)
++		| (1 << SIGCHLD)
++		, SIG_IGN
++	);
++
++	fd = create_and_bind_dgram_or_die(NULL, 123);
++	if (fd < 0) {
++		bb_error_msg_and_die("can't bind to 123");
++	}
++
++	socket_want_pktinfo(fd);
++	setsockopt_int(fd, IPPROTO_IP, IP_TOS, IPTOS_DSCP_AF21);
++
++	pfd = xzalloc(sizeof(pfd[0]));
++
++	while (!bb_got_signal) {
++		int nfds;
++
++		pfd[0].fd = fd;
++		pfd[0].events = POLLIN;
++
++		nfds = poll(pfd, 1, -1);
++		gettime1900d(); /* sets G.cur_time */
++		if (nfds <= 0) {
++			if (bb_got_signal) {
++				break; /* poll was interrupted by a signal */
++			}
++
++			continue;
++		}
++
++		if (pfd[0].revents /* & (POLLIN|POLLERR)*/) {
++			nfds--;
++			recv_and_process_client_pkt(fd);
++			gettime1900d(); /* sets G.cur_time */
++		}
++	} /* while (!bb_got_signal) */
++
++	remove_pidfile_std_path_and_ext("untpd");
++	kill_myself_with_sig(bb_got_signal);
++}

@@ -1,0 +1,26 @@
+{
+	"user": "modem_control",
+	"publish": [ "modem_control.*" ],
+	"access": {
+		"gsm": {
+			"methods": [
+				"info",
+				"attach",
+				"deattach"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"set_urc_port"
+			]
+		},
+		"mctl": {
+			"methods": [
+				"start_track",
+				"stop_track"
+			]
+		}
+	}
+
+}

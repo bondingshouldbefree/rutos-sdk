@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"gsm.modem*":{"methods":["scan_operators"]}},"send":["vuci.notify"],"subscribe":["gsm.modem*"]}

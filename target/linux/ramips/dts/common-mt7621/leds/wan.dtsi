@@ -1,0 +1,23 @@
+/ {
+    leds {
+        led_wan_sim1 {
+			label = "wan_sim_1";
+			gpios = <&gpio 41 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_sim2 {
+			label = "wan_sim_2";
+			gpios = <&gpio 43 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_eth {
+			label = "wan_eth_3";
+			gpios = <&gpio 45 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_wifi {
+			label = "wan_wifi_4";
+			gpios = <&gpio 42 GPIO_ACTIVE_HIGH>;
+		};
+    };
+};

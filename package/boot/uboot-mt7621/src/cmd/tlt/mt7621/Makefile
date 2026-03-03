@@ -1,0 +1,1 @@
+obj-$(CONFIG_TLT_NAND_BOOTCMDS) += tltboot.o

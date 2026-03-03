@@ -1,0 +1,12 @@
+{
+	"user": "rpcd",
+	"access": {
+		"wireless_reboot": {
+			"methods": ["get_stats", "full_reset"]
+		},
+		"rpc-sys": {
+			"methods": [ "reboot" ]
+		}
+	},
+	"publish": ["wireless_reboot"]
+}

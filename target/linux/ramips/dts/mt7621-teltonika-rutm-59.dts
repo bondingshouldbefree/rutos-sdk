@@ -1,0 +1,38 @@
+#include "common-mt7621/rutm.dtsi"
+#include "common-mt7621/shiftreg.dtsi"
+#include "common-mt7621/input-output.dtsi"
+#include "common-mt7621/eth/4-lan-ports.dtsi"
+#include "common-mt7621/leds/wan.dtsi"
+#include "common-mt7621/modem/5g.dtsi"
+
+// PWR, RST  |G0|G10|
+// IN, OUT   |G8|G12|
+// SR CTRL   |G5|G9|G11|G44|
+// WAN	     |G41-G43|
+// ETH       |S0-S9|
+// 5G		 |G13-G17|G46-G48|
+/ {
+	model = "Teltonika RUTM59";
+
+	leds {
+		/delete-node/ led_wan_wifi;
+
+		led_wan_eth {
+			gpios = <&gpio 42 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y3 {
+			gpios = <&shift_io 8 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g3 {
+			gpios = <&shift_io 3 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};
+
+&mnfinfo {
+	sim_cfg {
+		default = "1111020_1112020";
+	};
+};

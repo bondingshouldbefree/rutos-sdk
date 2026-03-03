@@ -1,0 +1,98 @@
+From 943e53229399d32b312d61178dfd16a2cfc59db0 Mon Sep 17 00:00:00 2001
+From: "@joris.vaisvila" <joris.vaisvila@teltonika.lt>
+Date: Thu, 23 Oct 2025 17:30:28 +0300
+Subject: [PATCH 1/1] key decoding: add support for loading DER keys to ecc and
+ rsa keys
+
+---
+ lib/tpm2_openssl.c | 54 ++++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 50 insertions(+), 4 deletions(-)
+
+diff --git a/lib/tpm2_openssl.c b/lib/tpm2_openssl.c
+index d2f07a7c..f2f76323 100644
+--- a/lib/tpm2_openssl.c
++++ b/lib/tpm2_openssl.c
+@@ -10,6 +10,7 @@
+ #include <openssl/rand.h>
+ #else
+ #include <openssl/core_names.h>
++#include <openssl/decoder.h>
+ #endif
+ 
+ #include "files.h"
+@@ -1098,11 +1099,34 @@ static tpm2_openssl_load_rc load_private_ECC_from_pem(FILE *f, const char *path,
+         return lprc_error;
+     }
+ 
+-    EVP_PKEY *k = PEM_read_PrivateKey(f, NULL, NULL, (void *) pass);
++    EVP_PKEY *k = NULL;
++    OSSL_DECODER_CTX *dctx = OSSL_DECODER_CTX_new_for_pkey(&k, NULL, NULL, NULL, 0, NULL, NULL);
++    if (!dctx) {
++        free(pass);
++        ERR_print_errors_fp(stderr);
++        LOG_ERR("Failed to set up openssl decoder context");
++        return lprc_error;
++    }
++    if (pass && OSSL_DECODER_CTX_set_passphrase(dctx, (const unsigned char *) pass, strlen(pass)) != 1) {
++        OSSL_DECODER_CTX_free(dctx);
++        ERR_print_errors_fp(stderr);
++        LOG_ERR("Setting password \"%s\" failed", pass);
++        free(pass);
++        return lprc_error;
++    }
++    int decoder_res = OSSL_DECODER_from_fp(dctx, f);
++
+     free(pass);
++    OSSL_DECODER_CTX_free(dctx);
++    if (decoder_res != 1) {
++        ERR_print_errors_fp(stderr);
++        LOG_ERR("OSSL_DECODER_from_fp failed");
++        return lprc_error;
++    }
++
+     if (!k) {
+         ERR_print_errors_fp(stderr);
+-        LOG_ERR("Reading PEM file \"%s\" failed", path);
++        LOG_ERR("Reading key file \"%s\" failed", path);
+         return lprc_error;
+     }
+ 
+@@ -1140,11 +1164,33 @@ static tpm2_openssl_load_rc load_private_RSA_from_pem(FILE *f, const char *path,
+         return lprc_error;
+     }
+ 
+-    k = PEM_read_PrivateKey(f, NULL, NULL, (void *) pass);
++    OSSL_DECODER_CTX *dctx = OSSL_DECODER_CTX_new_for_pkey(&k, NULL, NULL, NULL, 0, NULL, NULL);
++    if (!dctx) {
++        free(pass);
++        ERR_print_errors_fp(stderr);
++        LOG_ERR("Failed to set up openssl decoder context");
++        return lprc_error;
++    }
++    if (pass && OSSL_DECODER_CTX_set_passphrase(dctx, (const unsigned char *) pass, strlen(pass)) != 1) {
++        OSSL_DECODER_CTX_free(dctx);
++        ERR_print_errors_fp(stderr);
++        LOG_ERR("Setting password \"%s\" failed", pass);
++        free(pass);
++        return lprc_error;
++    }
++    int decoder_res = OSSL_DECODER_from_fp(dctx, f);
++
+     free(pass);
++    OSSL_DECODER_CTX_free(dctx);
++    if (decoder_res != 1) {
++        ERR_print_errors_fp(stderr);
++        LOG_ERR("OSSL_DECODER_from_fp failed");
++        return lprc_error;
++    }
++
+     if (!k) {
+         ERR_print_errors_fp(stderr);
+-        LOG_ERR("Reading PEM file \"%s\" failed", path);
++        LOG_ERR("Reading key file \"%s\" failed", path);
+         return lprc_error;
+     }
+ 
+-- 
+2.43.0
+

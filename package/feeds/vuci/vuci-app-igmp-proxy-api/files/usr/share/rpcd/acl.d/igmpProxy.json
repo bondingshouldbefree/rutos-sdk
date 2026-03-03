@@ -1,0 +1,1 @@
+{"network/igmp_proxy":{"description":"IGMP Proxy","read":{"api":{"/igmp_proxy/*":["*"],"/igmp_proxy/routes/*":["*"],"/firewall/zones/config/*":["*"],"/interfaces/basic/status/*":["id","name","description","proto"]}},"write":{"api":["/igmp_proxy/*","/igmp_proxy/routes/*"]}}}

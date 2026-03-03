@@ -1,0 +1,36 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+config_load certificates
+
+mapped_handles=""
+
+process_cert() {
+	sid="$1"
+	local tpm2
+	config_get tpm2 "$sid" tpm2 "0"
+	[ "$tpm2" = "1" ] || return 0
+	local path
+	config_get path "$sid" path ""
+	[ -e "$path" ] || {
+		uci delete "certificates.$sid" 
+		return 0
+	}
+	handle=$(tpm2_importer "$path" get_handle) || return 0
+	mapped_handles="$mapped_handles $handle"
+}
+
+config_foreach process_cert certificate
+uci commit certificates
+
+for fhandle in /etc/certificates/tpm2/**/handle ; do
+	[ -f "$fhandle" ] || continue
+	handle=$(cat "$fhandle")
+	echo "$mapped_handles" | grep -qw "$handle" && continue
+	tpm2_evictcontrol -c "$handle" 2> /dev/null
+	tpm2_getcap handles-persistent | grep -qw "\- $handle" ||
+		rm -fr "$(dirname "$fhandle")"
+done
+ 
+exit 0

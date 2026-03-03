@@ -1,0 +1,218 @@
+#include "mt7621-teltonika-otd5-flash.dtsi"
+
+/ {
+	compatible = "teltonika,otd500", "mediatek,mt7621-soc";
+	model = "Teltonika OTD500";
+
+	keys {
+		compatible = "gpio-keys";
+
+		reset {
+			label = "reset";
+			gpios = <&gpio 10 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_tpm_reset {
+			gpio-export,name = "tpm_reset";
+			gpio-export,output = <1>;
+			gpios = <&gpio 18 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_reset {
+			gpio-export,name = "modem_reset";
+			gpio-export,output = <0>;
+			gpios = <&gpio 48 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_sim_select {
+			gpio-export,name = "sim_sel";
+			gpio-export,output = <0>;
+			gpios = <&gpio 9 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_power {
+			gpio-export,name = "modem_power";
+			gpio-export,output = <1>; // tmp
+			gpios = <&gpio 42 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_status {
+			gpio-export,name = "modem_status";
+			gpio-export,input = <0>;
+			gpios = <&gpio 12 GPIO_ACTIVE_HIGH>;
+		};
+
+		pse_enable {
+			gpio-export,name = "pse_enable";
+			gpio-export,output = <1>;
+			gpios = <&gpio 7 GPIO_ACTIVE_HIGH>;
+		};
+
+		pse_status {
+			gpio-export,name = "pse_status";
+			gpio-export,input = <0>;
+			gpios = <&gpio 15 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_power {
+			label = "power";
+			gpios = <&gpio 0 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+			retain-state-shutdown;
+		};
+
+		pse_led {
+			label = "pse_led";
+			gpios = <&gpio 14 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_3 {
+			label = "mob_gen_3";
+			gpios = <&gpio 43 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_4 {
+			label = "mob_gen_4";
+			gpios = <&gpio 41 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_5 {
+			label = "mob_gen_5";
+			gpios = <&gpio 44 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_ssid_1 {
+			label = "mob_ssid_1";
+			gpios = <&gpio 45 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; // only
+		};
+
+		led_ssid_3 {
+			label = "mob_ssid_3";
+			gpios = <&gpio 46 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; // only
+		};
+
+		led_ssid_5 {
+			label = "mob_ssid_5";
+			gpios = <&gpio 47 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer"; // only
+		};
+
+		led_eth_g0 {
+			label = "eth_g0";
+			gpios = <&gpio 13 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g1 {
+			label = "eth_g1";
+			gpios = <&gpio 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y0 {
+			label = "eth_y0";
+			gpios = <&gpio 11 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y1 {
+			label = "eth_y1";
+			gpios = <&gpio 8 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	tlt_gpios { // Modify according to wiki page "DTS syntax with Libgpiod changes"
+		gpiochip_info {
+			hw_0 {
+				hwver = <0>;
+				gpiochip_count = <4>;
+
+				gpiochip_0 = <32>; // Built-in
+				gpiochip_1 = <32>; // Built-in
+				gpiochip_2 = <32>; // Built-in
+			};
+		};
+
+		poeman {
+			GPIO_7 {
+				line_name = "PSE_ENABLE";
+			};
+			GPIO_15 {
+				line_name = "PSE_STATUS";
+			};
+		};
+
+		misc {
+			GPIO_18 {
+				line_name = "GPIO_TPM_RESET";
+			};
+			GPIO_48 {
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_42 {
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_12 {
+				line_name = "GPIO_MODEM_STATUS";
+			};
+			GPIO_9 {
+				line_name = "GPIO_SIM_SELECT";
+			};
+		};
+	};
+
+	poeman {
+		bus = "/dev/i2c-0";
+		budget@0 {
+			budget = <15500>;
+			max_port_power = <15400>;
+			allowed_deficit = <600>;
+		};
+	};
+};
+
+&state_default {
+	gpio {
+		groups = "wdt", "jtag", "sdhci", "uart2", "uart3";
+		function = "gpio";
+	};
+};
+
+&switch0 {
+	ports {
+		port@3 {
+			status = "okay";
+			label = "lan2";
+		};
+
+		port@4 {
+			status = "okay";
+			label = "lan1";
+		};
+	};
+};
+
+&i2c {
+	status = "okay";
+
+	tpm@2e {
+		compatible = "infineon,slb9673";
+		reg = <0x2e>;
+		status = "okay";
+	};
+};
+
+&mnfinfo {
+	sim_cfg {
+		default = "1111100_1112000_1121200";
+	};
+};

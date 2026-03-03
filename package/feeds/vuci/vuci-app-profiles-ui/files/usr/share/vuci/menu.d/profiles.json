@@ -1,0 +1,18 @@
+{
+	"system/admin/profiles": {
+		"title": "Profiles",
+		"index": 70
+	},
+		"system/admin/profiles/config": {
+			"title": "Profiles",
+			"acls": [ "system/admin/profiles/config" ],
+			"view": "system/Profiles",
+			"index": 10
+		},
+		"system/admin/profiles/scheduler": {
+			"title": "Scheduler",
+			"acls": [ "system/admin/profiles/scheduler" ],
+			"view": "system/ProfilesScheduler",
+			"index": 20
+		}
+}

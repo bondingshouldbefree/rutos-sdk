@@ -1,0 +1,30 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+[ -f /etc/config/snmptrap ] || exit 0
+
+set_hosts() {
+	local sec="$1"
+
+	config_get host "$sec" host
+	[ -z "$host" ] && return
+
+	config_get port "$sec" port
+
+	uci_remove "snmptrap" "$sec" "host"
+	uci_remove "snmptrap" "$sec" "port"
+
+	[ -n "$port" ] && {
+		host="${host};${port}"
+	}
+
+	uci_add_list "snmptrap" "$sec" "hosts" "$host"
+}
+
+config_load "snmptrap"
+config_foreach set_hosts server
+
+uci_commit "snmptrap"
+
+exit 0

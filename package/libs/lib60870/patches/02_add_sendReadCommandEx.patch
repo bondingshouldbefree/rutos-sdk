@@ -1,0 +1,51 @@
+diff --git a/lib60870-C/src/iec60870/cs104/cs104_connection.c b/lib60870-C/src/iec60870/cs104/cs104_connection.c
+index f4692f4..b2835c3 100644
+--- a/lib60870-C/src/iec60870/cs104/cs104_connection.c
++++ b/lib60870-C/src/iec60870/cs104/cs104_connection.c
+@@ -1349,6 +1349,19 @@ CS104_Connection_sendReadCommand(CS104_Connection self, int ca, int ioa)
+     return sendASDUInternal(self, frame);
+ }
+ 
++bool
++CS104_Connection_sendReadCommandEx(CS104_Connection self, int ca, int ioa, int noo)
++{
++    Frame frame = (Frame)T104Frame_create();
++
++    /* set SQ = 1, NumIX = noo */
++    encodeIdentificationField(self, frame, C_RD_NA_1, 0x80 | noo, CS101_COT_REQUEST, ca);
++
++    encodeIOA(self, frame, ioa);
++
++    return sendASDUInternal(self, frame);
++}
++
+ bool
+ CS104_Connection_sendClockSyncCommand(CS104_Connection self, int ca, CP56Time2a newTime)
+ {
+diff --git a/lib60870-C/src/inc/api/cs104_connection.h b/lib60870-C/src/inc/api/cs104_connection.h
+index 550a9bc..d868e49 100644
+--- a/lib60870-C/src/inc/api/cs104_connection.h
++++ b/lib60870-C/src/inc/api/cs104_connection.h
+@@ -227,6 +227,22 @@ CS104_Connection_sendCounterInterrogationCommand(CS104_Connection self, CS101_Ca
+ bool
+ CS104_Connection_sendReadCommand(CS104_Connection self, int ca, int ioa);
+ 
++/**
++ * \brief  Sends a read command multiple information objects (C_RD_NA_1 typeID: 102)
++ *
++ * This will send a read command C_RC_NA_1 (102) to the slave/outstation. The COT is always REQUEST (5).
++ * It is used to implement the cyclical polling of data application function.
++ *
++ *
++ * \param ca Common address of the slave/server
++ * \param ioa Information object address of the data point to read
++ * \param noo number of information objects to read
++ *
++ * \return true if message was sent, false otherwise
++ */
++bool
++CS104_Connection_sendReadCommandEx(CS104_Connection self, int ca, int ioa, int noo);
++
+ /**
+  * \brief Sends a clock synchronization command (C_CS_NA_1 typeID: 103)
+  *

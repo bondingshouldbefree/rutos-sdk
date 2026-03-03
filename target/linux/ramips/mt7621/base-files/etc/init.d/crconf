@@ -1,0 +1,19 @@
+#!/bin/sh /etc/rc.common
+
+START=05
+
+boot() {
+	# OpenVPN-DCO algs
+	crconf add driver "gcm_base(ctr(aes-generic),ghash-generic)" type 3 2>/dev/null
+	crconf add driver "rfc7539(chacha20-mips,poly1305-mips)" type 3 2>/dev/null
+
+	# IPsec combined AEAD algs
+	GCM_ALG="gcm_base(eip93-ctr-aes,ghash-generic)"
+	CCM_ALG="ccm_base(eip93-ctr-aes,cbcmac(aes-generic))"
+	CHAPOLY_ALG="rfc7539esp(chacha20-mips,poly1305-mips)"
+	AEAD_ALGS="rfc4106(${GCM_ALG}) rfc4543(${GCM_ALG}) rfc4309(${CCM_ALG}) ${CHAPOLY_ALG}"
+
+	for aead in $AEAD_ALGS; do
+		crconf add driver "pcrypt(${aead})" type 3 2>/dev/null
+	done
+}

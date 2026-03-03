@@ -1,0 +1,20 @@
+Index: busybox-1.34.1/loginutils/chpasswd.c
+===================================================================
+--- busybox-1.34.1.orig/loginutils/chpasswd.c
++++ busybox-1.34.1/loginutils/chpasswd.c
+@@ -110,8 +110,14 @@ int chpasswd_main(int argc UNUSED_PARAM,
+ 		logmode = LOGMODE_BOTH;
+ 		if (rc < 0)
+ 			bb_error_msg_and_die("an error occurred updating password for %s", name);
+-		if (rc)
++		if (rc) {
++#ifndef CONFIG_PASSWD
+ 			bb_info_msg("password for '%s' changed", name);
++#else
++			log_event(name);
++#endif // CONFIG_PASSWD
++		}
++
+ 		logmode = LOGMODE_STDIO;
+ 		free(name);
+ 		free(free_me);

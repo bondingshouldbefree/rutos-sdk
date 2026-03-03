@@ -1,0 +1,15 @@
+Index: uhttpd-2021-03-21-15346de8/relay.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/relay.c
++++ uhttpd-2021-03-21-15346de8/relay.c
+@@ -138,6 +138,10 @@ static void relay_read_cb(struct ustream
+ 		return;
+ 	}
+ 
++	// Sends single byte to trigger timeout reset
++	if (bytes == 1)
++		uloop_timeout_set(&cl->dispatch.proc.timeout, conf.script_timeout * 1000);
++
+ 	buf = ustream_get_read_buf(s, &len);
+ 	if (!buf || !len)
+ 		return;

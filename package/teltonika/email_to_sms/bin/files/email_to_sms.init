@@ -1,0 +1,26 @@
+#!/bin/sh /etc/rc.common
+
+APP=/usr/bin/email_to_sms
+USE_PROCD=1
+START=70
+STOP=40
+
+start_service() {
+	[ ! -x "$APP" ] && APP="/usr/local$APP"
+	"$APP" start
+}
+
+stop_service() {
+	[ ! -x "$APP" ] && APP="/usr/local$APP"
+	"$APP" stop
+}
+
+service_triggers()
+{
+	procd_add_reload_trigger "email_to_sms"
+}
+
+reload_service () {
+	stop
+	start
+}

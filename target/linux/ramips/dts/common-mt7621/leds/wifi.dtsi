@@ -1,0 +1,13 @@
+/ {
+    leds {
+        led_wifi_24 {
+			label = "wifi_gen_2";
+			gpios = <&gpio 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wifi_50 {
+			label = "wifi_gen_5";
+			gpios = <&gpio 7 GPIO_ACTIVE_HIGH>;
+		};
+    };
+};

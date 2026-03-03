@@ -1,0 +1,773 @@
+Index: mosquitto-2.0.21/lib/options.c
+===================================================================
+--- mosquitto-2.0.21.orig/lib/options.c
++++ mosquitto-2.0.21/lib/options.c
+@@ -129,7 +129,7 @@ int mosquitto_tls_set(struct mosquitto *
+ #ifdef WITH_TLS
+ 	FILE *fptr;
+ 
+-	if(!mosq || (!cafile && !capath) || (certfile && !keyfile) || (!certfile && keyfile)) return MOSQ_ERR_INVAL;
++	if(!mosq || (!cafile && !capath) || (certfile && !keyfile && !mosq->tls_keyblob) || (!certfile && keyfile)) return MOSQ_ERR_INVAL;
+ 
+ 	mosquitto__free(mosq->tls_cafile);
+ 	mosq->tls_cafile = NULL;
+@@ -262,6 +262,21 @@ int mosquitto_tls_opts_set(struct mosqui
+ #endif
+ }
+ 
++int mosquitto_tls_key_blob_set(struct mosquitto *mosq, void *data, size_t len)
++{
++#ifdef WITH_TLS
++	mosq->tls_keyblob = data;
++	mosq->tls_keyblob_len = len;
++
++	return MOSQ_ERR_SUCCESS;
++#else //WITH_TLS
++	UNUSED(mosq);
++	UNUSED(data);
++	UNUSED(len);
++
++	return MOSQ_ERR_NOT_SUPPORTED;
++#endif
++}
+ 
+ int mosquitto_tls_insecure_set(struct mosquitto *mosq, bool value)
+ {
+@@ -284,6 +299,9 @@ int mosquitto_string_option(struct mosqu
+ 	ENGINE *eng;
+ 	char *str;
+ #endif
++#ifdef OPENSSL_HAS_PROVIDERS
++	char **tmp = NULL;
++#endif //#ifdef OPENSSL_HAS_PROVIDERS
+ 
+ 	if(!mosq) return MOSQ_ERR_INVAL;
+ 
+@@ -313,6 +331,29 @@ int mosquitto_string_option(struct mosqu
+ #endif
+ 			break;
+ 
++		case MOSQ_OPT_TLS_PROVIDER:
++#ifdef OPENSSL_HAS_PROVIDERS
++			if (value) {
++				tmp = realloc(mosq->tls_providers, (mosq->n_providers + 1) * sizeof(char **));
++				if (!tmp) {
++					return MOSQ_ERR_NOMEM;
++				}
++
++				mosq->tls_providers = tmp;
++				mosq->tls_providers[mosq->n_providers] = mosquitto__strdup(value);
++				if(!mosq->tls_providers[mosq->n_providers]){
++					return MOSQ_ERR_NOMEM;
++				}
++
++				mosq->n_providers++;
++			}
++
++			return MOSQ_ERR_SUCCESS;
++#else //OPENSSL_HAS_PROVIDERS
++			return MOSQ_ERR_NOT_SUPPORTED;
++#endif //OPENSSL_HAS_PROVIDERS
++			break;
++
+ 		case MOSQ_OPT_TLS_KEYFORM:
+ #ifdef WITH_TLS
+ 			if(!value) return MOSQ_ERR_INVAL;
+@@ -320,7 +361,13 @@ int mosquitto_string_option(struct mosqu
+ 				mosq->tls_keyform = mosq_k_pem;
+ 			}else if (!strcasecmp(value, "engine")){
+ 				mosq->tls_keyform = mosq_k_engine;
+-			}else{
++			}
++#ifdef OPENSSL_HAS_PROVIDERS
++			else if (!strcasecmp(value, "provider")){
++				mosq->tls_keyform = mosq_k_provider;
++			}
++#endif
++			else{
+ 				return MOSQ_ERR_INVAL;
+ 			}
+ 			return MOSQ_ERR_SUCCESS;
+@@ -328,8 +375,6 @@ int mosquitto_string_option(struct mosqu
+ 			return MOSQ_ERR_NOT_SUPPORTED;
+ #endif
+ 			break;
+-
+-
+ 		case MOSQ_OPT_TLS_ENGINE_KPASS_SHA1:
+ #ifdef WITH_TLS
+ 			if(mosquitto__hex2bin_sha1(value, (unsigned char**)&str) != MOSQ_ERR_SUCCESS){
+Index: mosquitto-2.0.21/lib/net_mosq.c
+===================================================================
+--- mosquitto-2.0.21.orig/lib/net_mosq.c
++++ mosquitto-2.0.21/lib/net_mosq.c
+@@ -58,6 +58,7 @@ Contributors:
+ #include <openssl/engine.h>
+ #include <openssl/err.h>
+ #include <openssl/ui.h>
++
+ #include <tls_mosq.h>
+ #endif
+ 
+@@ -126,6 +127,52 @@ UI_METHOD *net__get_ui_method(void)
+ 	return _ui_method;
+ }
+ 
++
++static EVP_PKEY *net__get_uri_pkey_method(struct mosquitto *mosq, const char *uri)
++{
++	UI_METHOD *ui_pkey_method = net__get_ui_method();
++	OSSL_STORE_CTX *store_ctx = NULL;
++	OSSL_STORE_INFO *store_info = NULL;
++	EVP_PKEY *pkey = NULL;
++
++	store_ctx = OSSL_STORE_open_ex(uri, mosq->libctx, NULL, ui_pkey_method, NULL, NULL, NULL, NULL);
++	if (!store_ctx) {
++		log__printf(mosq, MOSQ_LOG_ERR, "Error: Unable to open private key store ctx %s",
++				ERR_error_string(ERR_get_error(), NULL));
++		goto err;
++	}
++
++	if (OSSL_STORE_expect(store_ctx, OSSL_STORE_INFO_PKEY) != 1) {
++		log__printf(mosq, MOSQ_LOG_ERR, "Error: Unable to find private key in store");
++		goto err;
++	}
++
++	store_info = OSSL_STORE_load(store_ctx);
++	if (!store_info) {
++		log__printf(mosq, MOSQ_LOG_ERR, "Error: Unable to load private key from store");
++		goto err;
++	}
++
++	pkey = OSSL_STORE_INFO_get1_PKEY(store_info);
++	if (!pkey) {
++		log__printf(mosq, MOSQ_LOG_ERR, "Error: Unable to get private key from store");
++		goto err;
++	}
++
++	if (SSL_CTX_use_PrivateKey(mosq->ssl_ctx, pkey) != 1) {
++		log__printf(mosq, MOSQ_LOG_ERR, "Error: Unable to use private key from store");
++		net__print_ssl_error(mosq);
++		pkey = NULL;
++		goto err;
++	}
++
++err:
++	OSSL_STORE_INFO_free(store_info);
++	OSSL_STORE_close(store_ctx);
++
++	return pkey;
++}
++
+ #endif
+ 
+ int net__init(void)
+@@ -642,6 +689,61 @@ static int net__tls_load_ca(struct mosqu
+ 	return MOSQ_ERR_SUCCESS;
+ }
+ 
++#ifdef OPENSSL_HAS_PROVIDERS
++static int net__load_providers(struct mosquitto *mosq)
++{
++	OSSL_PROVIDER **tmp = NULL;
++
++	for (size_t i = 0; i < mosq->n_providers; i++) {
++		if(OSSL_PROVIDER_available(mosq->libctx, mosq->tls_providers[i])) {
++			continue;
++		}
++
++		tmp = realloc(mosq->prov, (mosq->n_prov + 1) * sizeof(OSSL_PROVIDER **));
++		if (!tmp) {
++			return MOSQ_ERR_TLS;
++		}
++
++		mosq->prov = tmp;
++		mosq->prov[mosq->n_prov] = OSSL_PROVIDER_try_load(mosq->libctx, mosq->tls_providers[i], 1);
++		if(!mosq->prov[mosq->n_prov]) {
++			log__printf(mosq, MOSQ_LOG_ERR, "Failed to initialize provider: %s\n", mosq->tls_providers[i]);
++
++			return MOSQ_ERR_TLS;
++		}
++
++		mosq->n_prov++;
++	}
++
++	return MOSQ_ERR_SUCCESS;
++}
++#endif //OPENSSL_HAS_PROVIDERS
++
++static int net_use_privatekey_pem_blob(struct mosquitto *mosq)
++{
++	int ret = 0;
++	EVP_PKEY *pkey = NULL;
++	BIO *in = BIO_new_mem_buf(mosq->tls_keyblob, (int)(mosq->tls_keyblob_len));
++	if(!in) {
++		return MOSQ_ERR_TLS;
++	}
++
++	pkey = PEM_read_bio_PrivateKey(in, NULL, SSL_CTX_get_default_passwd_cb(mosq->ssl_ctx),
++										SSL_CTX_get_default_passwd_cb_userdata(mosq->ssl_ctx));
++	if(!pkey) {
++		log__printf(mosq, MOSQ_LOG_ERR, "Failed to read private key\n");
++
++		goto end;
++	}
++
++	ret = SSL_CTX_use_PrivateKey(mosq->ssl_ctx, pkey);
++	EVP_PKEY_free(pkey);
++
++end:
++	BIO_free(in);
++
++	return ret;
++}
+ 
+ static int net__init_ssl_ctx(struct mosquitto *mosq)
+ {
+@@ -649,7 +751,7 @@ static int net__init_ssl_ctx(struct mosq
+ 	ENGINE *engine = NULL;
+ 	uint8_t tls_alpn_wire[256];
+ 	uint8_t tls_alpn_len;
+-#if !defined(OPENSSL_NO_ENGINE)
++#if !defined(OPENSSL_NO_ENGINE) || defined(OPENSSL_HAS_PROVIDERS)
+ 	EVP_PKEY *pkey;
+ #endif
+ 
+@@ -670,12 +772,20 @@ static int net__init_ssl_ctx(struct mosq
+ 	 * MOSQ_OPT_SSL_CTX_WITH_DEFAULTS are set. */
+ 	if(mosq->tls_cafile || mosq->tls_capath || mosq->tls_psk || mosq->tls_use_os_certs){
+ 		net__init_tls();
++#ifdef OPENSSL_HAS_PROVIDERS
++		if(mosq->n_providers > 0) {
++			mosq->libctx= OSSL_LIB_CTX_new();
++			if (!mosq->libctx || net__load_providers(mosq) != MOSQ_ERR_SUCCESS){
++				return MOSQ_ERR_TLS;
++			}
++		}
++#endif //OPENSSL_HAS_PROVIDERS
+ 		if(!mosq->ssl_ctx){
+ 
+ #if OPENSSL_VERSION_NUMBER < 0x10100000L
+ 			mosq->ssl_ctx = SSL_CTX_new(SSLv23_client_method());
+ #else
+-			mosq->ssl_ctx = SSL_CTX_new(TLS_client_method());
++			mosq->ssl_ctx = SSL_CTX_new_ex(mosq->libctx, NULL, TLS_client_method());
+ #endif
+ 
+ 			if(!mosq->ssl_ctx){
+@@ -742,7 +852,6 @@ static int net__init_ssl_ctx(struct mosq
+ 			ENGINE_free(engine); /* release the structural reference from ENGINE_by_id() */
+ 		}
+ #endif
+-
+ 		if(mosq->tls_ciphers){
+ 			ret = SSL_CTX_set_cipher_list(mosq->ssl_ctx, mosq->tls_ciphers);
+ 			if(ret == 0){
+@@ -789,7 +898,19 @@ static int net__init_ssl_ctx(struct mosq
+ 					return MOSQ_ERR_TLS;
+ 				}
+ 			}
+-			if(mosq->tls_keyfile){
++			if (mosq->tls_keyblob) {
++				ret = net_use_privatekey_pem_blob(mosq);
++				if(ret != 1){
++					log__printf(mosq, MOSQ_LOG_ERR, "Error: Unable to read client key blob.");
++#if !defined(OPENSSL_NO_ENGINE)
++					ENGINE_FINISH(engine);
++#endif
++					net__print_ssl_error(mosq);
++
++					return MOSQ_ERR_TLS;
++				}
++			}
++			else if(mosq->tls_keyfile){
+ 				if(mosq->tls_keyform == mosq_k_engine){
+ #if !defined(OPENSSL_NO_ENGINE)
+ 					UI_METHOD *ui_method = net__get_ui_method();
+@@ -822,7 +943,17 @@ static int net__init_ssl_ctx(struct mosq
+ 						return MOSQ_ERR_TLS;
+ 					}
+ #endif
+-				}else{
++				} else if (mosq->tls_keyform == mosq_k_provider) {
++#ifdef OPENSSL_HAS_PROVIDERS
++					pkey = net__get_uri_pkey_method(mosq, mosq->tls_keyfile);
++					if (!pkey) {
++						log__printf(mosq, MOSQ_LOG_ERR, "Error: Unable to use engine private key file \"%s\".", mosq->tls_keyfile);
++						net__print_ssl_error(mosq);
++
++						return MOSQ_ERR_TLS;
++					}
++#endif //OPENSSL_HAS_PROVIDERS
++				} else{
+ 					ret = SSL_CTX_use_PrivateKey_file(mosq->ssl_ctx, mosq->tls_keyfile, SSL_FILETYPE_PEM);
+ 					if(ret != 1){
+ #ifdef WITH_BROKER
+@@ -837,6 +968,9 @@ static int net__init_ssl_ctx(struct mosq
+ 						return MOSQ_ERR_TLS;
+ 					}
+ 				}
++			}
++
++			if (mosq->tls_keyfile || mosq->tls_keyblob) {
+ 				ret = SSL_CTX_check_private_key(mosq->ssl_ctx);
+ 				if(ret != 1){
+ 					log__printf(mosq, MOSQ_LOG_ERR, "Error: Client certificate/key are inconsistent.");
+Index: mosquitto-2.0.21/lib/mosquitto_internal.h
+===================================================================
+--- mosquitto-2.0.21.orig/lib/mosquitto_internal.h
++++ mosquitto-2.0.21/lib/mosquitto_internal.h
+@@ -175,6 +175,12 @@ struct mosquitto_message_all{
+ enum mosquitto__keyform {
+ 	mosq_k_pem = 0,
+ 	mosq_k_engine = 1,
++	mosq_k_provider = 2,
++};
++
++enum mosquitto__crtform {
++	mosq_c_pem = 0,
++	mosq_c_uri = 1,
+ };
+ #endif
+ 
+@@ -248,10 +254,20 @@ struct mosquitto {
+ #ifndef WITH_BROKER
+ 	SSL_CTX *user_ssl_ctx;
+ #endif
++#if OPENSSL_VERSION_NUMBER >= 0x30000000L
++	OSSL_LIB_CTX *libctx;
++	char **tls_providers;
++	size_t n_providers;
++	OSSL_PROVIDER **prov;
++	size_t n_prov;
++	// OSSL_PROVIDER *default_prov;
++#endif //OPENSSL_HAS_PROVIDERS
+ 	char *tls_cafile;
+ 	char *tls_capath;
+ 	char *tls_certfile;
+ 	char *tls_keyfile;
++	char *tls_keyblob;
++	size_t tls_keyblob_len;
+ 	int (*tls_pw_callback)(char *buf, int size, int rwflag, void *userdata);
+ 	char *tls_version;
+ 	char *tls_ciphers;
+@@ -266,6 +282,7 @@ struct mosquitto {
+ 	bool tls_ocsp_required;
+ 	bool tls_use_os_certs;
+ 	enum mosquitto__keyform tls_keyform;
++	enum mosquitto__crtform tls_crtform;
+ #endif
+ 	bool want_write;
+ #if defined(WITH_THREADING) && !defined(WITH_BROKER)
+Index: mosquitto-2.0.21/include/mosquitto.h
+===================================================================
+--- mosquitto-2.0.21.orig/include/mosquitto.h
++++ mosquitto-2.0.21/include/mosquitto.h
+@@ -145,6 +145,7 @@ enum mosq_opt_t {
+ 	MOSQ_OPT_TCP_NODELAY = 11,
+ 	MOSQ_OPT_BIND_ADDRESS = 12,
+ 	MOSQ_OPT_TLS_USE_OS_CERTS = 13,
++	MOSQ_OPT_TLS_PROVIDER = 14,
+ };
+ 
+ 
+@@ -1604,10 +1605,17 @@ libmosq_EXPORT int mosquitto_int_option(
+  *	MOSQ_OPT_TLS_KEYFORM - Configure the client to treat the keyfile
+  *	          differently depending on its type.  Must be set
+  *	          before <mosquitto_connect>.
+- *	          Set as either "pem" or "engine", to determine from where the
++ *	          Set as either "pem" or "engine" or "uri", to determine from where the
+  *	          private key for a TLS connection will be obtained. Defaults to
+  *	          "pem", a normal private key file.
+  *
++ *	MOSQ_OPT_TLS_CRTFORM - Configure the clien to treat the crtfile
++ *	          differently depending on its type.  Must be set
++ *	          before <mosquitto_connect>.
++ *	          Set as either "pem" or "engine" or "uri", to determine from where the
++ *	          certificate for a TLS connection will be obtained. Defaults to
++ *	          "pem", a normal certificate file.
++ *
+  *	MOSQ_OPT_TLS_ENGINE_KPASS_SHA1 - Where the TLS Engine requires the use of
+  *	          a password to be accessed, this option allows a hex encoded
+  *	          SHA1 hash of the private key password to be passed to the
+@@ -1620,6 +1628,12 @@ libmosq_EXPORT int mosquitto_int_option(
+  *
+  *	MOSQ_OPT_BIND_ADDRESS - Set the hostname or ip address of the local network
+  *	          interface to bind to when connecting.
++ *
++ *  MOSQ_OPT_TLS_PROVIDER - Set the TLS provider to be used for TLS connections.
++ *            The value should be a string containing the provider name, e.g.
++ *            "tpm2". If this option is not used, the default provider for the
++ *            build will be used. This must be set before <mosquitto_connect>.
++ *            This option is only available for openssl 3.0.0 and higher.
+  */
+ libmosq_EXPORT int mosquitto_string_option(struct mosquitto *mosq, enum mosq_opt_t option, const char *value);
+ 
+@@ -1867,6 +1881,24 @@ libmosq_EXPORT int mosquitto_tls_insecur
+ libmosq_EXPORT int mosquitto_tls_opts_set(struct mosquitto *mosq, int cert_reqs, const char *tls_version, const char *ciphers);
+ 
+ /*
++ * Function: mosquitto_tls_key_blob_set
++ *
++ * Set private key blob, useful when keys are not stored in a files
++ * Must be called before mosquitto_tls_set
++ *
++ * Parameters:
++ *  mosq -     a valid mosquitto instance.
++ *  data -     payload
++ *  len -      size of the payload
++ *
++ *  Returns:
++ *   1 - success
++ *   0 - error
++ */
++libmosq_EXPORT int mosquitto_tls_key_blob_set(struct mosquitto *mosq, void *data, size_t len);
++
++
++/*
+  * Function: mosquitto_tls_psk_set
+  *
+  * Configure the client for pre-shared-key based TLS support. Must be called
+Index: mosquitto-2.0.21/lib/tls_mosq.h
+===================================================================
+--- mosquitto-2.0.21.orig/lib/tls_mosq.h
++++ mosquitto-2.0.21/lib/tls_mosq.h
+@@ -30,6 +30,14 @@ Contributors:
+ #include <openssl/ssl.h>
+ #include <openssl/engine.h>
+ 
++#if OPENSSL_VERSION_NUMBER >= 0x30000000L
++#include <openssl/provider.h>
++#include <openssl/store.h>
++
++#define OPENSSL_HAS_PROVIDERS
++
++#endif //OPENSSL_VERSION_NUMBER >= 0x30000000L
++
+ int mosquitto__server_certificate_verify(int preverify_ok, X509_STORE_CTX *ctx);
+ int mosquitto__verify_certificate_hostname(X509 *cert, const char *hostname);
+ 
+Index: mosquitto-2.0.21/src/conf.c
+===================================================================
+--- mosquitto-2.0.21.orig/src/conf.c
++++ mosquitto-2.0.21/src/conf.c
+@@ -71,6 +71,23 @@ static int config__read_file(struct mosq
+ static int config__check(struct mosquitto__config *config);
+ static void config__cleanup_plugins(struct mosquitto__config *config);
+ 
++#ifdef OPENSSL_HAS_PROVIDERS
++static int conf_add_provider(struct mosquitto__listener *listener, const char *provider)
++{
++	char **tmp = NULL;
++
++	tmp = realloc(listener->providers, (listener->n_providers + 1) * (sizeof(char *)));
++	if (!tmp) {
++		return MOSQ_ERR_INVAL;
++	}
++
++	listener->providers = tmp;
++	listener->providers[listener->n_providers] = provider;
++	listener->n_providers++;
++
++	return MOSQ_ERR_SUCCESS;
++}
++#endif //OPENSSL_HAS_PROVIDERS
+ static void conf__set_cur_security_options(struct mosquitto__config *config, struct mosquitto__listener *cur_listener, struct mosquitto__security_options **security_options)
+ {
+ 	if(config->per_listener_settings){
+@@ -253,6 +270,9 @@ void config__cleanup(struct mosquitto__c
+ #ifdef WITH_BRIDGE
+ 	int j;
+ #endif
++#ifdef OPENSSL_HAS_PROVIDERS
++	int n = 0;
++#endif //OPENSSL_HAS_PROVIDERS
+ 
+ 	mosquitto__free(config->clientid_prefixes);
+ 	mosquitto__free(config->persistence_location);
+@@ -292,7 +312,23 @@ void config__cleanup(struct mosquitto__c
+ 			if(!config->listeners[i].ws_context) /* libwebsockets frees its own SSL_CTX */
+ #endif
+ 			{
++#ifdef OPENSSL_HAS_PROVIDERS
++				for (n = 0; n < config->listeners[i].n_providers; n++) {
++					mosquitto__free(config->listeners[i].providers[n]);
++				}
++
++				for (n = 0; n < config->listeners[i].n_prov; n++) {
++					if (!config->listeners[i].prov[n]) {
++						continue;
++					}
++
++					OSSL_PROVIDER_unload(config->listeners[i].prov[n]);
++					config->listeners[i].prov[n] = NULL;
++					config->listeners[i].n_prov = 0;
++				}
++#endif //OPENSSL_HAS_PROVIDERS
+ 				SSL_CTX_free(config->listeners[i].ssl_ctx);
++				OSSL_LIB_CTX_free(config->listeners[i].libctx);
+ 			}
+ #endif
+ #ifdef WITH_WEBSOCKETS
+@@ -744,6 +780,9 @@ static int config__read_file_core(struct
+ 	char *kpass_sha = NULL, *kpass_sha_bin = NULL;
+ 	char *keyform ;
+ #endif
++#ifdef OPENSSL_HAS_PROVIDERS
++	char *provider = NULL;
++#endif //OPENSSL_HAS_PROVIDERS
+ 
+ 	*lineno = 0;
+ 
+@@ -2009,6 +2048,17 @@ static int config__read_file_core(struct
+ #else
+ 					log__printf(NULL, MOSQ_LOG_WARNING, "Warning: TLS support not available.");
+ #endif
++#ifdef OPENSSL_HAS_PROVIDERS
++				}else if(!strcmp(token, "tls_provider")){
++					if(reload) continue; /* Listeners not valid for reloading. */
++					provider = NULL;
++					if(conf__parse_string(&token, "tls_provider", &provider, saveptr)) return MOSQ_ERR_INVAL;
++					if (conf_add_provider(cur_listener, provider) != MOSQ_ERR_SUCCESS) {
++						mosquitto__free(provider);
++
++						return MOSQ_ERR_INVAL;
++					}
++#endif //OPENSSL_HAS_PROVIDERS
+ 				}else if(!strcmp(token, "tls_engine_kpass_sha1")){
+ #ifdef WITH_TLS
+ 					if(reload) continue; /* Listeners not valid for reloading. */
+@@ -2028,7 +2078,14 @@ static int config__read_file_core(struct
+ 					keyform = NULL;
+ 					if(conf__parse_string(&token, "tls_keyform", &keyform, saveptr)) return MOSQ_ERR_INVAL;
+ 					cur_listener->tls_keyform = mosq_k_pem;
+-					if(!strcmp(keyform, "engine")) cur_listener->tls_keyform = mosq_k_engine;
++					if(!strcmp(keyform, "engine")) {
++						cur_listener->tls_keyform = mosq_k_engine;
++					}
++#ifdef OPENSSL_HAS_PROVIDERS
++					else if (!strcmp(keyform, "provider")) {
++						cur_listener->tls_keyform = mosq_k_provider;
++					}
++#endif //OPENSSL_HAS_PROVIDERS
+ 					mosquitto__free(keyform);
+ #else
+ 					log__printf(NULL, MOSQ_LOG_WARNING, "Warning: TLS support not available.");
+Index: mosquitto-2.0.21/src/mosquitto_broker_internal.h
+===================================================================
+--- mosquitto-2.0.21.orig/src/mosquitto_broker_internal.h
++++ mosquitto-2.0.21/src/mosquitto_broker_internal.h
+@@ -219,6 +219,13 @@ struct mosquitto__listener {
+ 	char *ciphers_tls13;
+ 	char *psk_hint;
+ 	SSL_CTX *ssl_ctx;
++	OSSL_LIB_CTX *libctx;
++#ifdef OPENSSL_HAS_PROVIDERS
++	OSSL_PROVIDER **prov;
++	size_t n_prov;
++	char **providers;
++	size_t n_providers;
++#endif //OPENSSL_HAS_PROVIDERS
+ 	char *crlfile;
+ 	char *tls_version;
+ 	char *dhparamfile;
+Index: mosquitto-2.0.21/src/net.c
+===================================================================
+--- mosquitto-2.0.21.orig/src/net.c
++++ mosquitto-2.0.21/src/net.c
+@@ -65,7 +65,6 @@ Contributors:
+ static int tls_ex_index_context = -1;
+ static int tls_ex_index_listener = -1;
+ #endif
+-
+ #include "sys_tree.h"
+ 
+ /* For EMFILE handling */
+@@ -313,6 +312,38 @@ static unsigned int psk_server_callback(
+ }
+ #endif
+ 
++#ifdef OPENSSL_HAS_PROVIDERS
++static int net__load_providers(struct mosquitto__listener *listener)
++{
++	OSSL_PROVIDER **tmp = NULL;
++
++	for (size_t i = 0; i < listener->n_providers; i++) {
++		if(OSSL_PROVIDER_available(listener->libctx, listener->providers[i])) {
++			log__printf(NULL, MOSQ_LOG_ERR, "Provider '%s' is already loaded", listener->providers[i]);
++
++			continue;
++		}
++
++		tmp = realloc(listener->prov, (listener->n_prov + 1) * sizeof(OSSL_PROVIDER **));
++		if (!tmp) {
++			return MOSQ_ERR_TLS;
++		}
++
++		listener->prov = tmp;
++		listener->prov[listener->n_prov] = OSSL_PROVIDER_try_load(listener->libctx, listener->providers[i], 1);
++		if(!listener->prov[listener->n_prov]) {
++			log__printf(NULL, MOSQ_LOG_ERR, "Failed to initialize provider: %s\n", listener->providers[i]);
++
++			return MOSQ_ERR_TLS;
++		}
++
++		listener->n_prov++;
++	}
++
++	return MOSQ_ERR_SUCCESS;
++}
++#endif //OPENSSL_HAS_PROVIDERS
++
+ #ifdef WITH_TLS
+ int net__tls_server_ctx(struct mosquitto__listener *listener)
+ {
+@@ -325,10 +356,23 @@ int net__tls_server_ctx(struct mosquitto
+ 		SSL_CTX_free(listener->ssl_ctx);
+ 	}
+ 
++#ifdef OPENSSL_HAS_PROVIDERS
++	if (listener->tls_keyform == mosq_k_provider && listener->n_providers > 0) {
++		listener->libctx = OSSL_LIB_CTX_new();
++		if(!listener->libctx) {
++			return MOSQ_ERR_TLS;
++		}
++
++		if (net__load_providers(listener) != MOSQ_ERR_SUCCESS) {
++			return MOSQ_ERR_TLS;
++		}
++	}
++#endif //OPENSSL_HAS_PROVIDERS
++
+ #if OPENSSL_VERSION_NUMBER < 0x10100000L
+ 	listener->ssl_ctx = SSL_CTX_new(SSLv23_server_method());
+ #else
+-	listener->ssl_ctx = SSL_CTX_new(TLS_server_method());
++	listener->ssl_ctx =  SSL_CTX_new_ex(listener->libctx, NULL, TLS_server_method());
+ #endif
+ 
+ 	if(!listener->ssl_ctx){
+@@ -509,7 +553,7 @@ int net__load_certificates(struct mosqui
+ 		net__print_ssl_error(NULL);
+ 		return MOSQ_ERR_TLS;
+ 	}
+-	if(listener->tls_engine == NULL || listener->tls_keyform == mosq_k_pem){
++	if(listener->tls_keyform != mosq_k_provider && (listener->tls_engine == NULL || listener->tls_keyform == mosq_k_pem)){
+ 		rc = SSL_CTX_use_PrivateKey_file(listener->ssl_ctx, listener->keyfile, SSL_FILETYPE_PEM);
+ 		if(rc != 1){
+ 			log__printf(NULL, MOSQ_LOG_ERR, "Error: Unable to load server key file \"%s\". Check keyfile.", listener->keyfile);
+@@ -536,6 +580,54 @@ int net__load_certificates(struct mosqui
+ 	return MOSQ_ERR_SUCCESS;
+ }
+ 
++#ifdef OPENSSL_HAS_PROVIDERS
++static int net__get_uri_pkey(struct mosquitto__listener *listener, const char *uri)
++{
++	UI_METHOD *ui_pkey_method = net__get_ui_method();
++	OSSL_STORE_CTX *store_ctx = NULL;
++	OSSL_STORE_INFO *store_info = NULL;
++	int ret = MOSQ_ERR_TLS;
++	EVP_PKEY *pkey = NULL;
++
++	store_ctx = OSSL_STORE_open_ex(uri, listener->libctx, NULL, ui_pkey_method, NULL, NULL, NULL, NULL);
++	if (!store_ctx) {
++		log__printf(NULL, MOSQ_LOG_ERR, "Error: Unable to open private key store ctx %s",
++				ERR_error_string(ERR_get_error(), NULL));
++		goto err;
++	}
++
++	if (OSSL_STORE_expect(store_ctx, OSSL_STORE_INFO_PKEY) != 1) {
++		log__printf(NULL, MOSQ_LOG_ERR, "Error: Unable to find private key in store");
++		goto err;
++	}
++
++	store_info = OSSL_STORE_load(store_ctx);
++	if (!store_info) {
++		log__printf(NULL, MOSQ_LOG_ERR, "Error: Unable to load private key from store");
++		goto err;
++	}
++
++	pkey = OSSL_STORE_INFO_get1_PKEY(store_info);
++	if (!pkey) {
++		log__printf(NULL, MOSQ_LOG_ERR, "Error: Unable to get private key from store");
++		goto err;
++	}
++
++	if (SSL_CTX_use_PrivateKey(listener->ssl_ctx, pkey) != 1) {
++		log__printf(NULL, MOSQ_LOG_ERR, "Error: Unable to use private key from store");
++		pkey = NULL;
++		goto err;
++	}
++
++	ret = MOSQ_ERR_SUCCESS;
++
++err:
++	OSSL_STORE_INFO_free(store_info);
++	OSSL_STORE_close(store_ctx);
++
++	return ret;
++}
++#endif //OPENSSL_HAS_PROVIDERS
+ 
+ #if defined(WITH_TLS) && !defined(OPENSSL_NO_ENGINE)
+ static int net__load_engine(struct mosquitto__listener *listener)
+@@ -632,6 +724,13 @@ int net__tls_load_verify(struct mosquitt
+ 	}
+ #  endif
+ 
++#ifdef OPENSSL_HAS_PROVIDERS
++	if (listener->tls_keyform == mosq_k_provider &&
++			net__get_uri_pkey(listener, listener->keyfile) != MOSQ_ERR_SUCCESS) {
++		return MOSQ_ERR_TLS;
++	}
++#endif //OPENSSL_HAS_PROVIDERS
++
+ #  if !defined(OPENSSL_NO_ENGINE)
+ 	if(net__load_engine(listener)){
+ 		return MOSQ_ERR_TLS;
+Index: mosquitto-2.0.21/lib/mosquitto.c
+===================================================================
+--- mosquitto-2.0.21.orig/lib/mosquitto.c
++++ mosquitto-2.0.21/lib/mosquitto.c
+@@ -268,6 +268,20 @@ void mosquitto__destroy(struct mosquitto
+ 	message__cleanup_all(mosq);
+ 	will__clear(mosq);
+ #ifdef WITH_TLS
++	if (mosq->n_prov > 0) {
++		for (size_t i = 0; i < mosq->n_prov; i++) {
++			OSSL_PROVIDER_unload(mosq->prov[i]);
++		}
++
++		free(mosq->prov);
++
++		mosq->prov = NULL;
++		mosq->n_prov = 0;
++	}
++	if (mosq->libctx) {
++		OSSL_LIB_CTX_free(mosq->libctx);
++		mosq->libctx = NULL;
++	}
+ 	if(mosq->ssl){
+ 		SSL_free(mosq->ssl);
+ 	}
+@@ -296,6 +310,10 @@ void mosquitto__destroy(struct mosquitto
+ 	mosquitto__free(mosq->tls_engine);
+ 	mosq->tls_engine = NULL;
+ #endif
++#ifdef OPENSSL_HAS_PROVIDERS
++	mosquitto__free(mosq->tls_provider);
++	mosq->tls_provider = NULL;
++#endif //OPENSSL_HAS_PROVIDERS
+ #endif
+ 
+ 	mosquitto__free(mosq->address);
+Index: mosquitto-2.0.21/lib/linker.version
+===================================================================
+--- mosquitto-2.0.21.orig/lib/linker.version
++++ mosquitto-2.0.21/lib/linker.version
+@@ -140,4 +140,5 @@ MOSQ_1.7 {
+ 		mosquitto_property_identifier_to_string;
+ 		mosquitto_property_next;
+ 		mosquitto_ssl_get;
++		mosquitto_tls_key_blob_set;
+ } MOSQ_1.6;

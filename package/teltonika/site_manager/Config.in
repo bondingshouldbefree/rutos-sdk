@@ -1,0 +1,53 @@
+# Site manager client side configuration
+
+menu "Advanced configuration"
+	depends on PACKAGE_siteman_client
+
+config SITEMANC_DEBUG
+    bool "Include extended debug messages"
+    default n
+    help
+        include extended debug messages
+
+endmenu
+
+menu "Discovery methods"
+	depends on PACKAGE_siteman_client
+
+config SITEMANC_DISCOVERY_CUSTOM
+	bool "HTTP"
+	default n
+	help
+		Discover site manager address using HTTP request
+
+config SITEMANC_DISCOVERY_DHCP
+	bool "DHCP"
+	default y
+    help
+        Discover site manager address using DHCP option 43
+
+config SITEMANC_DISCOVERY_DNS
+    bool "DNS"
+    default y
+    help
+        Discover site manager address using DNS
+
+config SITEMANC_DISCOVERY_RADIUS
+    bool "Radius"
+    default n
+    help
+        Discover site manager address using Radius server
+
+config SITEMANC_DISCOVERY_STATIC
+    bool "Static"
+    default y
+    help
+        Use static address for site manager
+
+config SITEMANC_DISCOVERY_TLT
+    bool "TLTDP"
+    default y
+    help
+        Discover site manager address using Teltonika discovery protocol (tltdp)
+
+endmenu

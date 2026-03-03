@@ -1,0 +1,95 @@
+index d3fee7f..a4015db 100644
+--- a/lib60870-C/src/iec60870/cs104/cs104_slave.c
++++ b/lib60870-C/src/iec60870/cs104/cs104_slave.c
+@@ -1706,6 +1706,73 @@ CS104_Slave_activate(CS104_Slave self, MasterConnection connectionToActivate)
+     MasterConnection_activate(connectionToActivate);
+ }
+ 
++static void
++CS104_Slave_deactivate(CS104_Slave self, MasterConnection connectionToDeactivate)
++{
++    MasterConnection_deactivate(connectionToDeactivate);
++
++#if (CONFIG_CS104_SUPPORT_SERVER_MODE_SINGLE_REDUNDANCY_GROUP == 1)
++    if (self->serverMode == CS104_MODE_SINGLE_REDUNDANCY_GROUP)
++    {
++        /* Active another connection which isn't active */
++#if (CONFIG_USE_SEMAPHORES == 1)
++        Semaphore_wait(self->openConnectionsLock);
++#endif
++
++        int i;
++
++        for (i = 0; i < CONFIG_CS104_MAX_CLIENT_CONNECTIONS; i++)
++        {
++            MasterConnection con = self->masterConnections[i];
++
++            if (con && con->isUsed && con->state == M_CON_STATE_UNCONFIRMED_STOPPED)
++            {
++                if (con != connectionToDeactivate) {
++                    MasterConnection_activate(con);
++                    break;
++                }
++            }
++        }
++
++#if (CONFIG_USE_SEMAPHORES == 1)
++        Semaphore_post(self->openConnectionsLock);
++#endif
++    }
++#endif /* (CONFIG_CS104_SUPPORT_SERVER_MODE_SINGLE_REDUNDANCY_GROUP == 1) */
++
++#if (CONFIG_CS104_SUPPORT_SERVER_MODE_MULTIPLE_REDUNDANCY_GROUPS == 1)
++    if (self->serverMode == CS104_MODE_MULTIPLE_REDUNDANCY_GROUPS)
++    {
++        /* Active another connection which isn't active from the same redundancy group */
++#if (CONFIG_USE_SEMAPHORES == 1)
++        Semaphore_wait(self->openConnectionsLock);
++#endif
++
++        int i;
++
++        for (i = 0; i < CONFIG_CS104_MAX_CLIENT_CONNECTIONS; i++)
++        {
++            MasterConnection con = self->masterConnections[i];
++
++            if (con && con->isUsed && con->state == M_CON_STATE_UNCONFIRMED_STOPPED)
++            {
++                if (con->redundancyGroup == connectionToDeactivate->redundancyGroup)
++                {
++                    if (con != connectionToDeactivate) {
++                        MasterConnection_activate(con);
++                        break;
++                    }
++                }
++            }
++        }
++
++#if (CONFIG_USE_SEMAPHORES == 1)
++        Semaphore_post(self->openConnectionsLock);
++#endif
++    }
++#endif /* (CONFIG_CS104_SUPPORT_SERVER_MODE_MULTIPLE_REDUNDANCY_GROUPS == 1) */
++}
++
+ void
+ CS104_Slave_setInterrogationHandler(CS104_Slave self, CS101_InterrogationHandler handler, void* parameter)
+ {
+@@ -3373,6 +3440,8 @@ connectionHandlingThread(void* parameter)
+         }
+     }
+ 
++    CS104_Slave_deactivate(self->slave, self);
++
+     if (self->slave->connectionEventHandler)
+     {
+         self->slave->connectionEventHandler(self->slave->connectionEventHandlerParameter, &(self->iMasterConnection),
+@@ -3816,6 +3885,8 @@ handleClientConnections(CS104_Slave self)
+                 }
+                 else
+                 {
++                    CS104_Slave_deactivate(self, con);
++
+                     if (self->connectionEventHandler)
+                     {
+                         self->connectionEventHandler(self->connectionEventHandlerParameter, &(con->iMasterConnection),

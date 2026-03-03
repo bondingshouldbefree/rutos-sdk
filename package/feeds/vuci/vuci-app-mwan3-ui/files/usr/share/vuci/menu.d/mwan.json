@@ -1,0 +1,41 @@
+{
+  "network/failover": {
+    "title": "Failover",
+    "index": 50
+  },
+  "network/failover/mwan": {
+    "title": "Multiwan",
+    "index": 10
+  },
+  "network/failover/mwan/basic": {
+    "title": "General",
+    "index": 10,
+    "view": "network/MultiWan",
+    "acls": ["network/failover/mwan"],
+    "main_page": true
+  },
+  "network/failover/mwan/interface": {
+    "title": "Interface",
+    "index": 20,
+    "view": "network/MultiWanInterface",
+    "acls": ["network/failover/mwanInterface"]
+  },
+  "network/failover/mwan/member": {
+    "title": "Member",
+    "index": 30,
+    "view": "network/MultiWanMember",
+    "acls": ["network/failover/mwan"]
+  },
+  "network/failover/mwan/policy": {
+    "title": "Policy",
+    "index": 40,
+    "view": "network/MultiWanPolicy",
+    "acls": ["network/failover/mwan"]
+  },
+  "network/failover/mwan/rule": {
+    "title": "Rule",
+    "index": 50,
+    "view": "network/MultiWanRule",
+    "acls": ["network/failover/mwan"]
+  }
+}

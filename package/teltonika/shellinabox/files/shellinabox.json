@@ -1,0 +1,8 @@
+{
+	"user": "shellinabox",
+	"access": {
+		"uhttpd": {
+			"methods": [ "nonce" ]
+		}
+	}
+}

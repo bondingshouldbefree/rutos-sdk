@@ -1,0 +1,13 @@
+Index: fstools-2022-05-03-9e11b372/block.c
+===================================================================
+--- fstools-2022-05-03-9e11b372.orig/block.c
++++ fstools-2022-05-03-9e11b372/block.c
+@@ -1304,7 +1304,7 @@ static int mount_action(char *action, ch
+ 	if (config_load(NULL))
+ 		return -1;
+ 
+-	cache_load(1);
++	cache_load(type != TYPE_HOTPLUG);
+ 
+ 	list_for_each_entry(pr, &devices, list)
+ 		if (!strcmp(basename(pr->dev), device))

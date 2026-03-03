@@ -1,0 +1,21 @@
+{
+    "user": "tws",
+    "access": {
+        "gsm": {
+            "methods": [
+                "info"
+            ]
+        },
+        "gsm.modem*": {
+            "methods": [
+                "get_service_provider",
+                "get_signal_query"
+            ]
+        },
+        "wan_info": {
+            "methods": [
+                "get"
+            ]
+	}
+    }
+}

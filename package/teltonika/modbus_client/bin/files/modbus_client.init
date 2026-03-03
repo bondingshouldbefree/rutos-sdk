@@ -1,0 +1,66 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=98
+STOP=02
+
+CONFIG=modbus_client
+APP=/usr/sbin/modbus_client
+
+if [ ! -x "$APP" ]; then
+	APP="/usr/local$APP"
+fi
+
+check_enabled() {
+	config_get section_enabled "$1" enabled "0"
+	[ "$section_enabled" = "0" ] && return
+	ANY_SECTION_ENABLED=1
+}
+
+is_any_enabled() {
+	ANY_SECTION_ENABLED=0
+	config_foreach check_enabled "$1"
+	[ "$ANY_SECTION_ENABLED" = 1 ]
+}
+
+check_server() {
+	config_get server_enabled "$1" enabled "0"
+	[ "$server_enabled" = 1 ] || return
+
+	config_get server_type "$1" TYPE
+	if [ "$server_type" = "rtu_server" ] ; then
+		config_get rtu_device_section "$1" rtu_device
+		config_get rtu_device_enabled "$rtu_device_section" enabled "0"
+		[ "$rtu_device_enabled" = 1 ] || return
+	fi
+
+	(is_any_enabled "request_${1}" || is_any_enabled "alarm_${1}") && ANY_SERVER_IS_ACTIVE=1
+}
+
+is_service_enabled() {
+	config_load "$CONFIG"
+	config_get main_enabled "main" enabled "0"
+	[ "$main_enabled" = 1 ] || return
+	config_foreach check_server tcp_server
+	config_foreach check_server rtu_server
+	[ "$ANY_SERVER_IS_ACTIVE" = 1 ]
+}
+
+start_service() {
+	is_service_enabled || return
+	procd_open_instance
+	procd_set_param command "$APP"
+	procd_set_param respawn "${respawn_threshold:-3600}" "${respawn_timeout:-60}" "${respawn_retry:-5}"
+	procd_set_param user modbus_client
+	procd_close_instance
+}
+
+reload_service() {
+	procd_set_param file /etc/config/modbus_client
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger "$CONFIG"
+}

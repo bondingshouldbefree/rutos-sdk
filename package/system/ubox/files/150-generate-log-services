@@ -1,0 +1,48 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+# Service logs can be added here in the format:
+# servicename:log_levels{boradflag1,boardflag2}
+SERVICES=""
+BOARD_JSON="/etc/board.json"
+
+generate_service_log_conf() {
+    json_load_file "$BOARD_JSON" || {
+        echo "/etc/board.json file not found"
+        return 1
+    }
+
+    if ! json_select hwinfo >/dev/null 2>&1; then
+        echo "hwinfo section missing"
+        return 1
+    fi
+
+    for svc in $SERVICES; do
+        name="${svc%%:*}"
+        rest="${svc#*:}"
+        levels="${rest%\{*}"
+        devices="${rest#*\{}"
+        devices="${devices%\}}"
+
+        for dev in $(echo "$devices" | tr ',' ' '); do
+            if json_get_vars "$dev" >/dev/null 2>&1; then
+                section_name="${name}"
+                uci -q delete log.$section_name
+                uci add log logservice
+                uci set log.@logservice[-1].name="$section_name"
+
+                for lvl in $(echo "$levels" | tr ',' ' '); do
+                    uci add_list log.@logservice[-1].log_levels="$lvl"
+                done
+
+                uci commit log
+            fi
+        done
+    done
+
+    json_select ..
+}
+
+conf_register_hook generate_service_log_conf

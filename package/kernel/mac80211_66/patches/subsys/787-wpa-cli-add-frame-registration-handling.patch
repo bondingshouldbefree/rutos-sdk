@@ -1,0 +1,95 @@
+--- a/net/wireless/core.h
++++ b/net/wireless/core.h
+@@ -386,6 +386,7 @@ int cfg80211_mlme_register_mgmt(struct w
+ 				u16 frame_type, const u8 *match_data,
+ 				int match_len, bool multicast_rx,
+ 				struct netlink_ext_ack *extack);
++int cfg80211_mlme_unregister_mgmt(struct wireless_dev *wdev, u16 frame_type);
+ void cfg80211_mgmt_registrations_update_wk(struct work_struct *wk);
+ void cfg80211_mlme_unregister_socket(struct wireless_dev *wdev, u32 nlpid);
+ void cfg80211_mlme_purge_registrations(struct wireless_dev *wdev);
+--- a/net/wireless/mlme.c
++++ b/net/wireless/mlme.c
+@@ -732,6 +732,33 @@ int cfg80211_mlme_register_mgmt(struct w
+ 	return err;
+ }
+ 
++int cfg80211_mlme_unregister_mgmt(struct wireless_dev *wdev, u16 frame_type)
++{
++	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
++	struct cfg80211_mgmt_registration *reg, *tmp;
++	int ret = -1;
++
++	spin_lock_bh(&rdev->mgmt_registrations_lock);
++
++	list_for_each_entry_safe(reg, tmp, &wdev->mgmt_registrations, list) {
++		if (le16_to_cpu(reg->frame_type) == frame_type) {
++			list_del(&reg->list);
++			kfree(reg);
++			wdev->mgmt_registrations_need_update = 1;
++			ret = 0;
++			break;
++		}
++	}
++
++	spin_unlock_bh(&rdev->mgmt_registrations_lock);
++
++	if (wdev->mgmt_registrations_need_update) {
++		cfg80211_mgmt_registrations_update(wdev);
++	}
++
++	return ret;
++}
++
+ void cfg80211_mlme_unregister_socket(struct wireless_dev *wdev, u32 nlportid)
+ {
+ 	struct wiphy *wiphy = wdev->wiphy;
+--- a/net/wireless/nl80211.c
++++ b/net/wireless/nl80211.c
+@@ -12792,6 +12792,33 @@ static int nl80211_register_mgmt(struct
+ 					   info->extack);
+ }
+ 
++static int nl80211_unregister_mgmt(struct sk_buff *skb, struct genl_info *info)
++{
++
++	struct wireless_dev *wdev = info->user_ptr[1];
++	u16 frame_type = IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ACTION;
++
++	if (info->attrs[NL80211_ATTR_FRAME_TYPE])
++		frame_type = nla_get_u16(info->attrs[NL80211_ATTR_FRAME_TYPE]);
++
++	switch (wdev->iftype) {
++	case NL80211_IFTYPE_STATION:
++	case NL80211_IFTYPE_ADHOC:
++	case NL80211_IFTYPE_P2P_CLIENT:
++	case NL80211_IFTYPE_AP:
++	case NL80211_IFTYPE_AP_VLAN:
++	case NL80211_IFTYPE_MESH_POINT:
++	case NL80211_IFTYPE_P2P_GO:
++	case NL80211_IFTYPE_P2P_DEVICE:
++		break;
++	case NL80211_IFTYPE_NAN:
++	default:
++		return -EOPNOTSUPP;
++	}
++
++	return cfg80211_mlme_unregister_mgmt(wdev, frame_type);
++}
++
+ static int nl80211_tx_mgmt(struct sk_buff *skb, struct genl_info *info)
+ {
+ 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
+@@ -17734,6 +17761,12 @@ static const struct genl_small_ops nl802
+ 		.flags = GENL_UNS_ADMIN_PERM,
+ 		.internal_flags = IFLAGS(NL80211_FLAG_NEED_NETDEV_UP),
+ 	},
++	{
++		.cmd = NL80211_CMD_UNREGISTER_FRAME,
++		.doit = nl80211_unregister_mgmt,
++		.flags = GENL_UNS_ADMIN_PERM,
++		.internal_flags = IFLAGS(NL80211_FLAG_NEED_WDEV),
++	},
+ };
+ 
+ static struct genl_family nl80211_fam __ro_after_init = {

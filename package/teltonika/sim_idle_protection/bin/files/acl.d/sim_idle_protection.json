@@ -1,0 +1,20 @@
+{
+    "user": "sim_idle_protection",
+    "access": {
+        "gsm": {
+            "methods": ["info"]
+        },
+        "gsm.modem*": {
+            "methods": ["info"]
+        },
+        "log": {
+            "methods": ["write_ext"]
+        },
+        "mobifd.modem*": {
+            "methods": ["reload", "switch_sim"]
+        },
+        "network.interface*": {
+            "methods": ["status", "dump"]
+        }
+    }
+}

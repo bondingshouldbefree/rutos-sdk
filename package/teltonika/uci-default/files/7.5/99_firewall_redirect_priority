@@ -1,0 +1,26 @@
+#!/bin/sh
+
+[ -n "$(uci -q get "firewall.@redirect[0].priority")" ] && exit 0
+
+. /lib/functions.sh
+
+priority_dnat="1"
+priority_snat="1"
+
+add_priority() {
+	local target
+	target="$(uci_get firewall "$1" "target")"
+	if [ "$target" = "DNAT" ]; then
+		uci_set "firewall" "$1" "priority" "$priority_dnat"
+		priority_dnat=$((priority_dnat + 1))
+	elif [ "$target" = "SNAT" ]; then
+		uci_set "firewall" "$1" "priority" "$priority_snat"
+		priority_snat=$((priority_snat + 1))
+	fi
+}
+
+config_load "firewall"
+config_foreach add_priority "redirect"
+uci_commit "firewall"
+
+exit 0

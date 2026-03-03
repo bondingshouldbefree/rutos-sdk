@@ -1,0 +1,21 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CFG="certificates"
+
+[ ! -e "/etc/config/$CFG" ] || uci show certificates | grep -q "certificates.*name='root_ca'" &&
+    exit 0
+
+sec=$(uci add certificates certificate)
+
+uci_set "$CFG" "$sec" datetime '-'
+uci_set "$CFG" "$sec" type 'cert'
+uci_set "$CFG" "$sec" name 'root_ca'
+uci_set "$CFG" "$sec" cert_type 'root_ca'
+uci_set "$CFG" "$sec" key_size '-'
+uci_set "$CFG" "$sec" fullname 'ca-certificates.crt'
+uci_set "$CFG" "$sec" path '/etc/ssl/certs/ca-certificates.crt'
+
+uci_commit "$CFG"
+exit 0

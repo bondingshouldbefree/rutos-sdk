@@ -1,0 +1,137 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CONFIG="network"
+config_load "$CONFIG"
+
+# From old file: 14_network-netifd
+migrate_release() {
+	local config="$1"
+	local proto
+	local release
+
+	config_get proto "$config" "proto"
+	config_get release "$config" "release"
+
+	[ "$proto" = "dhcp" ] && [ -n "$release" ] && {
+		norelease="$((!$release))"
+		uci_set "network" "$config" "norelease" "$norelease"
+		uci_remove "network" "$config" "release"
+	}
+
+}
+
+config_foreach migrate_release "interface"
+# End
+
+# Original 32_network file content
+update_pdp() {
+	local section="$1"
+
+	config_get net_proto "$section" "proto"
+
+	[ "$net_proto" != "wwan" ] && return 0
+
+	config_get mobile_pdp "$section" "pdp"
+	config_get mobile_pdp_type "$section" "pdptype"
+
+	[ "$mobile_pdp_type" == "ip" ] || [ "$mobile_pdp_type" == "ipv6" ] ||\
+	[ "$mobile_pdp_type" == "ipv4v6" ] && return 0
+
+	case "$mobile_pdp_type" in
+	"1")
+		uci_set "$CONFIG" "$section" "pdptype" "ip"
+		;;
+	"2")
+		uci_set "$CONFIG" "$section" "pdptype" "ipv6"
+		;;
+	"3")
+		uci_set "$CONFIG" "$section" "pdptype" "ipv4v6"
+		;;
+	*)
+		uci_set "$CONFIG" "$section" "pdptype" "ip"
+		;;
+	esac
+
+	[ "$mobile_pdp" -lt 8 ] && [ "$mobile_pdp" -gt 3 ] && {
+		uci_set "$CONFIG" "$section" "pdp" "$((mobile_pdp + 8))"
+	}
+}
+
+remove_auto() {
+	local section="$1"
+	local auto proto enabled disabled
+
+	config_get auto "$section" "auto"
+	config_get proto "$section" "proto"
+	config_get enabled "$section" "enabled"
+	config_get disabled "$section" "disabled"
+
+	[ -n "$auto" ] && [ "$proto" != "gre" ] && {
+		[ -z "$disabled" ] && {
+			if [ -n "$enabled" ];then
+				[ "$enabled" = "0" ] && uci_set "network" "$section" "disabled" "1"
+				uci_remove "network" "$section" "enabled"
+			else
+				[ "$auto" = "0" ] && uci_set "network" "$section" "disabled" "1"
+			fi
+		}
+		uci_remove "network" "$section" "auto"
+	}
+}
+
+config_foreach update_pdp "interface"
+config_foreach remove_auto "interface"
+# End
+
+# From old file: 86_network
+change_l2tpv3() {
+	local section="$1"
+	local proto bridge_to ifname_list list
+
+	config_get proto "$section" "proto"
+	config_get bridge_to "$section" "bridge_to"
+
+	[ "$proto" = "l2tpv3" ] && [ -n "$bridge_to" ] && \
+	[ "$bridge_to" != "none" ] || return
+
+	ifname_list=$(uci_get network "$bridge_to" ifname)
+
+	list_contains "ifname_list" "l2tp-${section}" && {
+		list="${ifname_list/l2tp-$section/@$section}"
+		uci_set "network" "$bridge_to" "ifname" "$list"
+	}
+}
+
+config_foreach change_l2tpv3 "interface"
+# End
+
+# From old file: 95_network
+rename_l2tp_client() {
+	config_get proto "$1" "proto"
+	[ "$proto" = "l2tp" ] && {
+		config_get name "$1" "_name"
+		uci_rename "network" "$1" "$name"
+	}
+}
+
+config_foreach rename_l2tp_client "interface"
+# End
+
+# From old file: 99_network-pptpd
+check_pptp_routes() {
+	local section="$1"
+	local interface
+
+	config_get interface "$section" "interface"
+
+	uci_get network "client_${interface}" >/dev/null && {
+		uci_set "network" "$section" "interface" "client_${interface}"
+	}
+}
+
+config_foreach check_pptp_routes "route"
+# End
+
+uci_commit "$CONFIG"

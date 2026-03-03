@@ -1,0 +1,1 @@
+{"services/serial_utilities/console":{"description":"Console","read":{"api":{"/console/*":["*"],"/serial/status/*":["*"]}},"write":{"api":["/console/*"]}}}

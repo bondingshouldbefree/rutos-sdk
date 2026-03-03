@@ -1,0 +1,36 @@
+--- a/drivers/i2c/busses/i2c-mt7621.c
++++ b/drivers/i2c/busses/i2c-mt7621.c
+@@ -56,6 +56,7 @@
+ 
+ /* timeout waiting for I2C devices to respond */
+ #define TIMEOUT_MS		1000
++#define BUSY_WAIT_TIMEOUT_US	300
+ 
+ struct mtk_i2c {
+ 	void __iomem *base;
+@@ -69,12 +70,24 @@ struct mtk_i2c {
+ 
+ static int mtk_i2c_wait_idle(struct mtk_i2c *i2c)
+ {
+-	int ret;
++	int ret, i;
+ 	u32 val;
+ 
++	/* First try polling for at most of 300 us with busy waiting to avoid
++	 * scheduling that forces register to be read after whole jiffy */
++	for (i = 0; i < BUSY_WAIT_TIMEOUT_US; i += 10) {
++		val = readl_relaxed(i2c->base + REG_SM0CTL1_REG);
++		if (!(val & SM0CTL1_TRI)) {
++			return 0;
++		}
++
++		udelay(10);
++	}
++
+ 	ret = readl_relaxed_poll_timeout(i2c->base + REG_SM0CTL1_REG,
+ 					 val, !(val & SM0CTL1_TRI),
+ 					 10, TIMEOUT_MS * 1000);
++
+ 	if (ret)
+ 		dev_dbg(i2c->dev, "idle err(%d)\n", ret);
+ 

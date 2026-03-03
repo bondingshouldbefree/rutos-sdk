@@ -1,0 +1,10 @@
+--- a/ethtool.c
++++ b/ethtool.c
+@@ -6473,6 +6473,7 @@ static const struct option args[] = {
+ 	},
+ 	{
+ 		.opts	= "--show-phys",
++		.json   = true,
+ 		.nlfunc	= nl_get_phy,
+ 		.help	= "List PHYs"
+ 	},

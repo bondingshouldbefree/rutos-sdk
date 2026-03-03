@@ -1,0 +1,68 @@
+#include "common-mt7621/rutm.dtsi"
+#include "common-mt7621/input-output.dtsi"
+#include "common-mt7621/shiftreg.dtsi"
+#include "common-mt7621/eth/3-lan-ports.dtsi"
+#include "common-mt7621/leds/wan.dtsi"
+#include "common-mt7621/leds/wifi.dtsi"
+#include "common-mt7621/modem/4g.dtsi"
+
+// PWR, RST |G0|G10|
+// IN, OUT  |G8|G12|
+// SR CTRL  |G5|G9|G11|G15|
+// WAN      |G41|G42|G43|G45|
+// WIFI     |G6|G7|
+// ETH      |S0-S7|
+// 4G		|G14|G16|G18|S8-S15|G46|
+/ {
+	model = "Teltonika RUTM11";
+
+	ext_io {
+		shift_io: shift_io@0 {
+			enable-gpios = <&gpio 15 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_sim_select {
+			gpio-export,name = "sim_sel";
+			gpio-export,output = <0>;
+			gpios = <&gpio 18 GPIO_ACTIVE_LOW>;
+		};
+
+		gpio_sim_select_2 {
+			tlt-mnf,hwver = <400 9999>;
+			gpio-export,name = "sim_sel2"; // eSIM_select
+			gpio-export,output = <0>;
+			gpios = <&gpio 46 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	leds {
+		led_gen_2 {
+			tlt-mnf,hwver = <0 399>;
+		};
+	};
+
+	tlt_gpios {
+		misc {
+			GPIO_18 {
+				line_name = "GPIO_SIM_SELECT";
+				active_low;
+			};
+
+			GPIO_46 {
+				compatible_versions = <4 99>;
+				line_name = "GPIO_SIM_SELECT_2";
+			};
+		};
+	};
+};
+
+&mnfinfo {
+	sim_cfg {
+		default = "2112000_2111000";
+	};
+};

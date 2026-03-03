@@ -1,0 +1,9 @@
+&i2c {
+	status = "okay";
+
+	tpm: tpm@0x2e {
+		compatible = "tpm_tis_i2c";
+		reg = <0x2e>;
+		status = "okay";
+	};
+};

@@ -1,0 +1,583 @@
+index 5aaac06..5be8568 100644
+--- a/development/include/cosem.h
++++ b/development/include/cosem.h
+@@ -40,6 +40,10 @@ extern "C" {
+ #include "gxobjects.h"
+ #include "dlmssettings.h"
+ 
++  unsigned char obj_getVersion(uint16_t objectType);
++
++  uint16_t cosem_getObjectSize(DLMS_OBJECT_TYPE type);
++
+ #ifndef DLMS_IGNORE_MALLOC
+   int cosem_createObject(
+       DLMS_OBJECT_TYPE type,
+index fff3e7b..eb1a7c6 100644
+--- a/development/include/gxobjects.h
++++ b/development/include/gxobjects.h
+@@ -4477,10 +4477,17 @@ extern "C" {
+ 
+     int obj_clearTokenGatewayConfigurations(gxArray* list);
+ 
++    unsigned char obj_getVersion(uint16_t objectType);
++
+     //Get amount of attributes in COSEM object.
+     unsigned char obj_attributeCount(
+         gxObject* object);
+ 
++    //Get amount of attributes in COSEM object.
++    unsigned char obj_attributeCount2(
++        uint16_t objectType,
++        unsigned char version);
++
+     //Get amount of methods in COSEM object.
+     unsigned char obj_methodCount(
+         gxObject* object);
+@@ -4529,9 +4536,250 @@ extern "C" {
+ #define INIT_OBJECT(X, Y, Z) cosem_init4(&X.base, sizeof(X), Y, Z)
+ #endif //_CVI_
+ 
+-
+ #define SET_OCTET_STRING(X, V, S) memcpy(X.value, V, S);X.size=S
+ 
++typedef union {
++#ifndef DLMS_IGNORE_DATA
++    gxData gxData;
++#endif //DLMS_IGNORE_DATA
++#ifndef DLMS_IGNORE_REGISTER
++    gxRegister gxRegister;
++#endif //DLMS_IGNORE_REGISTER
++#ifndef DLMS_IGNORE_CLOCK
++    gxClock gxClock;
++#endif //DLMS_IGNORE_CLOCK
++#ifndef DLMS_IGNORE_ACTION_SCHEDULE
++    gxActionSchedule gxActionSchedule;
++#endif //DLMS_IGNORE_ACTION_SCHEDULE
++#ifndef DLMS_IGNORE_ACTIVITY_CALENDAR
++    gxActivityCalendar gxActivityCalendar;
++#endif //DLMS_IGNORE_ACTIVITY_CALENDAR
++#ifndef DLMS_IGNORE_ASSOCIATION_LOGICAL_NAME
++    gxAssociationLogicalName gxAssociationLogicalName;
++#endif //DLMS_IGNORE_ASSOCIATION_LOGICAL_NAME
++#ifndef DLMS_IGNORE_ASSOCIATION_SHORT_NAME
++    gxAssociationShortName gxAssociationShortName;
++#endif //DLMS_IGNORE_ASSOCIATION_SHORT_NAME
++#ifndef DLMS_IGNORE_AUTO_ANSWER
++    gxAutoAnswer gxAutoAnswer;
++#endif //DLMS_IGNORE_AUTO_ANSWER
++#ifndef DLMS_IGNORE_AUTO_CONNECT
++    gxAutoConnect gxAutoConnect;
++#endif //DLMS_IGNORE_AUTO_CONNECT
++#ifndef DLMS_IGNORE_DEMAND_REGISTER
++    gxDemandRegister gxDemandRegister;
++#endif //DLMS_IGNORE_DEMAND_REGISTER
++#ifndef DLMS_IGNORE_MAC_ADDRESS_SETUP
++    gxMacAddressSetup gxMacAddressSetup;
++#endif //DLMS_IGNORE_MAC_ADDRESS_SETUP
++#ifndef DLMS_IGNORE_EXTENDED_REGISTER
++    gxExtendedRegister gxExtendedRegister;
++#endif //DLMS_IGNORE_EXTENDED_REGISTER
++#ifndef DLMS_IGNORE_GPRS_SETUP
++    gxGPRSSetup gxGPRSSetup;
++#endif //DLMS_IGNORE_GPRS_SETUP
++#ifndef DLMS_IGNORE_SECURITY_SETUP
++    gxSecuritySetup gxSecuritySetup;
++#endif //DLMS_IGNORE_SECURITY_SETUP
++#ifndef DLMS_IGNORE_IEC_HDLC_SETUP
++    gxIecHdlcSetup gxIecHdlcSetup;
++#endif //DLMS_IGNORE_IEC_HDLC_SETUP
++#ifndef DLMS_IGNORE_IEC_LOCAL_PORT_SETUP
++    gxLocalPortSetup gxLocalPortSetup;
++#endif //DLMS_IGNORE_IEC_LOCAL_PORT_SETUP
++#ifndef DLMS_IGNORE_IEC_TWISTED_PAIR_SETUP
++    gxIecTwistedPairSetup gxIecTwistedPairSetup;
++#endif //DLMS_IGNORE_IEC_TWISTED_PAIR_SETUP
++#ifndef DLMS_IGNORE_IP4_SETUP
++    gxIp4Setup gxIp4Setup;
++#endif //DLMS_IGNORE_IP4_SETUP
++#ifndef DLMS_IGNORE_IP6_SETUP
++    gxIp6Setup gxIp6Setup;
++#endif //DLMS_IGNORE_IP6_SETUP
++#ifndef DLMS_IGNORE_MBUS_SLAVE_PORT_SETUP
++    gxMbusSlavePortSetup gxMbusSlavePortSetup;
++#endif //DLMS_IGNORE_MBUS_SLAVE_PORT_SETUP
++#ifndef DLMS_IGNORE_IMAGE_TRANSFER
++    gxImageTransfer gxImageTransfer;
++#endif //DLMS_IGNORE_IMAGE_TRANSFER
++#ifndef DLMS_IGNORE_DISCONNECT_CONTROL
++    gxDisconnectControl gxDisconnectControl;
++#endif //DLMS_IGNORE_DISCONNECT_CONTROL
++#ifndef DLMS_IGNORE_LIMITER
++    gxLimiter gxLimiter;
++#endif //DLMS_IGNORE_LIMITER
++#ifndef DLMS_IGNORE_MBUS_CLIENT
++    gxMBusClient gxMBusClient;
++#endif // DLMS_IGNORE_MBUS_CLIENT
++#ifndef DLMS_IGNORE_MODEM_CONFIGURATION
++    gxModemConfiguration gxModemConfiguration;
++#endif //DLMS_IGNORE_MODEM_CONFIGURATION
++#ifndef DLMS_IGNORE_PPP_SETUP
++    gxPppSetup gxPppSetup;
++#endif //DLMS_IGNORE_PPP_SETUP
++#ifndef DLMS_IGNORE_PROFILE_GENERIC
++    gxProfileGeneric gxProfileGeneric;
++#endif //DLMS_IGNORE_PROFILE_GENERIC
++#ifndef DLMS_IGNORE_REGISTER_ACTIVATION
++    gxRegisterActivation gxRegisterActivation;
++#endif //DLMS_IGNORE_REGISTER_ACTIVATION
++#ifndef DLMS_IGNORE_REGISTER_MONITOR
++    gxRegisterMonitor gxRegisterMonitor;
++#endif //DLMS_IGNORE_REGISTER_MONITOR
++#ifndef DLMS_IGNORE_REGISTER_TABLE
++    gxRegisterTable gxRegisterTable;
++#endif //DLMS_IGNORE_REGISTER_TABLE
++#ifndef DLMS_IGNORE_ZIG_BEE_SAS_STARTUP
++    gxZigBeeSasStartup gxZigBeeSasStartup;
++#endif //DLMS_IGNORE_ZIG_BEE_SAS_STARTUP
++#ifndef DLMS_IGNORE_ZIG_BEE_SAS_JOIN
++    gxZigBeeSasJoin gxZigBeeSasJoin;
++#endif //ZIG_BEE_SAS_JOIN
++#ifndef DLMS_IGNORE_ZIG_BEE_SAS_APS_FRAGMENTATION
++    gxZigBeeSasApsFragmentation gxZigBeeSasApsFragmentation;
++#endif //DLMS_IGNORE_ZIG_BEE_SAS_APS_FRAGMENTATION
++#ifndef DLMS_IGNORE_ZIG_BEE_NETWORK_CONTROL
++    gxZigBeeNetworkControl gxZigBeeNetworkControl;
++#endif //DLMS_IGNORE_ZIG_BEE_NETWORK_CONTROL
++#ifndef DLMS_IGNORE_SAP_ASSIGNMENT
++    gxSapAssignment gxSapAssignment;
++#endif //DLMS_IGNORE_SAP_ASSIGNMENT
++#ifndef DLMS_IGNORE_SCHEDULE
++    gxSchedule gxSchedule;
++#endif //DLMS_IGNORE_SCHEDULE
++#ifndef DLMS_IGNORE_SCRIPT_TABLE
++    gxScriptTable gxScriptTable;
++#endif //DLMS_IGNORE_SCRIPT_TABLE
++#ifndef DLMS_IGNORE_SMTP_SETUP
++    gxSmtpSetup gxSmtpSetup;
++#endif //DLMS_IGNORE_SMTP_SETUP
++#ifndef DLMS_IGNORE_SPECIAL_DAYS_TABLE
++    gxSpecialDaysTable gxSpecialDaysTable;
++#endif //DLMS_IGNORE_SPECIAL_DAYS_TABLE
++#ifndef DLMS_IGNORE_STATUS_MAPPING
++    gxStatusMapping gxStatusMapping;
++#endif //DLMS_IGNORE_STATUS_MAPPING
++#ifndef DLMS_IGNORE_TCP_UDP_SETUP
++    gxTcpUdpSetup gxTcpUdpSetup;
++#endif //DLMS_IGNORE_TCP_UDP_SETUP
++#ifndef DLMS_IGNORE_MBUS_DIAGNOSTIC
++    gxMbusDiagnostic gxMbusDiagnostic;
++#endif //DLMS_IGNORE_MBUS_DIAGNOSTIC
++#ifndef DLMS_IGNORE_MBUS_PORT_SETUP
++    gxMBusPortSetup gxMBusPortSetup;
++#endif //DLMS_IGNORE_MBUS_PORT_SETUP
++#ifndef DLMS_IGNORE_G3_PLC_MAC_LAYER_COUNTERS
++    gxG3PlcMacLayerCounters gxG3PlcMacLayerCounters;
++#endif //DLMS_IGNORE_G3_PLC_MAC_LAYER_COUNTERS
++#ifndef DLMS_IGNORE_G3_PLC_MAC_SETUP
++    gxG3PlcMacSetup gxG3PlcMacSetup;
++#endif //DLMS_IGNORE_G3_PLC_MAC_SETUP
++#ifndef DLMS_IGNORE_G3_PLC_6LO_WPAN
++    gxG3Plc6LoWPAN gxG3Plc6LoWPAN;
++#endif //DLMS_IGNORE_G3_PLC_6LO_WPAN
++#ifndef DLMS_IGNORE_FUNCTION_CONTROL
++    gxFunctionControl gxFunctionControl;
++#endif //DLMS_IGNORE_FUNCTION_CONTROL
++#ifndef DLMS_IGNORE_ARRAY_MANAGER
++    gxArrayManager gxArrayManager;
++#endif //DLMS_IGNORE_ARRAY_MANAGER
++#ifndef DLMS_IGNORE_UTILITY_TABLES
++    gxUtilityTables gxUtilityTables;
++#endif //DLMS_IGNORE_UTILITY_TABLES
++#ifndef DLMS_IGNORE_MBUS_MASTER_PORT_SETUP
++    gxMBusMasterPortSetup gxMBusMasterPortSetup;
++#endif //DLMS_IGNORE_MBUS_MASTER_PORT_SETUP
++#ifndef DLMS_IGNORE_PUSH_SETUP
++    gxPushSetup gxPushSetup;
++#endif //DLMS_IGNORE_PUSH_SETUP
++#ifndef DLMS_IGNORE_DATA_PROTECTION
++    gxDataProtection gxDataProtection;
++#endif //DLMS_IGNORE_DATA_PROTECTION
++#ifndef DLMS_IGNORE_ACCOUNT
++    gxAccount gxAccount;
++#endif //DLMS_IGNORE_ACCOUNT
++#ifndef DLMS_IGNORE_CREDIT
++    gxCredit gxCredit;
++#endif //DLMS_IGNORE_CREDIT
++#ifndef DLMS_IGNORE_CHARGE
++    gxCharge gxCharge;
++#endif //DLMS_IGNORE_CHARGE
++#ifndef DLMS_IGNORE_TOKEN_GATEWAY
++    gxTokenGateway gxTokenGateway;
++#endif //DLMS_IGNORE_TOKEN_GATEWAY
++#ifndef DLMS_IGNORE_GSM_DIAGNOSTIC
++    gxGsmDiagnostic gxGsmDiagnostic;
++#endif //DLMS_IGNORE_GSM_DIAGNOSTIC
++#ifndef DLMS_IGNORE_COMPACT_DATA
++    gxCompactData gxCompactData;
++#endif //DLMS_IGNORE_COMPACT_DATA
++#ifndef DLMS_IGNORE_PARAMETER_MONITOR
++    gxParameterMonitor gxParameterMonitor;
++#endif //DLMS_IGNORE_PARAMETER_MONITOR
++#ifndef DLMS_IGNORE_LLC_SSCS_SETUP
++    gxLlcSscsSetup gxLlcSscsSetup;
++#endif //DLMS_IGNORE_LLC_SSCS_SETUP
++#ifndef DLMS_IGNORE_PRIME_NB_OFDM_PLC_PHYSICAL_LAYER_COUNTERS
++    gxPrimeNbOfdmPlcPhysicalLayerCounters gxPrimeNbOfdmPlcPhysicalLayerCounters;
++#endif //DLMS_IGNORE_PRIME_NB_OFDM_PLC_PHYSICAL_LAYER_COUNTERS
++#ifndef DLMS_IGNORE_PRIME_NB_OFDM_PLC_MAC_SETUP
++    gxPrimeNbOfdmPlcMacSetup gxPrimeNbOfdmPlcMacSetup;
++#endif //DLMS_IGNORE_PRIME_NB_OFDM_PLC_MAC_SETUP
++#ifndef DLMS_IGNORE_PRIME_NB_OFDM_PLC_MAC_FUNCTIONAL_PARAMETERS
++    gxPrimeNbOfdmPlcMacFunctionalParameters gxPrimeNbOfdmPlcMacFunctionalParameters;
++#endif //DLMS_IGNORE_PRIME_NB_OFDM_PLC_MAC_FUNCTIONAL_PARAMETERS
++#ifndef DLMS_IGNORE_PRIME_NB_OFDM_PLC_MAC_COUNTERS
++    gxPrimeNbOfdmPlcMacCounters gxPrimeNbOfdmPlcMacCounters;
++#endif //DLMS_IGNORE_PRIME_NB_OFDM_PLC_MAC_COUNTERS
++#ifndef DLMS_IGNORE_PRIME_NB_OFDM_PLC_MAC_NETWORK_ADMINISTRATION_DATA
++    gxPrimeNbOfdmPlcMacNetworkAdministrationData gxPrimeNbOfdmPlcMacNetworkAdministrationData;
++#endif //DLMS_IGNORE_PRIME_NB_OFDM_PLC_MAC_NETWORK_ADMINISTRATION_DATA
++#ifndef DLMS_IGNORE_PRIME_NB_OFDM_PLC_APPLICATIONS_IDENTIFICATION
++    gxPrimeNbOfdmPlcApplicationsIdentification gxPrimeNbOfdmPlcApplicationsIdentification;
++#endif //DLMS_IGNORE_PRIME_NB_OFDM_PLC_APPLICATIONS_IDENTIFICATION
++#ifndef DLMS_IGNORE_ARBITRATOR
++    gxArbitrator gxArbitrator;
++#endif //DLMS_IGNORE_ARBITRATOR
++#ifndef DLMS_IGNORE_IEC_8802_LLC_TYPE1_SETUP
++    gxIec8802LlcType1Setup gxIec8802LlcType1Setup;
++#endif //DLMS_IGNORE_IEC_8802_LLC_TYPE1_SETUP
++#ifndef DLMS_IGNORE_IEC_8802_LLC_TYPE2_SETUP
++    gxIec8802LlcType2Setup gxIec8802LlcType2Setup;
++#endif //DLMS_IGNORE_IEC_8802_LLC_TYPE2_SETUP
++#ifndef DLMS_IGNORE_IEC_8802_LLC_TYPE3_SETUP
++    gxIec8802LlcType3Setup gxIec8802LlcType3Setup;
++#endif //DLMS_IGNORE_IEC_8802_LLC_TYPE3_SETUP
++#ifndef DLMS_IGNORE_SFSK_ACTIVE_INITIATOR
++    gxSFSKActiveInitiator gxSFSKActiveInitiator;
++#endif //DLMS_IGNORE_SFSK_ACTIVE_INITIATOR
++#ifndef DLMS_IGNORE_SFSK_MAC_COUNTERS
++    gxFSKMacCounters gxFSKMacCounters;
++#endif //DLMS_IGNORE_SFSK_MAC_COUNTERS
++#ifndef DLMS_IGNORE_SFSK_MAC_SYNCHRONIZATION_TIMEOUTS
++    gxSFSKMacSynchronizationTimeouts gxSFSKMacSynchronizationTimeouts;
++#endif //DLMS_IGNORE_SFSK_MAC_SYNCHRONIZATION_TIMEOUTS
++#ifndef DLMS_IGNORE_SFSK_PHY_MAC_SETUP
++    gxSFSKPhyMacSetUp gxSFSKPhyMacSetUp;
++#endif //DLMS_IGNORE_SFSK_PHY_MAC_SETUP
++#ifndef DLMS_IGNORE_SFSK_REPORTING_SYSTEM_LIST
++    gxSFSKReportingSystemList gxSFSKReportingSystemList;
++#endif //DLMS_IGNORE_SFSK_REPORTING_SYSTEM_LIST
++#ifndef DLMS_OBJECT_TYPE_LTE_MONITORING
++    gxLteMonitoring gxLteMonitoring;
++#endif //DLMS_OBJECT_TYPE_LTE_MONITORING
++#ifdef DLMS_ITALIAN_STANDARD
++    gxTariffPlan gxTariffPlan;
++#endif //DLMS_ITALIAN_STANDARD
++} gxObjectAllDataTypesUnion;
++
++#define MAX_DLMS_OBJECT_SIZE sizeof(gxObjectAllDataTypesUnion)
++
++// Only access fields from this buffer, with a `gxObject*` pointer
++typedef __attribute__((aligned(8))) uint8_t gxObjectStorage[MAX_DLMS_OBJECT_SIZE];
++
++// Make sure the explicitly defined alignment in `gxObjectStorage` matches the alignment of `gxObjectAllDataTypesUnion`
++// At a minimum this expression should be true `alignof(gxObjectStorage) >= alignof(gxObjectAllDataTypesUnion)`
++
+ #ifdef  __cplusplus
+ }
+ #endif
+index 8a34da0..1fb99f9 100644
+--- a/development/src/client.c
++++ b/development/src/client.c
+@@ -389,6 +389,10 @@ int cl_parseAAREResponse(dlmsSettings* settings, gxByteBuffer* reply)
+         {
+             return DLMS_ERROR_CODE_REJECTED_TRANSIENT;
+         }
++        else if (sd == DLMS_SOURCE_DIAGNOSTIC_APPLICATION_CONTEXT_NAME_NOT_SUPPORTED)
++        {
++            return DLMS_ERROR_CODE_APPLICATION_CONTEXT_NAME_NOT_SUPPORTED;
++        }
+         return DLMS_ERROR_CODE_REJECTED_PERMAMENT;
+     }
+     settings->isAuthenticationRequired = sd == DLMS_SOURCE_DIAGNOSTIC_AUTHENTICATION_REQUIRED;
+index f9473a4..5395b4f 100644
+--- a/development/src/cosem.c
++++ b/development/src/cosem.c
+@@ -568,6 +568,9 @@ int cosem_init4(
+     ((gxObject*)object)->logicalName[3] = ln[3];
+     ((gxObject*)object)->logicalName[4] = ln[4];
+     ((gxObject*)object)->logicalName[5] = ln[5];
++
++    ((gxObject*)object)->version = obj_getVersion(type);
++
+     //Set default values, if any.
+     switch (type)
+     {
+@@ -585,7 +588,6 @@ int cosem_init4(
+     case DLMS_OBJECT_TYPE_ASSOCIATION_LOGICAL_NAME:
+     {
+         gxAssociationLogicalName* it = (gxAssociationLogicalName*)object;
+-        ((gxObject*)object)->version = 2;
+         it->xDLMSContextInfo.dlmsVersionNumber = 6;
+         it->applicationContextName.jointIsoCtt = 2;
+         it->applicationContextName.country = 16;
+@@ -608,14 +610,12 @@ int cosem_init4(
+     case DLMS_OBJECT_TYPE_ASSOCIATION_SHORT_NAME:
+     {
+         ((gxObject*)object)->shortName = 0xFA00;
+-        ((gxObject*)object)->version = 2;
+     }
+     break;
+ #endif //DLMS_IGNORE_ASSOCIATION_SHORT_NAME
+     case DLMS_OBJECT_TYPE_AUTO_ANSWER:
+         break;
+     case DLMS_OBJECT_TYPE_AUTO_CONNECT:
+-        ((gxObject*)object)->version = 2;
+         break;
+     case DLMS_OBJECT_TYPE_DEMAND_REGISTER:
+         break;
+@@ -628,7 +628,6 @@ int cosem_init4(
+     case DLMS_OBJECT_TYPE_SECURITY_SETUP:
+     {
+ #if defined(DLMS_SECURITY_SUITE_1) || defined(DLMS_SECURITY_SUITE_1)
+-        ((gxObject*)object)->version = 1;
+         priv_init(&((gxSecuritySetup*)object)->signingKey);
+         priv_init(&((gxSecuritySetup*)object)->keyAgreementKey);
+         priv_init(&((gxSecuritySetup*)object)->tlsKey);
+@@ -637,7 +636,6 @@ int cosem_init4(
+         break;
+ #ifndef DLMS_IGNORE_IEC_HDLC_SETUP
+     case DLMS_OBJECT_TYPE_IEC_HDLC_SETUP:
+-        ((gxObject*)object)->version = 1;
+         ((gxIecHdlcSetup*)object)->communicationSpeed = DLMS_BAUD_RATE_9600;
+         ((gxIecHdlcSetup*)object)->windowSizeTransmit = 1;
+         ((gxIecHdlcSetup*)object)->windowSizeReceive = 1;
+@@ -649,10 +647,8 @@ int cosem_init4(
+         break;
+ #endif //DLMS_IGNORE_IEC_HDLC_SETUP
+     case DLMS_OBJECT_TYPE_IEC_LOCAL_PORT_SETUP:
+-        ((gxObject*)object)->version = 1;
+         break;
+     case DLMS_OBJECT_TYPE_IEC_TWISTED_PAIR_SETUP:
+-        ((gxObject*)object)->version = 1;
+         break;
+     case DLMS_OBJECT_TYPE_IP4_SETUP:
+         break;
+@@ -667,10 +663,8 @@ int cosem_init4(
+     case DLMS_OBJECT_TYPE_LIMITER:
+         break;
+     case DLMS_OBJECT_TYPE_MBUS_CLIENT:
+-        ((gxObject*)object)->version = 1;
+         break;
+     case DLMS_OBJECT_TYPE_MODEM_CONFIGURATION:
+-        ((gxObject*)object)->version = 1;
+         break;
+     case DLMS_OBJECT_TYPE_PPP_SETUP:
+         break;
+@@ -734,21 +728,16 @@ int cosem_init4(
+     case DLMS_OBJECT_TYPE_TOKEN_GATEWAY:
+         break;
+     case DLMS_OBJECT_TYPE_GSM_DIAGNOSTIC:
+-        ((gxObject*)object)->version = 1;
+         break;
+     case DLMS_OBJECT_TYPE_G3_PLC_MAC_LAYER_COUNTERS:
+-        ((gxObject*)object)->version = 1;
+         break;
+     case DLMS_OBJECT_TYPE_G3_PLC_MAC_SETUP:
+-        ((gxObject*)object)->version = 3;
+         break;
+     case DLMS_OBJECT_TYPE_G3_PLC_6LO_WPAN:
+-        ((gxObject*)object)->version = 3;
+         break;
+     case DLMS_OBJECT_TYPE_FUNCTION_CONTROL:
+         break;
+     case DLMS_OBJECT_TYPE_LTE_MONITORING:
+-        ((gxObject*)object)->version = 1;
+         break;
+     default:
+         break;
+index 64bc303..ee3557a 100644
+--- a/development/src/gxobjects.c
++++ b/development/src/gxobjects.c
+@@ -1346,10 +1346,107 @@ void obj_clear(gxObject* object)
+ 
+ }
+ 
+-unsigned char obj_attributeCount(gxObject* object)
++unsigned char obj_getVersion(uint16_t objectType)
++{
++    switch (objectType)
++    {
++#ifndef DLMS_IGNORE_ASSOCIATION_LOGICAL_NAME
++    case DLMS_OBJECT_TYPE_ASSOCIATION_LOGICAL_NAME:
++        return 2;
++#endif //DLMS_IGNORE_ASSOCIATION_LOGICAL_NAME
++#ifndef DLMS_IGNORE_ASSOCIATION_SHORT_NAME
++    case DLMS_OBJECT_TYPE_ASSOCIATION_SHORT_NAME:
++        return 2;
++#endif //DLMS_IGNORE_ASSOCIATION_SHORT_NAME
++    case DLMS_OBJECT_TYPE_SECURITY_SETUP:
++#if defined(DLMS_SECURITY_SUITE_1) || defined(DLMS_SECURITY_SUITE_1)
++        return 1;
++#else
++        return 0;
++#endif //defined(DLMS_SECURITY_SUITE_1) || defined(DLMS_SECURITY_SUITE_1)        
++#ifndef DLMS_IGNORE_IEC_HDLC_SETUP
++    case DLMS_OBJECT_TYPE_IEC_HDLC_SETUP:
++        return 1;
++#endif //DLMS_IGNORE_IEC_HDLC_SETUP
++    case DLMS_OBJECT_TYPE_IEC_LOCAL_PORT_SETUP:
++        return 1;
++    case DLMS_OBJECT_TYPE_IEC_TWISTED_PAIR_SETUP:
++        return 1;
++    case DLMS_OBJECT_TYPE_MBUS_CLIENT:
++        return 1;
++    case DLMS_OBJECT_TYPE_MODEM_CONFIGURATION:
++        return 1;
++    case DLMS_OBJECT_TYPE_GSM_DIAGNOSTIC:
++        return 1;
++    case DLMS_OBJECT_TYPE_G3_PLC_MAC_LAYER_COUNTERS:
++        return 1;
++    case DLMS_OBJECT_TYPE_G3_PLC_MAC_SETUP:
++        return 3;
++    case DLMS_OBJECT_TYPE_G3_PLC_6LO_WPAN:
++        return 3;
++    case DLMS_OBJECT_TYPE_LTE_MONITORING:
++        return 1;
++    case DLMS_OBJECT_TYPE_AUTO_CONNECT:
++        return 2;
++#ifndef DLMS_IGNORE_TCP_UDP_SETUP
++    case DLMS_OBJECT_TYPE_TCP_UDP_SETUP:
++#endif //DLMS_IGNORE_TCP_UDP_SETUP
++    case DLMS_OBJECT_TYPE_PPP_SETUP:
++#ifndef DLMS_IGNORE_PROFILE_GENERIC
++    case DLMS_OBJECT_TYPE_PROFILE_GENERIC:
++#endif //DLMS_IGNORE_PROFILE_GENERIC
++#ifndef DLMS_IGNORE_SCHEDULE
++    case DLMS_OBJECT_TYPE_SCHEDULE:
++#endif //DLMS_IGNORE_SCHEDULE
++#ifndef DLMS_IGNORE_SCRIPT_TABLE
++    case DLMS_OBJECT_TYPE_SCRIPT_TABLE:
++#endif //DLMS_IGNORE_SCRIPT_TABLE
++    case DLMS_OBJECT_TYPE_DATA:
++    case DLMS_OBJECT_TYPE_REGISTER:
++    case DLMS_OBJECT_TYPE_CLOCK:
++    case DLMS_OBJECT_TYPE_ACTION_SCHEDULE:
++    case DLMS_OBJECT_TYPE_ACTIVITY_CALENDAR:
++    case DLMS_OBJECT_TYPE_AUTO_ANSWER:
++    case DLMS_OBJECT_TYPE_DEMAND_REGISTER:
++    case DLMS_OBJECT_TYPE_MAC_ADDRESS_SETUP:
++    case DLMS_OBJECT_TYPE_EXTENDED_REGISTER:
++    case DLMS_OBJECT_TYPE_GPRS_SETUP:
++    case DLMS_OBJECT_TYPE_IP4_SETUP:
++    case DLMS_OBJECT_TYPE_IP6_SETUP:
++    case DLMS_OBJECT_TYPE_MBUS_SLAVE_PORT_SETUP:
++    case DLMS_OBJECT_TYPE_IMAGE_TRANSFER:
++    case DLMS_OBJECT_TYPE_DISCONNECT_CONTROL:
++    case DLMS_OBJECT_TYPE_LIMITER:
++    case DLMS_OBJECT_TYPE_REGISTER_ACTIVATION:
++    case DLMS_OBJECT_TYPE_REGISTER_MONITOR:
++    case DLMS_OBJECT_TYPE_REGISTER_TABLE:
++    case DLMS_OBJECT_TYPE_ZIG_BEE_SAS_STARTUP:
++    case DLMS_OBJECT_TYPE_ZIG_BEE_SAS_JOIN:
++    case DLMS_OBJECT_TYPE_ZIG_BEE_SAS_APS_FRAGMENTATION:
++    case DLMS_OBJECT_TYPE_ZIG_BEE_NETWORK_CONTROL:
++    case DLMS_OBJECT_TYPE_SAP_ASSIGNMENT:
++    case DLMS_OBJECT_TYPE_SMTP_SETUP:
++    case DLMS_OBJECT_TYPE_SPECIAL_DAYS_TABLE:
++    case DLMS_OBJECT_TYPE_STATUS_MAPPING:
++    case DLMS_OBJECT_TYPE_FUNCTION_CONTROL:
++    case DLMS_OBJECT_TYPE_MBUS_DIAGNOSTIC:
++    case DLMS_OBJECT_TYPE_UTILITY_TABLES:
++    case DLMS_OBJECT_TYPE_MBUS_MASTER_PORT_SETUP:
++    case DLMS_OBJECT_TYPE_PUSH_SETUP:
++    case DLMS_OBJECT_TYPE_DATA_PROTECTION:
++    case DLMS_OBJECT_TYPE_ACCOUNT:
++    case DLMS_OBJECT_TYPE_CREDIT:
++    case DLMS_OBJECT_TYPE_CHARGE:
++    case DLMS_OBJECT_TYPE_TOKEN_GATEWAY:
++    default:
++        return 0;
++    }
++}
++
++unsigned char obj_attributeCount2(uint16_t objectType, unsigned char version)
+ {
+     unsigned char ret;
+-    switch (object->objectType)
++    switch (objectType)
+     {
+     case DLMS_OBJECT_TYPE_DATA:
+         ret = 2;
+@@ -1365,12 +1462,12 @@ unsigned char obj_attributeCount(gxObject* object)
+         break;
+     case DLMS_OBJECT_TYPE_ASSOCIATION_LOGICAL_NAME:
+         //user_list and current_user are in version 2.
+-        if (object->version > 1)
++        if (version > 1)
+         {
+             ret = 11;
+         }
+         //Security Setup Reference is from version 1.
+-        else if (object->version > 0)
++        else if (version > 0)
+         {
+             ret = 9;
+         }
+@@ -1381,11 +1478,11 @@ unsigned char obj_attributeCount(gxObject* object)
+         }
+         break;
+     case DLMS_OBJECT_TYPE_ASSOCIATION_SHORT_NAME:
+-        if (object->version < 2)
++        if (version < 2)
+         {
+             ret = 2;
+         }
+-        else if (object->version < 3)
++        else if (version < 3)
+         {
+             ret = 4;
+         }
+@@ -1416,7 +1513,7 @@ unsigned char obj_attributeCount(gxObject* object)
+         ret = 4;
+         break;
+     case DLMS_OBJECT_TYPE_SECURITY_SETUP:
+-        if (object->version == 0)
++        if (version == 0)
+         {
+             ret = 5;
+         }
+@@ -1520,7 +1617,7 @@ unsigned char obj_attributeCount(gxObject* object)
+         ret = 10;
+         break;
+     case DLMS_OBJECT_TYPE_G3_PLC_MAC_SETUP:
+-        if (object->version < 3)
++        if (version < 3)
+         {
+             ret = 25;
+         }
+@@ -1545,11 +1642,11 @@ unsigned char obj_attributeCount(gxObject* object)
+         ret = 2;
+         break;
+     case DLMS_OBJECT_TYPE_PUSH_SETUP:
+-        if (object->version == 0)
++        if (version == 0)
+         {
+             ret = 7;
+         }
+-        else if (object->version == 1)
++        else if (version == 1)
+         {
+             ret = 10;
+         }
+@@ -1682,6 +1779,11 @@ unsigned char obj_attributeCount(gxObject* object)
+     return ret;
+ }
+ 
++unsigned char obj_attributeCount(gxObject* object)
++{
++    return obj_attributeCount2(object->objectType, object->version);
++}
++
+ //Returns collection of attributes to read.
+ int obj_getAttributeIndexToRead(gxObject* object, gxByteBuffer* ba)
+ {

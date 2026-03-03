@@ -1,0 +1,9 @@
+&i2c {
+    status = "okay";
+
+	tpm: tpm@2e {
+		compatible = "infineon,slb9673";
+		reg = <0x2e>;
+		status = "okay";
+	};
+};

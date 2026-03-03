@@ -1,0 +1,1 @@
+{"system/admin/group/email":{"description":"email groups","read":{"api":{"/recipients/email_users/*":["*"]}},"write":{"api":["/recipients/email_users/*"]},"source":["/recipients/email_users/*"],"exception":["/recipients/email_users/config/*"]}}

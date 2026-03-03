@@ -1,0 +1,32 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed Oct 30 10:50:39 2024 +0200
+Subject: crypto: mtk-eip93: remove sleeping kmalloc uses in atomic context
+
+mtk_make_sg_copy can be called from networking code with bottom halves disabled,
+so the use of GFP_KERNEL is incorrect here. Change to GFP_ATOMIC. Also remove
+use of GFP_DMA.
+
+Fixes kernel warnings when passing IP-fragmented packets through an IPsec tunnel.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/crypto/mtk-eip93/eip93-common.c |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+--- a/drivers/crypto/mtk-eip93/eip93-common.c
++++ b/drivers/crypto/mtk-eip93/eip93-common.c
+@@ -146,12 +146,12 @@ static inline int mtk_make_sg_copy(struc
+ {
+ 	void *pages;
+ 
+-	*dst = kmalloc(sizeof(**dst), GFP_KERNEL);
++	*dst = kmalloc(sizeof(**dst), GFP_ATOMIC);
+ 	if (!*dst)
+ 		return -ENOMEM;
+ 
+ 
+-	pages = (void *)__get_free_pages(GFP_KERNEL | GFP_DMA,
++	pages = (void *)__get_free_pages(GFP_ATOMIC,
+ 					get_order(len));
+ 
+ 	if (!pages) {

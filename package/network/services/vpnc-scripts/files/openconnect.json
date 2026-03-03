@@ -1,0 +1,13 @@
+{
+	"user": "openconnect",
+	"access": {
+		"network.interface": {
+			"methods": ["notify_proto"]
+		},
+		"rc": {
+			"methods": ["init"]
+		}
+	}
+}
+
+

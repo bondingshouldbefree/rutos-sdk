@@ -1,0 +1,34 @@
+/ {
+	leds {
+		compatible = "gpio-leds";
+
+		led_eth_g1 {
+			label = "eth_g1";
+			gpios = <&gpio 41 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g0 {
+			label = "eth_g0";
+			gpios = <&gpio 43 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y1 {
+			label = "eth_y1";
+			gpios = <&gpio 45 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y0 {
+			label = "eth_y0";
+			gpios = <&gpio 42 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};
+
+&switch0 {
+	ports {
+		port@1 {
+			status = "okay";
+			label = "lan";
+		};
+	};
+};

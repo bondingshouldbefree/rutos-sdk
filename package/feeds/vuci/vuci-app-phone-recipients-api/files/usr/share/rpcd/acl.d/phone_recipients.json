@@ -1,0 +1,1 @@
+{"system/admin/group/phone":{"description":"phone groups","read":{"api":{"/recipients/phone_groups/*":["*"],"/modems/status/*":["id","name","index","builtin","operator_state","operator","provider","cell_info"]}},"write":{"api":["/recipients/phone_groups/*"]},"source":["/recipients/phone_groups/*"],"exception":["/recipients/phone_groups/config/*"]}}

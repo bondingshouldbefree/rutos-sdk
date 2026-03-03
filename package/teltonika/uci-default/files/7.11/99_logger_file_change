@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+file=$(uci_get system system 'log_file')
+[ -z "$file" ] && exit 0
+
+uci_set "system" "system" "log_file" "/usr/local/var/log/messages"
+
+uci_commit system
+
+exit 0

@@ -1,0 +1,4 @@
+# setup /etc/config/sim_switch
+/etc/config/sim_switch			sim_switch:sim_switch	660	-
+# setup /tmp/.uci/sim_switch
+/tmp/.uci/sim_switch    		sim_switch:sim_switch	660	cf

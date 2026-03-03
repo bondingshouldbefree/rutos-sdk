@@ -1,0 +1,12 @@
+{
+    "system/flashops": {
+        "title": "Firmware",
+        "index": 40
+    },
+    "system/flashops/fota": {
+        "title": "FOTA Settings",
+        "acls": [ "system/flashops/fota" ],
+        "view": "system/RutFota",
+        "index": 20
+    }
+}

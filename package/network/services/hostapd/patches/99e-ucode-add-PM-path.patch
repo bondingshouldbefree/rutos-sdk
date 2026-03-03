@@ -1,0 +1,28 @@
+From 284be0cadf9bd70110dea2dfee67f16cd840d66f Mon Sep 17 00:00:00 2001
+From: "@joris.vaisvila" <joris.vaisvila@teltonika.lt>
+Date: Fri, 31 Oct 2025 18:36:46 +0200
+Subject: [PATCH 1/1] ucode.h: add PM ucode path
+
+---
+ src/utils/ucode.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/utils/ucode.h b/src/utils/ucode.h
+index 2c18869..a79d947 100644
+--- a/src/utils/ucode.h
++++ b/src/utils/ucode.h
+@@ -6,7 +6,11 @@
+ #include <ucode/lib.h>
+ #include <ucode/vm.h>
+ 
++#ifdef ALT_UCODE_PATH
++#define HOSTAPD_UC_PATH	"/usr/local/usr/share/hostap/"
++#else
+ #define HOSTAPD_UC_PATH	"/usr/share/hostap/"
++#endif
+ 
+ extern uc_value_t *uc_registry;
+ uc_vm_t *wpa_ucode_create_vm(void);
+-- 
+2.43.0
+

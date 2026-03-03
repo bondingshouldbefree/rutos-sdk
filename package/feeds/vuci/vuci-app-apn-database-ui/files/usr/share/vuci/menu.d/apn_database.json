@@ -1,0 +1,8 @@
+{
+    "network/mobile/apn_database": {
+        "title": "APN Database",
+        "index": 40,
+        "view": "network/MobileAPN",
+        "acls": [ "network/mobile/apn_database" ]
+    }
+}

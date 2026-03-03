@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"gpsd":{"methods":["status","nmea_status","https_status","position"]},"avl":{"methods":["status"]}}}

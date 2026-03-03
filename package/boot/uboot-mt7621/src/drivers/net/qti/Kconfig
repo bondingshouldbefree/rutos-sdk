@@ -1,0 +1,6 @@
+config ETH_IPQ5332
+	depends on DM && QTI_NSS_SWITCH && TARGET_IPQ5332
+	default y
+	bool "Ethernet driver for QTI IPQ5332"
+	help
+	  Enable this to support the ethernet in IPQ5332 SoCs.

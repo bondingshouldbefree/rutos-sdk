@@ -1,0 +1,44 @@
+--- a/src/svr-authpubkey.c
++++ b/src/svr-authpubkey.c
+@@ -587,16 +587,34 @@ static int checkfileperm(char * filename
+ 		TRACE(("leave checkfileperm: stat() != 0"))
+ 		return DROPBEAR_FAILURE;
+ 	}
+-	/* check ownership - user or root only*/
+-	if (filestat.st_uid != ses.authstate.pw_uid
+-			&& filestat.st_uid != 0) {
++
++	/* check ownership - user, root or dropbear only */
++	if (filestat.st_uid != ses.authstate.pw_uid && filestat.st_uid != 0) {
++		struct passwd *pw = getpwuid(filestat.st_uid);
++		if (!pw || strcmp(pw->pw_name, "dropbear")) {
++			badperm = 1;
++			TRACE(("wrong ownership"))
++		}
++	}
++	/* allow group ownership by dropbear group */
++	int is_dropbear_group = 0;
++	if (filestat.st_gid != ses.authstate.pw_gid && filestat.st_gid != 0) {
++		struct group *gr = getgrgid(filestat.st_gid);
++		if (gr && !strcmp(gr->gr_name, "dropbear")) {
++			is_dropbear_group = 1;
++		} else {
++			badperm = 1;
++			TRACE(("wrong group ownership"))
++		}
++	}
++	/* check permissions - don't want group (except dropbear) or others +w */
++	if (filestat.st_mode & S_IWOTH) {
+ 		badperm = 1;
+-		TRACE(("wrong ownership"))
++		TRACE(("wrong others perms"))
+ 	}
+-	/* check permissions - don't want group or others +w */
+-	if (filestat.st_mode & (S_IWGRP | S_IWOTH)) {
++	if (!is_dropbear_group && (filestat.st_mode & S_IWGRP)) {
+ 		badperm = 1;
+-		TRACE(("wrong perms"))
++		TRACE(("wrong group perms"))
+ 	}
+ 	if (badperm) {
+ 		if (!ses.authstate.perm_warn) {

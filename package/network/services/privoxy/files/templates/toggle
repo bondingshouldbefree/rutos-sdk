@@ -1,0 +1,62 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <title>@if-enabled-display-then@Enabled@else-not-enabled-display@Disabled@endif-enabled-display@ - Privoxy@@my-hostname@</title>
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <meta http-equiv="Content-Script-Type" content="text/javascript">
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="stylesheet" type="text/css" href="@default-cgi@send-stylesheet">
+  <link rel="shortcut icon" href="@default-cgi@favicon.ico" type="image/x-icon">
+</head>
+<body>
+  <table cellpadding="20" cellspacing="10" border="0" width="100%">
+    <tr>
+      <td class="title">
+      </td>
+    </tr>
+<!-- @if-unstable-start -->
+# This will only appear if CODE_STATUS is "alpha" or "beta". See configure.in
+    <tr>
+      <td class="warning">
+#include mod-unstable-warning
+      </td>
+    </tr>
+<!-- if-unstable-end@ -->
+    <tr>
+      <td class="box">
+        <h2>Privoxy is @if-enabled-display-then@Enabled@else-not-enabled-display@Disabled@endif-enabled-display@</h2>
+          <p>When enabled, Privoxy performs its magic - blocking
+            adverts, filtering cookies, regex-filtering, etc.</p>
+          <p>When disabled, Privoxy behaves as a normal HTTP proxy,
+            and will not affect your web browsing.</p>
+          <p><a href="@default-cgi@toggle?set=@if-enabled-display-then@disable@else-not-enabled-display@enable@endif-enabled-display@">Click
+            here</a> to @if-enabled-display-then@disable@else-not-enabled-display@enable@endif-enabled-display@ Privoxy.</p>
+        <p>
+         The toggle state affects all clients that are using Privoxy.
+         In multi-user setups <a href="@user-manual@config.html#CLIENT-SPECIFIC-TAG">
+         client-specific tags</a> can be used as a more powerful alternative.
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td class="box">
+        <h2>More Privoxy:</h2>
+        <ul>@menu@<li><a href="@user-manual@">Documentation</a></li></ul>
+      </td>
+    </tr>
+    <tr>
+      <td class="info">
+#include mod-support-and-service
+      </td>
+    </tr>
+<!-- @if-have-help-info-start -->
+    <tr>
+      <td class="info">
+#include mod-local-help
+      </td>
+    </tr>
+<!-- if-have-help-info-end@ -->
+  </table>
+</body>
+</html>

@@ -1,0 +1,131 @@
+net: netfiler: flowtables: add 'NF_FLOW_OFFLOAD_XFRM' flow type
+
+Adds 'flow_offload_tuple_xfrm' for storing type-specific info, which
+currently is just a single input SA.
+
+Includes cleanup and GC check implementations.
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -153,6 +153,10 @@ struct flow_offload_tuple_route {
+ 	} out_encap[NF_FLOW_TABLE_ENCAP_MAX];
+ };
+ 
++struct flow_offload_tuple_xfrm {
++	struct xfrm_state		*x;
++};
++
+ struct flow_offload_tuple {
+ 	union {
+ 		struct in_addr		src_v4;
+@@ -191,6 +195,7 @@ struct flow_offload_tuple {
+ 
+ 	union {
+ 		struct flow_offload_tuple_route route;
++		struct flow_offload_tuple_xfrm	xfrm;
+ 	};
+ };
+ 
+@@ -215,6 +220,7 @@ enum nf_flow_flags {
+ enum flow_offload_type {
+ 	NF_FLOW_OFFLOAD_UNSPEC	= 0,
+ 	NF_FLOW_OFFLOAD_ROUTE,
++	NF_FLOW_OFFLOAD_XFRM,
+ };
+ 
+ struct flow_offload {
+--- a/include/net/netfilter/nf_flow_table_xfrm.h
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -211,4 +211,24 @@ void nf_dev_forward_xfrm(struct nf_flow_
+ static inline void nf_dev_forward_xfrm(struct nf_flow_route *route) {};
+ #endif
+ 
++static inline void
++flow_offload_type_xfrm_release(struct flow_offload_tuple_xfrm *xflow)
++{
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	xfrm_state_put(xflow->x);
++#endif
++}
++
++static inline bool flow_offload_xfrm_expired(struct flow_offload *flow)
++{
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	struct flow_offload_tuple *tuple =
++		&flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].tuple;
++
++	if (tuple->xfrm.x->km.state != XFRM_STATE_VALID)
++		return true;
++#endif
++	return false;
++}
++
+ #endif /* _NF_FLOW_TABLE_XFRM_H */
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -238,12 +238,28 @@ static void flow_offload_route_release(s
+ 	nf_ct_put(flow->ct);
+ }
+ 
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++static void flow_offload_xfrm_release(struct flow_offload *flow)
++{
++	struct flow_offload_tuple *tuple =
++		&flow->tuplehash[FLOW_OFFLOAD_DIR_ORIGINAL].tuple;
++
++	flow_offload_release_common_tuple(tuple);
++	flow_offload_type_xfrm_release(&tuple->xfrm);
++}
++#endif
++
+ void flow_offload_free(struct flow_offload *flow)
+ {
+ 	switch (flow->type) {
+ 	case NF_FLOW_OFFLOAD_ROUTE:
+ 		flow_offload_route_release(flow);
+ 		break;
++#ifdef CONFIG_NF_FLOW_TABLE_XFRM
++	case NF_FLOW_OFFLOAD_XFRM:
++		flow_offload_xfrm_release(flow);
++		break;
++#endif
+ 	default:
+ 		break;
+ 	}
+@@ -549,15 +565,33 @@ static bool nf_flow_custom_gc(struct nf_
+ 	return flow_table->type->gc && flow_table->type->gc(flow);
+ }
+ 
+-static void nf_flow_offload_gc_step(struct nf_flowtable *flow_table,
+-				    struct flow_offload *flow, void *data)
++static void nf_flow_offload_gc_check(struct nf_flowtable *flow_table,
++				     struct flow_offload *flow)
+ {
+ 	if (nf_flow_has_expired(flow) ||
+ 	    (flow->ct && nf_ct_is_dying(flow->ct)) ||
+-	    flow_offload_route_xfrm_expired(flow) ||
+ 	    nf_flow_custom_gc(flow_table, flow))
+ 		flow_offload_teardown(flow);
+ 
++	switch (flow->type) {
++	case NF_FLOW_OFFLOAD_ROUTE:
++		if (flow_offload_route_xfrm_expired(flow))
++			flow_offload_teardown(flow);
++		break;
++	case NF_FLOW_OFFLOAD_XFRM:
++		if (flow_offload_xfrm_expired(flow))
++			flow_offload_teardown(flow);
++		break;
++	default:
++		break;
++	}
++}
++
++static void nf_flow_offload_gc_step(struct nf_flowtable *flow_table,
++				    struct flow_offload *flow, void *data)
++{
++	nf_flow_offload_gc_check(flow_table, flow);
++
+ 	if (test_bit(NF_FLOW_TEARDOWN, &flow->flags)) {
+ 		if (test_bit(NF_FLOW_HW, &flow->flags)) {
+ 			if (!test_bit(NF_FLOW_HW_DYING, &flow->flags))

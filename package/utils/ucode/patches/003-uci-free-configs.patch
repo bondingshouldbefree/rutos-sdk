@@ -1,0 +1,28 @@
+From 9993ccb2ee31db072cb3519bd160b149ace929ad Mon Sep 17 00:00:00 2001
+From: Jo-Philipp Wich <jo@mein.io>
+Date: Wed, 11 Oct 2023 16:53:42 +0200
+Subject: [PATCH] uci: fix potential memory leaks in `configs()`
+
+In case `uci.cursor.configs()` is invoked with a completely empty
+configuration directory, the empty configuration list is not free
+before returning the `UCI_ERR_NOTFOUND` status.
+
+Signed-off-by: Jo-Philipp Wich <jo@mein.io>
+---
+ lib/uci.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+--- a/lib/uci.c
++++ b/lib/uci.c
+@@ -744,8 +744,10 @@ uc_uci_pkg_command(uc_vm_t *vm, size_t n
+ 		if (uci_list_configs(*c, &configs))
+ 			err_return((*c)->err);
+ 
+-		if (!configs || !configs[0])
++		if (!configs || !configs[0]) {
++			free(configs);
+ 			err_return(UCI_ERR_NOTFOUND);
++		}
+ 
+ 		for (i = 0; configs[i]; i++) {
+ 			if (!(p = uci_lookup_package(*c, configs[i])))

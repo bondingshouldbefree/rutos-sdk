@@ -1,0 +1,15 @@
+{
+	"user": "udhcpc",
+	"access": {
+		"network": {
+			"methods": [ "add_dynamic" ]
+		},
+		"network.interface": {
+			"methods": [ "notify_proto", "dump" ]
+		},
+		"mobifd": {
+			"methods": [ "reload" ]
+		}
+	},
+	"send": [ "vuci.notify" ]
+}

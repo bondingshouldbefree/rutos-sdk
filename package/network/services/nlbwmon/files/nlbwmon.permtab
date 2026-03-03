@@ -1,0 +1,3 @@
+/etc/config/nlbwmon             nlbwmon:nlbwmon       660       -
+/usr/local/share/nlbwmon        nlbwmon:nlbwmon       770       -
+/usr/local/share/nlbwmon        nlbwmon:nlbwmon       -         r

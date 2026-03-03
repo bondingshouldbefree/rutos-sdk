@@ -1,0 +1,88 @@
+--- a/block.c
++++ b/block.c
+@@ -86,7 +86,8 @@ struct mount {
+ static struct vlist_tree mounts;
+ static struct blob_buf b;
+ static LIST_HEAD(devices);
+-static int anon_mount, anon_swap, auto_mount, auto_sync, auto_swap, check_fs;
++static int anon_mount, anon_swap, auto_mount, auto_sync, auto_swap, check_fs,
++	mount_flags_nosuid = 0, mount_flags_noexec = 0, mount_flags_nodev = 0;
+ static unsigned int delay_root;
+ 
+ enum {
+@@ -97,6 +98,9 @@ enum {
+ 	CFG_AUTO_SYNC,
+ 	CFG_DELAY_ROOT,
+ 	CFG_CHECK_FS,
++	CFG_MOUNT_FLAGS_NOSUID,
++	CFG_MOUNT_FLAGS_NOEXEC,
++	CFG_MOUNT_FLAGS_NODEV,
+ 	__CFG_MAX
+ };
+ 
+@@ -108,6 +112,9 @@ static const struct blobmsg_policy confi
+ 	[CFG_AUTO_MOUNT] = { .name = "auto_mount", .type = BLOBMSG_TYPE_INT32 },
+ 	[CFG_DELAY_ROOT] = { .name = "delay_root", .type = BLOBMSG_TYPE_INT32 },
+ 	[CFG_CHECK_FS] = { .name = "check_fs", .type = BLOBMSG_TYPE_INT32 },
++	[CFG_MOUNT_FLAGS_NOSUID] = { .name = "mount_flags_nosuid", .type = BLOBMSG_TYPE_INT32 },
++	[CFG_MOUNT_FLAGS_NOEXEC] = { .name = "mount_flags_noexec", .type = BLOBMSG_TYPE_INT32 },
++	[CFG_MOUNT_FLAGS_NODEV] = { .name = "mount_flags_nodev", .type = BLOBMSG_TYPE_INT32 },
+ };
+ 
+ enum {
+@@ -373,6 +380,13 @@ static int global_add(struct uci_section
+ 	if ((tb[CFG_CHECK_FS]) && blobmsg_get_u32(tb[CFG_CHECK_FS]))
+ 		check_fs = 1;
+ 
++	if ((tb[CFG_MOUNT_FLAGS_NOSUID]) && blobmsg_get_u32(tb[CFG_MOUNT_FLAGS_NOSUID]))
++		mount_flags_nosuid = 1;
++	if ((tb[CFG_MOUNT_FLAGS_NOEXEC]) && blobmsg_get_u32(tb[CFG_MOUNT_FLAGS_NOEXEC]))
++		mount_flags_noexec = 1;
++	if ((tb[CFG_MOUNT_FLAGS_NODEV]) && blobmsg_get_u32(tb[CFG_MOUNT_FLAGS_NODEV]))
++		mount_flags_nodev = 1;
++
+ 	return 0;
+ }
+ 
+@@ -948,15 +962,24 @@ static int handle_mount(const char *sour
+ 	int i, err;
+ 	uint32_t flags = m ? m->flags : 0;
+ 	size_t mount_opts_len;
+-	char *mount_opts = NULL, *ptr;
++	char *mount_opts = NULL, *ptr = NULL;
+ 
+-	if (auto_sync &&
+-	    (!m || !m->options ||
+-	     (m && m->options && !strstr(m->options, mount_flags[0].name))))
+-		flags |= (uint32_t) mount_flags[0].flag;
++	if (auto_sync && (!m || !m->options || (m && m->options && !strstr(m->options, mount_flags[0].name))))
++		flags |= (uint32_t)mount_flags[0].flag;
+ 
+-	err = mount(source, target, fstype, flags,
+-		    (m && m->options) ? m->options : "");
++	if (mount_flags_nosuid) {
++		flags |= (uint32_t)mount_flags[14].flag;
++	}
++
++	if (mount_flags_noexec) {
++		flags |= (uint32_t)mount_flags[12].flag;
++	}
++
++	if (mount_flags_nodev) {
++		flags |= (uint32_t)mount_flags[10].flag;
++	}
++
++	err = mount(source, target, fstype, flags, (m && m->options) ? m->options : "");
+ 
+ 	/* Requested file system type is not available in kernel,
+ 	   attempt to call mount helper. */
+@@ -1119,6 +1142,9 @@ static int mount_device(struct probe_inf
+ 	if (type == TYPE_HOTPLUG)
+ 		blockd_notify("hotplug", device, m, pr);
+ 
++	if (type == TYPE_HOTPLUG && !auto_mount)
++		return -1;
++
+ 	/* Check if device should be mounted & set the target directory */
+ 	if (m) {
+ 		if (!m->enabled) {

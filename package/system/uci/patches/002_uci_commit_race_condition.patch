@@ -1,0 +1,20 @@
+Index: uci-2021-10-22-f84f49f0-18/file.c
+===================================================================
+--- uci-2021-10-22-f84f49f0-18.orig/file.c
++++ uci-2021-10-22-f84f49f0-18/file.c
+@@ -813,7 +813,6 @@ static void uci_file_commit(struct uci_c
+ done:
+ 	free(name);
+ 	free(path);
+-	uci_close_stream(f1);
+ 	if (do_rename) {
+ 		path = realpath(p->path, NULL);
+ 		if (!path || stat(path, &statbuf) || chmod(filename, statbuf.st_mode) || rename(filename, path)) {
+@@ -822,6 +821,7 @@ done:
+ 		}
+ 		free(path);
+ 	}
++	uci_close_stream(f1);
+ 	if (ctx->err)
+ 		UCI_THROW(ctx, ctx->err);
+ }

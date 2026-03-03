@@ -1,0 +1,39 @@
+Index: lsqlite3_fsl09y/lsqlite3.c
+===================================================================
+--- lsqlite3_fsl09y.orig/lsqlite3.c
++++ lsqlite3_fsl09y/lsqlite3.c
+@@ -65,6 +65,9 @@
+ #if !defined(LSQLITE_OMIT_UPDATE_HOOK)
+     #define LSQLITE_OMIT_UPDATE_HOOK 0
+ #endif
++#if !defined(LSQLITE_OMIT_EXTENSIONS)
++    #define LSQLITE_OMIT_EXTENSIONS 0
++#endif
+ #if defined(LSQLITE_OMIT_OPEN_V2)
+     #define SQLITE3_OPEN(L,filename,flags) sqlite3_open(L,filename)
+ #else
+@@ -1218,7 +1221,7 @@ static int db_create_collation(lua_State
+         (void(*)(void*))collfree);
+     return 0;
+ }
+-
++#if !defined(LSQLITE_OMIT_EXTENSIONS) || !LSQLITE_OMIT_EXTENSIONS
+ /* Thanks to Wolfgang Oertl...
+ */
+ static int db_load_extension(lua_State *L) {
+@@ -1246,6 +1249,15 @@ static int db_load_extension(lua_State *
+     sqlite3_free(errmsg);
+     return 2;
+ }
++#else /* #if !defined(LSQLITE_OMIT_EXTENSIONS) || !LSQLITE_OMIT_EXTENSIONS */
++
++static int db_load_extension(lua_State *L) {
++    lua_pushliteral(L, "extension support disabled at compile time");
++    lua_error(L);
++    return 0;
++}
++
++#endif /* #if !defined(LSQLITE_OMIT_EXTENSIONS) || !LSQLITE_OMIT_EXTENSIONS */
+ 
+ /*
+ ** trace callback:

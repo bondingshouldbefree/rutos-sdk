@@ -1,0 +1,217 @@
+#include "common-mt7621/rutm.dtsi"
+#include "common-mt7621/shiftreg.dtsi"
+#include "common-mt7621/input-output.dtsi"
+#include "common-mt7621/tpm-tis.dtsi"
+
+// PWR, RST |G0|G10|
+// IN, OUT  |G8|G12|
+// SR CTRL  |G5|G9|G11|G14|
+// WAN      |S17-S20|
+// WIFI     |G13|G17|
+// ETH      |S0-S7|G15|G16|
+// 4G       |S8-S14|S16|
+// TPM      |G18|
+/ {
+	model = "Teltonika RUTM16";
+
+	ext_io {
+		shift_io: shift_io@0 {
+			registers-number = <3>;
+			enable-gpios = <&gpio 14 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_modem_reset {
+			gpio-export,name = "modem_reset";
+			gpio-export,output = <0>;
+			gpios = <&shift_io 11 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_power {
+			gpio-export,name = "modem_power";
+			gpio-export,output = <1>; // tmp
+			gpios = <&shift_io 12 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_sim_select {
+			gpio-export,name = "sim_sel";
+			gpio-export,output = <0>;
+			gpios = <&shift_io 16 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	leds {
+		led_gen_3 {
+			label = "mob_gen_3";
+			gpios = <&shift_io 13 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_4 {
+			label = "mob_gen_4";
+			gpios = <&shift_io 14 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wifi_24 {
+			label = "wifi_gen_2";
+			gpios = <&gpio 13 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wifi_50 {
+			label = "wifi_gen_5";
+			gpios = <&gpio 17 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_sim1 {
+			label = "wan_sim_1";
+			gpios = <&shift_io 17 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_sim2 {
+			label = "wan_sim_2";
+			gpios = <&shift_io 18 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_eth {
+			label = "wan_eth_3";
+			gpios = <&shift_io 20 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_wifi {
+			label = "wan_wifi_4";
+			gpios = <&shift_io 19 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_ssid_1 {
+			label = "mob_ssid_1";
+			gpios = <&shift_io 8 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_3 {
+			label = "mob_ssid_3";
+			gpios = <&shift_io 9 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_5 {
+			label = "mob_ssid_5";
+			gpios = <&shift_io 10 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_eth_y4 {
+			label = "eth_y4";
+			gpios = <&gpio 15 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y3 {
+			label = "eth_y3";
+			gpios = <&shift_io 7 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_y2 {
+			label = "eth_y2";
+			gpios = <&shift_io 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y1 {
+			label = "eth_y1";
+			gpios = <&shift_io 5 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y0 {
+			label = "eth_y0";
+			gpios = <&shift_io 4 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g4 {
+			label = "eth_g4";
+			gpios = <&gpio 16 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g3 {
+			label = "eth_g3";
+			gpios = <&shift_io 3 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_g2 {
+			label = "eth_g2";
+			gpios = <&shift_io 2 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g1 {
+			label = "eth_g1";
+			gpios = <&shift_io 1 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g0 {
+			label = "eth_g0";
+			gpios = <&shift_io 0 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_tpm_reset {
+			gpio-export,name = "tpm_reset";
+			gpio-export,output = <1>;
+			gpios = <&gpio 18 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	tlt_gpios {
+		gpiochip_info {
+			hw_0 {
+				gpiochip_3 = <24>;
+			};
+		};
+
+		misc {
+			GPIO_107 {
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_108 {
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_112 {
+				line_name = "GPIO_SIM_SELECT";
+			};
+			GPIO_18 {
+				line_name = "TPM_RESET";
+			};
+		};
+	};
+};
+
+&switch0 {
+	ports {
+		port@0 {
+			status = "okay";
+			label = "lan1";
+		};
+
+		port@1 {
+			status = "okay";
+			label = "lan2";
+		};
+
+		port@2 {
+			status = "okay";
+			label = "lan3";
+		};
+
+		port@3 {
+			status = "okay";
+			label = "lan4";
+		};
+	};
+};
+
+&mnfinfo {
+	sim_cfg {
+		// sim_cfg inverted due to same rutm54 project base
+		default = "1111120_1112120_1121220";
+		keep-sim-presence;
+	};
+};

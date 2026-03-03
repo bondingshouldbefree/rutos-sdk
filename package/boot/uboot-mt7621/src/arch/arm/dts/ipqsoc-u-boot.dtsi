@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: GPL-2.0
+
+/ {
+	binman: binman {
+		multiple-images;
+	};
+};
+
+&binman {
+	ipqsoc-uboot {
+		filename = "u-boot-ipqsoc.bin";
+		pad-byte = <0x20>;
+
+		u-boot {
+			filename = "u-boot-compressed.mbn";
+			type = "blob";
+		};
+
+		device-model {
+			text = CONFIG_DEVICE_MODEL;
+			size = <12>;
+			type = "text";
+		};
+
+		version {
+			filename = "version";
+			size = <10>;
+			type = "blob";
+		};
+	};
+
+	ipqsoc-uboot-webui {
+		filename = "u-boot-ipqsoc_webui.bin";
+		pad-byte = <0x20>;
+
+		u-boot {
+			filename = "u-boot-ipqsoc.bin";
+			type = "blob";
+		};
+
+		crc {
+			type = "crc32";
+		};
+	};
+};

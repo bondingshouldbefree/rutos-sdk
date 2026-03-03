@@ -1,0 +1,3 @@
+/etc/config/mosquitto          mosquitto:mosquitto 660
+/etc/mosquitto/                mosquitto:mosquitto 770 cd
+/etc/mosquitto/mosquitto.conf  mosquitto:mosquitto 600

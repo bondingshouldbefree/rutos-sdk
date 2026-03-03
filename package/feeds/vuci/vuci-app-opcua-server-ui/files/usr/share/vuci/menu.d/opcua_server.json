@@ -1,0 +1,25 @@
+{
+    "services/opcua": {
+        "title": "OPC UA",
+        "index": 110
+    },
+    "services/opcua/opcua_server": {
+        "title": "Server",
+        "index": 20,
+        "view": "services/OpcuaServer",
+        "acls": ["services/opcua/opcua_server"]
+    },
+    "services/opcua/opcua_server/general": {
+        "title": "General",
+        "index": 1,
+        "view": "services/OpcuaServer",
+        "acls": ["services/opcua/opcua_server"],
+        "main_page": true
+    },
+    "services/opcua/opcua_server/data_sources": {
+        "title": "Data Sources",
+        "index": 2,
+        "view": "services/OpcuaServerDataSources",
+        "acls": ["services/opcua/opcua_server"]
+    }
+}

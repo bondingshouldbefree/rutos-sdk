@@ -1,0 +1,20 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+migrate_input_plugins() {
+	local section="$1"
+	local enabled
+
+	config_get enabled "$section" enabled
+
+	[ -z "$enabled" ] &&
+		uci_set data_sender "$section" enabled "1"
+}
+
+config_load data_sender
+config_foreach migrate_input_plugins input
+
+uci_commit data_sender
+
+exit 0

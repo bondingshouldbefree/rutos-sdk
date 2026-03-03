@@ -1,0 +1,24 @@
+{
+    "user": "sitemanc",
+    "publish": ["site_manager_client", "site_manager_client.*"],
+    "access": {
+        "network.interface.*": {
+            "methods": ["status"]
+        },
+        "network.device": {
+            "methods": ["status"]
+        },
+        "api": {
+            "methods": ["get", "post", "put", "delete"]
+        },
+        "uci": {
+            "methods": ["commit"]
+        },
+        "rpc-sys": {
+            "methods": ["reboot"]
+        },
+        "rpc-sys-ext": {
+            "methods": ["firstboot", "troubleshoot"]
+        }
+    }
+}

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. /lib/functions.sh
+PACKAGE_FILE="/etc/package_restore.txt"
+
+p910nd_enabled=$(uci_get p910nd.@[0].enabled)
+impulse_counter_enabled=$(uci_get impulse_counter.general.enabled)
+
+[ "$p910nd_enabled" = "1" ] && ! grep -qsF 'p910nd - Printer Server' "$PACKAGE_FILE" && echo "p910nd - Printer Server" >> "$PACKAGE_FILE"
+[ "$impulse_counter_enabled" = "1" ] && ! grep -qsF 'impulse-counter - Impulse Counter' "$PACKAGE_FILE" && echo "impulse-counter - Impulse Counter" >> "$PACKAGE_FILE"
+
+exit 0

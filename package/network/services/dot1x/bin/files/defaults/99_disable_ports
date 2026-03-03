@@ -1,0 +1,14 @@
+#!/bin/sh
+. /lib/functions.sh
+
+check_port_disabled() {
+	local enabled
+	config_get enabled "$1" enabled "0"
+	[ "$enabled" == "1" ] || return 0
+	val=$(uci_get network "$1" enabled 2> /dev/null)
+	[ "$val" == "0" ] && uci_set dot1x "$1" enabled "0"
+}
+config_load dot1x
+config_foreach "check_port_disabled" "port"
+uci_commit "dot1x"
+exit 0

@@ -1,0 +1,50 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+VUCI_UPLOADS=/etc/vuci-uploads
+
+__owner() {
+    local config=$1
+    local user=${2:-$config}
+    local group=${3:-$user}
+
+    export -n "__user_${config}=${user}"
+    export -n "__group_${config}=${group}"
+}
+
+fix_ownership()
+{
+    local cfg tmp _uname gname
+
+    for f in $VUCI_UPLOADS/cbid.*; do
+        [ -f "$f" ] || continue
+
+        cfg=$(basename "$f"  | cut -d'.' -f2)
+        [ -n "$cfg" ] || continue
+
+        eval "_uname=\$__user_${cfg}"
+        [ -n "${_uname}" ] || continue
+
+        eval "gname=\$__group_${cfg}"
+        [ -n "${gname}" ] || {
+            gname="$_uname"
+        }
+
+        user_exists "$_uname" || continue
+        group_exists "$gname" || continue
+
+        chown "${_uname}:${gname}" "$f"
+        chmod 0770 "$f"
+    done
+}
+
+__owner tinc
+__owner ipsec
+__owner stunnel
+__owner bgp bgp frr
+__owner rip rip frr
+__owner ospf ospf frr
+__owner zerotier
+
+fix_ownership

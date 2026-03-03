@@ -1,0 +1,574 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed Oct 30 10:50:39 2024 +0200
+Subject: crypto: mtk-eip93: add completion handler workers
+
+In the case of an IPsec tunnel RDR handler worker previously had to call completion callbacks
+for all SA's, which amounted to a large chunk of networking code running inside rdr_work, making
+it a throughput bottleneck. This patch moves callback invocation to separate workers, parallelized
+by crypto context(eg. with IPsec, decrypt and encrypt paths can be parallelized).
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/crypto/mtk-eip93/eip93-aead.c   |   24 ----
+ drivers/crypto/mtk-eip93/eip93-aead.h   |    2 
+ drivers/crypto/mtk-eip93/eip93-cipher.c |   19 +--
+ drivers/crypto/mtk-eip93/eip93-cipher.h |    4 
+ drivers/crypto/mtk-eip93/eip93-common.c |  168 ++++++++++++++++++++++++++++++++
+ drivers/crypto/mtk-eip93/eip93-common.h |    8 +
+ drivers/crypto/mtk-eip93/eip93-main.c   |  114 ++++++++++++++++++++-
+ drivers/crypto/mtk-eip93/eip93-main.h   |   15 ++
+ 8 files changed, 310 insertions(+), 44 deletions(-)
+
+--- a/drivers/crypto/mtk-eip93/eip93-cipher.h
++++ b/drivers/crypto/mtk-eip93/eip93-cipher.h
+@@ -17,6 +17,7 @@ struct mtk_crypto_ctx {
+ 	dma_addr_t			sa_base_out;
+ 	uint32_t			saNonce;
+ 	int				blksize;
++	struct mtk_completion_queue	completion_queue;
+ 	/* AEAD specific */
+ 	unsigned int			authsize;
+ 	unsigned int			assoclen_in;
+@@ -46,6 +47,7 @@ struct mtk_cipher_reqctx {
+ 	struct saState_s		*saState_ctr;
+ 	dma_addr_t			saState_base_ctr;
+ 	uint32_t			saState_ctr_idx;
++	int				err;
+ 	struct skcipher_request fallback_req; // keep at the end
+ };
+ 
+@@ -54,8 +56,6 @@ int check_valid_request(struct mtk_ciphe
+ void mtk_unmap_dma(struct mtk_device *mtk, struct mtk_cipher_reqctx *rctx,
+ 			struct scatterlist *reqsrc, struct scatterlist *reqdst);
+ 
+-void mtk_skcipher_handle_result(struct crypto_async_request *async, int err);
+-
+ int mtk_send_req(struct crypto_async_request *async,
+ 			const u8 *reqiv, struct mtk_cipher_reqctx *rctx);
+ 
+--- a/drivers/crypto/mtk-eip93/eip93-common.c
++++ b/drivers/crypto/mtk-eip93/eip93-common.c
+@@ -841,6 +841,174 @@ wake_request_work:
+ 	return -EINPROGRESS;
+ }
+ 
++static struct crypto_async_request *mtk_completion_dequeue(struct mtk_completion_queue *queue, unsigned int *qlen_prev)
++{
++	unsigned int qlen;
++	struct crypto_async_request *async;
++	struct list_head *list;
++
++	spin_lock_bh(&queue->lock);
++	qlen = queue->qlen;
++
++	if (qlen == 0) {
++		spin_unlock_bh(&queue->lock);
++		async = NULL;
++		goto out;
++	}
++
++	queue->qlen--;
++	list = queue->requests.next;
++	list_del(list);
++
++	spin_unlock_bh(&queue->lock);
++
++	async = list_entry(list, struct crypto_async_request, list);
++out:
++	*qlen_prev = qlen;
++	return async;
++}
++
++static inline void mtk_aead_handle_result(struct crypto_async_request *async)
++{
++	struct aead_request *req = aead_request_cast(async);
++	struct mtk_cipher_reqctx *rctx = aead_request_ctx(req);
++	int err = rctx->err;
++
++	if (err == 1)
++		err = -EBADMSG;
++	/* let software handle anti-replay errors */
++	if (err == 4)
++		err = 0;
++
++	aead_request_complete(req, err);
++}
++
++static inline void mtk_skcipher_handle_result(struct crypto_async_request *async)
++{
++	struct skcipher_request *req = skcipher_request_cast(async);
++	struct mtk_cipher_reqctx *rctx = skcipher_request_ctx(req);
++	int err = rctx->err;
++
++	skcipher_request_complete(req, err);
++}
++
++static inline void mtk_handle_completion_one(struct crypto_async_request *req, enum mtk_alg_type alg_type)
++{
++	switch (alg_type) {
++	case MTK_ALG_TYPE_AEAD:
++		mtk_aead_handle_result(req);
++		break;
++	case MTK_ALG_TYPE_SKCIPHER:
++		mtk_skcipher_handle_result(req);
++		break;
++	default:
++		BUG();
++	}
++}
++
++static inline void mtk_completion_wake_rdr(struct mtk_device *mtk,
++					   struct mtk_completion_queue *queue,
++					   bool last)
++{
++	int qlen;
++	bool rdr_waiting;
++
++	spin_lock_bh(&queue->lock);
++	qlen = queue->qlen;
++	rdr_waiting = queue->rdr_waiting;
++	spin_unlock_bh(&queue->lock);
++
++	if (!rdr_waiting)
++		return;
++
++	if (last || qlen < (MTK_COMPLETION_QLEN - MTK_BURST_SIZE)) {
++		spin_lock_bh(&queue->lock);
++		queue->rdr_waiting = false;
++		spin_unlock_bh(&queue->lock);
++
++		queue_work(mtk->rdr_workqueue, &mtk->rdr_work);
++	}
++}
++
++static inline void mtk_handle_completion(struct mtk_device *mtk,
++			 struct mtk_completion_queue *queue,
++			 enum mtk_alg_type alg_type)
++{
++	struct crypto_async_request *req;
++	int budget = 64;
++	int done = 0;
++	int total = 0;
++	unsigned int qlen;
++
++	local_bh_disable();
++
++	while (true) {
++		req = mtk_completion_dequeue(queue, &qlen);
++
++		if (!req)
++			break;
++
++		mtk_handle_completion_one(req, alg_type);
++
++		done++;
++		total++;
++
++		if (done == budget) {
++			mtk_completion_wake_rdr(mtk, queue, false);
++			local_bh_enable();
++			cond_resched();
++			local_bh_disable();
++			done = 0;
++		}
++	}
++
++	mtk_completion_wake_rdr(mtk, queue, true);
++
++	local_bh_enable();
++}
++
++void mtk_aead_completion_work(struct work_struct *work)
++{
++	struct mtk_completion_queue *queue = container_of(work, struct mtk_completion_queue, work);
++	struct mtk_crypto_ctx *ctx = container_of(queue, struct mtk_crypto_ctx, completion_queue);
++	struct mtk_device *mtk = ctx->mtk;
++
++	mtk_handle_completion(mtk, queue, MTK_ALG_TYPE_AEAD);
++}
++
++void mtk_skcipher_completion_work(struct work_struct *work)
++{
++	struct mtk_completion_queue *queue = container_of(work, struct mtk_completion_queue, work);
++	struct mtk_crypto_ctx *ctx = container_of(queue, struct mtk_crypto_ctx, completion_queue);
++	struct mtk_device *mtk = ctx->mtk;
++
++	mtk_handle_completion(mtk, queue, MTK_ALG_TYPE_SKCIPHER);
++}
++
++void mtk_completion_queue_init(struct mtk_device *mtk, struct mtk_completion_queue *queue, work_func_t work)
++{
++	spin_lock_init(&queue->lock);
++	INIT_LIST_HEAD(&queue->requests);
++	queue->qlen = 0;
++	INIT_WORK(&queue->work, work);
++	queue->rdr_waiting = false;
++
++	spin_lock_bh(&mtk->completion_lock);
++	list_add_tail(&queue->list, &mtk->completion_queues);
++	spin_unlock_bh(&mtk->completion_lock);
++}
++
++void mtk_completion_queue_stop(struct mtk_device *mtk, struct mtk_completion_queue *queue)
++{
++	spin_lock_bh(&mtk->completion_lock);
++	list_del(&queue->list);
++	spin_unlock_bh(&mtk->completion_lock);
++
++	flush_work(&queue->work);
++	WARN_ON(!list_empty(&queue->requests));
++	WARN_ON(queue->qlen != 0);
++}
++
+ void mtk_unmap_dma(struct mtk_device *mtk, struct mtk_cipher_reqctx *rctx,
+ 			struct scatterlist *reqsrc, struct scatterlist *reqdst)
+ {
+--- a/drivers/crypto/mtk-eip93/eip93-main.h
++++ b/drivers/crypto/mtk-eip93/eip93-main.h
+@@ -18,6 +18,7 @@
+ #define MTK_RING_BUSY			32
+ #define MTK_CRA_PRIORITY		1500
+ #define MTK_REQUEST_QLEN		256
++#define MTK_COMPLETION_QLEN		256
+ #define MTK_BURST_SIZE			64
+ 
+ /* cipher algorithms */
+@@ -102,6 +103,11 @@ struct mtk_device {
+ 	struct workqueue_struct	*request_workqueue;
+ 	/* rdr handler */
+ 	struct workqueue_struct	*rdr_workqueue;
++	/* completion handlers */
++	struct list_head	completion_queues;
++	spinlock_t		completion_lock;
++	struct workqueue_struct	*completion_workqueue;
++	struct crypto_async_request *completion_pending;
+ 	/* workqueue tasks */
+ 	struct work_struct	request_work;
+ 	struct work_struct	rdr_work;
+@@ -152,4 +158,13 @@ struct mtk_alg_template {
+ 	} alg;
+ };
+ 
++struct mtk_completion_queue {
++	struct list_head	list;
++	spinlock_t 		lock;
++	struct list_head 	requests;
++	unsigned int 		qlen;
++	struct work_struct	work;
++	bool			rdr_waiting;
++};
++
+ #endif /* _EIP93_MAIN_H_ */
+--- a/drivers/crypto/mtk-eip93/eip93-aead.c
++++ b/drivers/crypto/mtk-eip93/eip93-aead.c
+@@ -28,25 +28,6 @@
+ #include "eip93-common.h"
+ #include "eip93-regs.h"
+ 
+-void mtk_aead_handle_result(struct crypto_async_request *async, int err)
+-{
+-	struct mtk_crypto_ctx *ctx = crypto_tfm_ctx(async->tfm);
+-	struct mtk_device *mtk = ctx->mtk;
+-	struct aead_request *req = aead_request_cast(async);
+-	struct mtk_cipher_reqctx *rctx = aead_request_ctx(req);
+-
+-	mtk_unmap_dma(mtk, rctx, req->src, req->dst);
+-	mtk_handle_result(mtk, rctx, req->iv);
+-
+-	if (err == 1)
+-		err = -EBADMSG;
+-	/* let software handle anti-replay errors */
+-	if (err == 4)
+-		err = 0;
+-
+-	aead_request_complete(req, err);
+-}
+-
+ static int mtk_aead_send_req(struct mtk_device *mtk, struct crypto_async_request *async)
+ {
+ 	struct aead_request *req = aead_request_cast(async);
+@@ -113,6 +94,9 @@ static int mtk_aead_cra_init(struct cryp
+ 		return PTR_ERR(ctx->shash);
+ 	}
+ 
++	mtk_completion_queue_init(ctx->mtk, &ctx->completion_queue,
++				  mtk_aead_completion_work);
++
+ 	return 0;
+ }
+ 
+@@ -120,6 +104,8 @@ static void mtk_aead_cra_exit(struct cry
+ {
+ 	struct mtk_crypto_ctx *ctx = crypto_tfm_ctx(tfm);
+ 
++	mtk_completion_queue_stop(ctx->mtk, &ctx->completion_queue);
++
+ 	if (ctx->shash)
+ 		crypto_free_shash(ctx->shash);
+ 
+--- a/drivers/crypto/mtk-eip93/eip93-aead.h
++++ b/drivers/crypto/mtk-eip93/eip93-aead.h
+@@ -26,6 +26,4 @@ extern struct mtk_alg_template mtk_alg_a
+ extern struct mtk_alg_template mtk_alg_authenc_hmac_sha256_cbc_des3_ede;
+ #endif
+ 
+-void mtk_aead_handle_result(struct crypto_async_request *async, int err);
+-
+ #endif /* _EIP93_AEAD_H_ */
+--- a/drivers/crypto/mtk-eip93/eip93-cipher.c
++++ b/drivers/crypto/mtk-eip93/eip93-cipher.c
+@@ -18,19 +18,6 @@
+ #include "eip93-common.h"
+ #include "eip93-regs.h"
+ 
+-void mtk_skcipher_handle_result(struct crypto_async_request *async, int err)
+-{
+-	struct mtk_crypto_ctx *ctx = crypto_tfm_ctx(async->tfm);
+-	struct mtk_device *mtk = ctx->mtk;
+-	struct skcipher_request *req = skcipher_request_cast(async);
+-	struct mtk_cipher_reqctx *rctx = skcipher_request_ctx(req);
+-
+-	mtk_unmap_dma(mtk, rctx, req->src, req->dst);
+-	mtk_handle_result(mtk, rctx, req->iv);
+-
+-	skcipher_request_complete(req, err);
+-}
+-
+ static inline bool mtk_skcipher_is_fallback(const struct crypto_tfm *tfm,
+ 					    u32 flags)
+ {
+@@ -93,6 +80,10 @@ static int mtk_skcipher_cra_init(struct
+ 
+ 	ctx->sa_base_out = dma_map_single(ctx->mtk->dev, ctx->sa_out,
+ 				sizeof(struct saRecord_s), DMA_TO_DEVICE);
++
++	mtk_completion_queue_init(ctx->mtk, &ctx->completion_queue,
++				  mtk_skcipher_completion_work);
++
+ 	return 0;
+ }
+ 
+@@ -100,6 +91,8 @@ static void mtk_skcipher_cra_exit(struct
+ {
+ 	struct mtk_crypto_ctx *ctx = crypto_tfm_ctx(tfm);
+ 
++	mtk_completion_queue_stop(ctx->mtk, &ctx->completion_queue);
++
+ 	dma_unmap_single(ctx->mtk->dev, ctx->sa_base_in,
+ 			sizeof(struct saRecord_s), DMA_TO_DEVICE);
+ 	dma_unmap_single(ctx->mtk->dev, ctx->sa_base_out,
+--- a/drivers/crypto/mtk-eip93/eip93-common.h
++++ b/drivers/crypto/mtk-eip93/eip93-common.h
+@@ -32,4 +32,12 @@ int mtk_authenc_setkey(struct crypto_sha
+ 			const u8 *authkey, unsigned int authkeylen);
+ #endif
+ 
++void mtk_completion_queue_init(struct mtk_device *mtk,
++			       struct mtk_completion_queue *queue,
++			       work_func_t work);
++void mtk_completion_queue_stop(struct mtk_device *mtk,
++			       struct mtk_completion_queue *queue);
++void mtk_aead_completion_work(struct work_struct *work);
++void mtk_skcipher_completion_work(struct work_struct *work);
++
+ #endif /* _EIP93_COMMON_H_ */
+--- a/drivers/crypto/mtk-eip93/eip93-main.c
++++ b/drivers/crypto/mtk-eip93/eip93-main.c
+@@ -125,18 +125,65 @@ fail:
+ 	return err;
+ }
+ 
+-static void mtk_request_complete(struct crypto_async_request *async, int err, u32 flags)
++static void mtk_skcipher_unmap_result(struct crypto_async_request *async, int err)
++{
++	struct mtk_crypto_ctx *ctx = crypto_tfm_ctx(async->tfm);
++	struct mtk_device *mtk = ctx->mtk;
++	struct skcipher_request *req = skcipher_request_cast(async);
++	struct mtk_cipher_reqctx *rctx = skcipher_request_ctx(req);
++
++	mtk_unmap_dma(mtk, rctx, req->src, req->dst);
++	mtk_handle_result(mtk, rctx, req->iv);
++
++	rctx->err = err;
++}
++
++static void mtk_aead_unmap_result(struct crypto_async_request *async, int err)
++{
++	struct mtk_crypto_ctx *ctx = crypto_tfm_ctx(async->tfm);
++	struct mtk_device *mtk = ctx->mtk;
++	struct aead_request *req = aead_request_cast(async);
++	struct mtk_cipher_reqctx *rctx = aead_request_ctx(req);
++
++	mtk_unmap_dma(mtk, rctx, req->src, req->dst);
++	mtk_handle_result(mtk, rctx, req->iv);
++
++	rctx->err = err;
++}
++
++static void mtk_request_unmap(struct crypto_async_request *async, int err, u32 flags)
+ {
+ #if IS_ENABLED(CONFIG_CRYPTO_DEV_EIP93_SKCIPHER)
+ 	if (flags & MTK_DESC_SKCIPHER)
+-		return mtk_skcipher_handle_result(async, err);
++		return mtk_skcipher_unmap_result(async, err);
+ #endif
+ #if IS_ENABLED(CONFIG_CRYPTO_DEV_EIP93_AEAD)
+ 	if (flags & MTK_DESC_AEAD)
+-		return mtk_aead_handle_result(async, err);
++		return mtk_aead_unmap_result(async, err);
+ #endif
+ }
+ 
++static bool mtk_completion_enqueue(struct crypto_async_request *async)
++{
++	struct mtk_crypto_ctx *ctx = crypto_tfm_ctx(async->tfm);
++	struct mtk_completion_queue *queue = &ctx->completion_queue;
++
++	spin_lock_bh(&queue->lock);
++
++	if (queue->qlen >= MTK_COMPLETION_QLEN) {
++		queue->rdr_waiting = true;
++		spin_unlock_bh(&queue->lock);
++		return false;
++	}
++
++	list_add_tail(&async->list, &queue->requests);
++	queue->qlen++;
++
++	spin_unlock_bh(&queue->lock);
++
++	return true;
++}
++
+ static int mtk_handle_result_descriptor(struct mtk_device *mtk, int budget)
+ {
+ 	struct crypto_async_request *async;
+@@ -179,7 +226,14 @@ static int mtk_handle_result_descriptor(
+ 		err = rdesc->peCrtlStat.bits.errStatus;
+ 		async = (struct crypto_async_request *)rdesc->arc4Addr;
+ 
+-		mtk_request_complete(async, err, flags);
++		mtk_request_unmap(async, err, flags);
++		if(!mtk_completion_enqueue(async)) {
++			WARN_ON_ONCE(mtk->completion_pending);
++			mtk->completion_pending = async;
++			done = -EBUSY;
++			break;
++		}
++
+ 		done++;
+ 
+ 		if (done == budget)
+@@ -192,30 +246,60 @@ static int mtk_handle_result_descriptor(
+ 
+ static void mtk_rdr_wake_queues(struct mtk_device *mtk, bool last)
+ {
++	struct mtk_completion_queue *queue;
+ 	int free;
++	int qlen;
+ 
+ 	// Avoid waking request_work if we didn't free up many descriptors
+ 	free = atomic_read(&mtk->ring->free);
+ 	if (free && (last || free > MTK_BURST_SIZE))
+ 		queue_work(mtk->request_workqueue, &mtk->request_work);
++
++	spin_lock_bh(&mtk->completion_lock);
++	list_for_each_entry(queue, &mtk->completion_queues, list) {
++		spin_lock_bh(&queue->lock);
++		qlen = queue->qlen;
++		spin_unlock_bh(&queue->lock);
++
++		// Avoid waking request_work if we didn't queue up many requests
++		if (qlen && (last || qlen > MTK_BURST_SIZE))
++			queue_work(mtk->completion_workqueue, &queue->work);
++	}
++	spin_unlock_bh(&mtk->completion_lock);
+ }
+ 
+ static void mtk_rdr_work(struct work_struct *work)
+ {
+ 	struct mtk_device *mtk = container_of(work, struct mtk_device, rdr_work);
+ 	int done = 0;
++	int ret;
++
++	if (mtk->completion_pending) {
++		if (!mtk_completion_enqueue(mtk->completion_pending))
++			return;
++
++		mtk->completion_pending = NULL;
++	}
+ 
+ 	while (true) {
+ 		mtk_irq_clear(mtk, EIP93_INT_PE_RDRTHRESH_REQ);
+ 
+-		done += mtk_handle_result_descriptor(mtk, MTK_BURST_SIZE - done);
+-		mtk_rdr_wake_queues(mtk, false);
++		ret = mtk_handle_result_descriptor(mtk, MTK_BURST_SIZE - done);
++		if (ret == -EBUSY) {
++			// Completion queue is full, quit polling without re-enabling interrupts,
++			// completion task will wake us when space is available in queue.
++			mtk_rdr_wake_queues(mtk, true);
++			return;
++		}
++
++		done += ret;
+ 
+ 		if (!(readl(mtk->base + EIP93_REG_INT_MASK_STAT) &
+ 		      EIP93_INT_PE_RDRTHRESH_REQ))
+ 			break;
+ 
+ 		if (done == MTK_BURST_SIZE) {
++			mtk_rdr_wake_queues(mtk, false);
+ 			cond_resched();
+ 			done = 0;
+ 			continue;
+@@ -439,19 +523,29 @@ static int mtk_crypto_probe(struct platf
+ 	crypto_init_queue(&mtk->request_queue, MTK_REQUEST_QLEN);
+ 	spin_lock_init(&mtk->request_lock);
+ 	INIT_WORK(&mtk->request_work, mtk_request_work);
+-	mtk->request_workqueue = alloc_ordered_workqueue("eip93-req", 0);
++	mtk->request_workqueue = alloc_ordered_workqueue("aeip93-req", 0);
+ 	if (!mtk->request_workqueue) {
+ 		err = -ENOMEM;
+ 		goto err_desc_free;
+ 	}
+ 
+ 	INIT_WORK(&mtk->rdr_work, mtk_rdr_work);
+-	mtk->rdr_workqueue = alloc_ordered_workqueue("eip93-rdr", 0);
++	mtk->rdr_workqueue = alloc_ordered_workqueue("beip93-rdr", 0);
+ 	if (!mtk->rdr_workqueue) {
+ 		err = -ENOMEM;
+ 		goto err_req_workqueue;
+ 	}
+ 
++	INIT_LIST_HEAD(&mtk->completion_queues);
++	spin_lock_init(&mtk->completion_lock);
++	mtk->completion_workqueue =
++		alloc_workqueue("ceip93-comp", WQ_UNBOUND | WQ_CPU_INTENSIVE, 0);
++	if (!mtk->completion_workqueue) {
++		err = -ENOMEM;
++		goto err_rdr_workqueue;
++	}
++	mtk->completion_pending = NULL;
++
+ 	mtk_initialize(mtk);
+ 
+ 	/* Init. finished, enable RDR interupt */
+@@ -467,6 +561,8 @@ static int mtk_crypto_probe(struct platf
+ 
+ err_stop:
+ 	mtk_stop(mtk);
++	destroy_workqueue(mtk->completion_workqueue);
++err_rdr_workqueue:
+ 	destroy_workqueue(mtk->rdr_workqueue);
+ err_req_workqueue:
+ 	destroy_workqueue(mtk->request_workqueue);
+@@ -482,6 +578,8 @@ static int mtk_crypto_remove(struct plat
+ 	mtk_stop(mtk);
+ 	destroy_workqueue(mtk->rdr_workqueue);
+ 	destroy_workqueue(mtk->request_workqueue);
++	destroy_workqueue(mtk->completion_workqueue);
++	WARN_ON(!list_empty(&mtk->completion_queues));
+ 	mtk_unregister_algs(ARRAY_SIZE(mtk_algs));
+ 	mtk_desc_free(mtk);
+ 	dev_info(mtk->dev, "EIP93 removed.\n");

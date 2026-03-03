@@ -1,0 +1,13 @@
+#!/bin/sh
+[ "$ACTION" = "add" ] || exit
+
+exec 512>/var/lock/smp_tune.lock
+flock 512 || exit 1
+
+. /lib/functions/smp.sh
+default_rps
+
+#execute device specific RPS
+[ -e "/usr/libexec/platform/packet-steering.sh" ] && {
+	/usr/libexec/platform/packet-steering.sh
+}

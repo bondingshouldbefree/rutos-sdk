@@ -1,0 +1,3 @@
+#!/bin/sh
+[ -f /tmp/apn.db ] && [ -e /usr/local/bin/backup_apn_db ] && lua /usr/local/bin/backup_apn_db -r
+exit 0

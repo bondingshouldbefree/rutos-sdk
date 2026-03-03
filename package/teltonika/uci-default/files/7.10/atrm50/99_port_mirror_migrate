@@ -1,0 +1,31 @@
+#!/bin/sh
+
+NETWORK_CFG="network"
+MIRROR_CFG="port_mirroring"
+SECTION="ifmirror"
+
+[ "$(uci -q get "$NETWORK_CFG"."$SECTION")" != "interface" ] && exit 0
+
+. /lib/functions.sh
+
+config_load "$NETWORK_CFG"
+
+config_get_bool disabled "$SECTION" "disabled" 0
+config_get_bool enable_mirror_rx "$SECTION" "enable_mirror_rx" 0
+config_get_bool enable_mirror_tx "$SECTION" "enable_mirror_tx" 0
+config_get mirror_monitor_port "$SECTION" "mirror_monitor_port"
+config_get mirror_source_port "$SECTION" "mirror_source_port"
+
+uci_remove "$NETWORK_CFG" "$SECTION"
+uci_commit "$NETWORK_CFG"
+
+[ "$disabled" -eq 1 ] && exit 0
+
+config_load "$MIRROR_CFG"
+uci_set "$MIRROR_CFG" "config" "enable_mirror_rx" "$enable_mirror_rx"
+uci_set "$MIRROR_CFG" "config" "enable_mirror_tx" "$enable_mirror_tx"
+uci_set "$MIRROR_CFG" "config" "mirror_monitor_port" "$mirror_monitor_port"
+uci_set "$MIRROR_CFG" "config" "mirror_source_port" "$mirror_source_port"
+uci_commit "$MIRROR_CFG"
+
+exit 0

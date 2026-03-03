@@ -1,0 +1,32 @@
+#!/bin/sh
+
+. /usr/share/libubox/jshn.sh
+
+ACTION=$1
+shift
+INSTANCE=$1
+shift
+
+addenv="$( env | while read line; do echo "json_add_string \"\" \"$line\";"; done )"
+
+json_init
+json_add_array env
+i=1
+for ARG in "$@"; do
+	json_add_string "" "ARG$i=$ARG"
+	i=$((i+1))
+done
+json_add_string "" "ACTION=$ACTION"
+json_add_string "" "INSTANCE=$INSTANCE"
+eval "$addenv"
+json_close_array
+
+ubus call hotplug.openvpn call "$(json_dump)"
+
+# Call user script if exists
+[ -e "/etc/openvpn.user" ] && {
+		env -i ACTION="$ACTION" INSTANCE="$INSTANCE" \
+			/bin/sh \
+			/etc/openvpn.user \
+			"$@"
+}

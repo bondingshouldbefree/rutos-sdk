@@ -1,0 +1,8 @@
+{
+    "services/ddns": {
+        "title": "Dynamic DNS",
+        "index": 210,
+        "view": "services/DynamicDNS",
+        "acls": [ "services/ddns" ]
+    }
+}

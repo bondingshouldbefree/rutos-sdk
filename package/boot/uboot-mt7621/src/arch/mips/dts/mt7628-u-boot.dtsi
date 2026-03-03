@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2020 MediaTek Inc.
+ *
+ * Author: Weijie Gao <weijie.gao@mediatek.com>
+ */
+
+#include <linux/stringify.h>
+
+/ {
+	binman: binman {
+		multiple-images;
+	};
+};
+
+&palmbus {
+	u-boot,dm-pre-reloc;
+};
+
+&reboot {
+	u-boot,dm-pre-reloc;
+};
+
+&clkctrl {
+	u-boot,dm-pre-reloc;
+};
+
+&rstctrl {
+	u-boot,dm-pre-reloc;
+};
+
+&pinctrl {
+	u-boot,dm-pre-reloc;
+};
+
+&uart0 {
+	u-boot,dm-pre-reloc;
+};
+
+&uart1 {
+	u-boot,dm-pre-reloc;
+};
+
+&uart2 {
+	u-boot,dm-pre-reloc;
+};
+
+&binman {
+	mt7628-uboot {
+		filename = "u-boot-mt7628.bin";
+		pad-byte = <0x20>;
+
+		u-boot-spl {
+			filename = "spl/u-boot-spl.bin";
+			type = "blob";
+		};
+
+		u-boot {
+			filename = "u-boot-lzma.img";
+			type = "blob";
+		};
+
+		device-model {
+			text = CONFIG_DEVICE_MODEL;
+			size = <12>;
+			type = "text";
+		};
+
+		version {
+			filename = "version";
+			size = <10>;
+			type = "blob";
+		};
+	};
+
+	mt7628-uboot-webui {
+		filename = "u-boot-mt7628_webui.bin";
+		pad-byte = <0x20>;
+
+		u-boot {
+			filename = "u-boot-mt7628.bin";
+			type = "blob";
+		};
+
+		crc {
+			type = "crc32";
+		};
+	};
+
+	/* As binman does not support "max-size", I added additional padded image
+	* with fixed size. If this size is exeeded, then compilation should fail */
+	size-check {
+		filename = "size-check.bin";
+		/* This assumes that boot-env is after uboot (with reserved space included) */
+		size = <CONFIG_ENV_OFFSET>;
+
+		u-boot {
+			filename = "u-boot-mt7628_webui.bin";
+			type = "blob";
+		};
+	};
+};

@@ -1,0 +1,13 @@
+index cfb6241..a508ee7 100644
+--- a/development/src/gxsetmalloc.c
++++ b/development/src/gxsetmalloc.c
+@@ -2946,9 +2946,6 @@ int cosem_setLimiter(dlmsSettings* settings, gxLimiter* object, unsigned char in
+     {
+         if (value->vt != DLMS_DATA_TYPE_STRUCTURE)
+         {
+-#if defined(_WIN32) || defined(_WIN64) || defined(__linux__)
+-            assert(0);
+-#endif
+             return DLMS_ERROR_CODE_INVALID_PARAMETER;
+         }
+         ret = va_getByIndex(value->Arr, 0, &tmp);

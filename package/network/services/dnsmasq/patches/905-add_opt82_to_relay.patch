@@ -1,0 +1,263 @@
+--- a/src/option.c
++++ b/src/option.c
+@@ -194,9 +194,9 @@ struct myoption {
+ #define LOPT_DNSSEC_LIMITS 385
+ 
+ #ifdef HAVE_GETOPT_LONG
+-static const struct option opts[] =  
++static const struct option opts[] =
+ #else
+-static const struct myoption opts[] = 
++static const struct myoption opts[] =
+ #endif
+   { 
+     { "version", 0, 0, 'v' },
+@@ -531,7 +531,7 @@ static struct {
+   { LOPT_DHCP_FQDN, OPT_DHCP_FQDN, NULL, gettext_noop("Use only fully qualified domain names for DHCP clients."), NULL },
+   { LOPT_GEN_NAMES, ARG_DUP, "[=tag:<tag>]", gettext_noop("Generate hostnames based on MAC address for nameless clients."), NULL},
+   { LOPT_PROXY, ARG_DUP, "[=<ipaddr>]...", gettext_noop("Use these DHCP relays as full proxies."), NULL },
+-  { LOPT_RELAY, ARG_DUP, "<local-addr>,<server>[,<iface>]", gettext_noop("Relay DHCP requests to a remote server"), NULL},
++  { LOPT_RELAY, ARG_DUP, "<local-addr>,<server>[,<circuit-id>,<remote-id>]", gettext_noop("Relay DHCP requests to a remote server. Optionally include circuit-id and remote-id to enable DHCP Option 82."), NULL },
+   { LOPT_CNAME, ARG_DUP, "<alias>,<target>[,<ttl>]", gettext_noop("Specify alias name for LOCAL DNS name."), NULL },
+   { LOPT_PXE_PROMT, ARG_DUP, "<prompt>,[<timeout>]", gettext_noop("Prompt to send to PXE clients."), NULL },
+   { LOPT_PXE_SERV, ARG_DUP, "<service>", gettext_noop("Boot service for PXE menu."), NULL },
+@@ -4657,64 +4657,54 @@ static int one_opt(int option, char *arg
+     case LOPT_RELAY: /* --dhcp-relay */
+       {
+ 	struct dhcp_relay *new = opt_malloc(sizeof(struct dhcp_relay));
+-	char *two = split(arg);
+-	char *three = split(two);
++	char *server = split(arg);
++	char *circuitid = server ? split(server) : NULL;
++	char *remoteid = circuitid ? split(circuitid) : NULL;
+ 	
+ 	new->iface_index = 0;
++	new->opt82_conf = NULL;
+ 
+-	if (two)
++	if (server)
+ 	  {
+ 	    if (inet_pton(AF_INET, arg, &new->local))
+ 	      {
+-		char *hash = split_chr(two, '#');
++		char *hash = split_chr(server, '#');
+ 
+ 		if (!hash || !atoi_check16(hash, &new->port))
+ 		  new->port = DHCP_SERVER_PORT;
+ 		
+-		if (!inet_pton(AF_INET, two, &new->server))
++		if (!inet_pton(AF_INET, server, &new->server))
+ 		  {
+ 		    new->server.addr4.s_addr = 0;
+ 		    		    
+ 		    /* Fail for three arg version where there are not two addresses. 
+ 		       Also fail when broadcasting to wildcard address. */
+-		    if (three || strchr(two, '*'))
+-		      two = NULL;
+-		    else
+-		      three = two;
++		    if (strchr(server, '*'))
++		      server = NULL;
+ 		  }
+ 		
++		if (circuitid && remoteid)
++		{
++			new->opt82_conf = opt_malloc(sizeof(struct dhcp_option82));
++			new->opt82_conf->circuit_id = opt_string_alloc(circuitid);
++			new->opt82_conf->remote_id = opt_string_alloc(remoteid);
++		}
++
+ 		new->next = daemon->relay4;
+ 		daemon->relay4 = new;
+ 	      }
+-#ifdef HAVE_DHCP6
+-	    else if (inet_pton(AF_INET6, arg, &new->local))
+-	      {
+-		char *hash = split_chr(two, '#');
+-
+-		if (!hash || !atoi_check16(hash, &new->port))
+-		  new->port = DHCPV6_SERVER_PORT;
+-
+-		if (!inet_pton(AF_INET6, two, &new->server))
+-		  {
+-		    inet_pton(AF_INET6, ALL_SERVERS, &new->server.addr6);
+-		    /* Fail for three arg version where there are not two addresses.
+-		       Also fail when multicasting to wildcard address. */
+-		    if (three || strchr(two, '*'))
+-		      two = NULL;
+-		    else
+-		      three = two;
+-		  }
+-		new->next = daemon->relay6;
+-		daemon->relay6 = new;
+-	      }
+-#endif
+-
+-	    new->interface = opt_string_alloc(three);
+ 	  }
+ 	
+-	if (!two)
++	if (!server)
+ 	  {
+-	    free(new->interface);
++		if (new->opt82_conf)
++		{
++			if (new->opt82_conf->circuit_id)
++				free(new->opt82_conf->circuit_id);
++
++			if (new->opt82_conf->remote_id)
++				free(new->opt82_conf->remote_id);
++		}
+ 	    ret_err_free(_("Bad dhcp-relay"), new);
+ 	  }
+ 	
+@@ -4722,7 +4712,7 @@ static int one_opt(int option, char *arg
+       }
+ 
+ #endif
+-      
++
+ #ifdef HAVE_DHCP6
+     case LOPT_RA_PARAM: /* --ra-param */
+       if ((comma = split(arg)))
+--- a/src/dnsmasq.h
++++ b/src/dnsmasq.h
+@@ -1150,6 +1150,7 @@ struct dhcp_relay {
+   char *interface; /* Allowable interface for replies from server, and dest for IPv6 multicast */
+   int iface_index; /* working - interface in which requests arrived, for return */
+   int port;        /* Port of relay we forward to. */
++  struct dhcp_option82 *opt82_conf;
+ #ifdef HAVE_SCRIPT
+   struct snoop_record {
+     struct in6_addr client, prefix;
+@@ -1160,8 +1161,13 @@ struct dhcp_relay {
+   struct dhcp_relay *next;
+ };
+ 
++struct dhcp_option82 {
++	char *circuit_id;
++	char *remote_id;
++};
++
+ extern struct daemon {
+-  /* datastuctures representing the command-line and 
++  /* datastuctures representing the command-line and
+      config file arguments. All set (including defaults)
+      in option.c */
+ 
+@@ -1227,7 +1233,7 @@ extern struct daemon {
+   struct dhcp_mac *dhcp_macs;
+   struct dhcp_boot *boot_config;
+   struct pxe_service *pxe_services;
+-  struct tag_if *tag_if; 
++  struct tag_if *tag_if;
+   struct addr_list *override_relays;
+   struct dhcp_relay *relay4, *relay6;
+   struct delay_config *delay_conf;
+--- a/src/dhcp.c
++++ b/src/dhcp.c
+@@ -33,6 +33,7 @@ static int complete_context(struct in_ad
+ static int check_listen_addrs(struct in_addr local, int if_index, char *label,
+ 			      struct in_addr netmask, struct in_addr broadcast, void *vparam);
+ static int relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz);
++static void add_dhcp_option82(struct dhcp_packet *mess, size_t *sz, const struct dhcp_option82 *cfg);
+ static struct dhcp_relay *relay_reply4(struct dhcp_packet *mess, char *arrival_interface);
+ 
+ static int make_fd(int port)
+@@ -1107,17 +1108,21 @@ static int relay_upstream4(int iface_ind
+ 
+ 	/* already gatewayed ? */
+ 	if (giaddr.s_addr)
+-	  {
+-	    /* if so check if by us, to stomp on loops. */
+-	    if (giaddr.s_addr == relay->local.addr4.s_addr)
+-	      continue;
+-	  }
++	{
++	  /* if so check if by us, to stomp on loops. */
++	  if (giaddr.s_addr == relay->local.addr4.s_addr)
++	    continue;
++	}
+ 	else
+-	  {
++	{
+ 	    /* plug in our address */
+ 	    mess->giaddr.s_addr = relay->local.addr4.s_addr;
+-	  }
+-	
++	}
++
++	if (relay->opt82_conf) {
++		add_dhcp_option82(mess, &sz, relay->opt82_conf);
++	}
++
+ 	to.sa.sa_family = AF_INET;
+ 	to.in.sin_addr = relay->server.addr4;
+ 	to.in.sin_port = htons(relay->port);
+@@ -1185,6 +1190,65 @@ static struct dhcp_relay *relay_reply4(s
+     }
+   
+   return NULL;	 
+-}     
++}
++
++void add_dhcp_option82(struct dhcp_packet *mess, size_t *sz, const struct dhcp_option82 *cfg)
++{
++	if (!cfg || !mess || !sz)
++		return;
++
++	const char *circuit_id = cfg->circuit_id;
++	const char *remote_id = cfg->remote_id;
++
++	size_t circuit_id_len = circuit_id ? strlen(circuit_id) : 0;
++	size_t remote_id_len = remote_id ? strlen(remote_id) : 0;
++
++	int offset = 4;  // Skip DHCP magic cookie
++	uint8_t *options = mess->options;
++
++	while (offset < sizeof(mess->options)) {
++		if (options[offset] == 0) {
++			offset++;
++			continue;
++		}
++
++		if (options[offset] == 255)
++			break;
++
++		if (offset + 1 >= sizeof(mess->options))
++			break;
++
++		offset += 2 + options[offset + 1];
++	}
++
++	int required_len = 2; // Option 82 header
++	if (circuit_id)
++		required_len += 2 + circuit_id_len;
++	if (remote_id)
++		required_len += 2 + remote_id_len;
++
++	if (offset + required_len + 1 > sizeof(mess->options))
++		return;
++
++	options[offset++] = OPTION_AGENT_ID;
++	options[offset++] = required_len - 2;
++
++	if (circuit_id) {
++		options[offset++] = SUBOPT_CIRCUIT_ID;
++		options[offset++] = circuit_id_len;
++		memcpy(&options[offset], circuit_id, circuit_id_len);
++		offset += circuit_id_len;
++	}
++
++	if (remote_id) {
++		options[offset++] = SUBOPT_REMOTE_ID;
++		options[offset++] = remote_id_len;
++		memcpy(&options[offset], remote_id, remote_id_len);
++		offset += remote_id_len;
++	}
++
++	options[offset] = 255;  // DHCP option end
++	*sz += required_len;
++}
+ 
+ #endif

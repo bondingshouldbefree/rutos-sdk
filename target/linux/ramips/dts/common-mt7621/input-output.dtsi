@@ -1,0 +1,13 @@
+/ {
+    tlt_gpios {
+        ioman {
+            GPIO_8 {
+                line_name = "GPIO_OUT_1";
+            };
+            GPIO_12 {
+                line_name = "GPIO_IN_1";
+                active_low;
+            };
+        };
+    };
+};

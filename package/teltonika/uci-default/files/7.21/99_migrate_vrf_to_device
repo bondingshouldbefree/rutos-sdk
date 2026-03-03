@@ -1,0 +1,61 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+VRF_INDEX=1
+
+migrate_vrf_to_device() {
+	local section="$1"
+	config_get proto "$section" proto
+	[ "$proto" != "vrf" ] && return
+
+	config_get table "$section" table
+	config_get link "$section" link
+	config_get disabled "$section" disabled "0"
+	config_get ifname "$section" ifname
+
+	uci -q batch <<-EOF
+		set network.$section="interface"
+		set network.$section.proto="none"
+		set network.$section.device="$ifname"
+		delete network.$section.link
+		delete network.$section.table
+		delete network.$section.ifname
+	EOF
+
+	local vrf_dev_id="vrfdev$VRF_INDEX"
+
+	while true; do
+		if ! uci -q get network.$vrf_dev_id >/dev/null; then
+			break
+		fi
+
+		VRF_INDEX=$((VRF_INDEX + 1))
+		vrf_dev_id="vrfdev$VRF_INDEX"
+	done
+
+	local enabled
+	[ "$disabled" -eq 1 ] && enabled="0" || enabled="1"
+
+	uci -q batch <<-EOF
+		set network.$vrf_dev_id="device"
+		set network.$vrf_dev_id.type="vrf"
+		set network.$vrf_dev_id.name="$ifname"
+		set network.$vrf_dev_id.table="$table"
+		set network.$vrf_dev_id.enabled="$enabled"
+	EOF
+
+	for port in $link
+	do
+		uci -q add_list network."$vrf_dev_id".ports="$port"
+	done
+
+}
+
+config_load "network"
+config_foreach migrate_vrf_to_device "interface"
+
+uci_commit "network"
+
+
+exit 0

@@ -1,0 +1,27 @@
+# when davici_get_value_str() returns -EINVAL swanmon fails and does not
+# return any more data. This patch changes the behaviour to return "Unreadable"
+# string instead of failing completely.
+
+diff --git a/format.c b/format.c
+index f11fdba..39573df 100644
+--- a/format.c
++++ b/format.c
+@@ -10,6 +10,7 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>
++#include <errno.h>
+ 
+ #include "format.h"
+ #include "swmon_queue.h"
+@@ -105,6 +106,10 @@ json_object *format_parse_davici_response(struct davici_response *res)
+ 				break;
+ 			case DAVICI_KEY_VALUE:
+ 				ret = davici_get_value_str(res, buf, sizeof(buf));
++				if (ret == -EINVAL) {
++					strncpy(buf, "Unreadable", sizeof(buf));
++					ret = 0;
++				}
+ 				if (ret < 0) {
+ 					swmon_queue_free(queue);
+ 					return root;

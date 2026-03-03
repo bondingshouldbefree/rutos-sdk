@@ -1,0 +1,165 @@
+Index: uci-2021-10-22-f84f49f0-18/file.c
+===================================================================
+--- uci-2021-10-22-f84f49f0-18.orig/file.c
++++ uci-2021-10-22-f84f49f0-18/file.c
+@@ -780,10 +780,15 @@ static void uci_file_commit(struct uci_c
+ 			/* freed together with the uci_package */
+ 			path = NULL;
+ 		}
++		bool deltas = !uci_list_empty(&p->delta);
+ 
+ 		/* flush delta */
+ 		if (!uci_load_delta(ctx, p, true))
+ 			goto done;
++
++		ctx->was_empty_commit = deltas;
++	} else {
++		ctx->was_empty_commit = false;
+ 	}
+ 
+ 	fd = mkstemp(filename);
+Index: uci-2021-10-22-f84f49f0-18/libuci.c
+===================================================================
+--- uci-2021-10-22-f84f49f0-18.orig/libuci.c
++++ uci-2021-10-22-f84f49f0-18/libuci.c
+@@ -234,6 +234,7 @@ int uci_commit(struct uci_context *ctx,
+ 	p = *package;
+ 	UCI_ASSERT(ctx, p != NULL);
+ 	UCI_ASSERT(ctx, p->backend && p->backend->commit);
++	ctx->was_empty_commit = true;
+ 	p->backend->commit(ctx, package, overwrite);
+ 	return 0;
+ }
+@@ -251,10 +252,13 @@ int uci_logged_commit_user(struct uci_co
+ 	p = *package;
+ 	UCI_ASSERT(ctx, p != NULL);
+ 	UCI_ASSERT(ctx, p->backend && p->backend->commit);
++	ctx->was_empty_commit = true;
+ 	p->backend->commit(ctx, package, overwrite);
+ 
+ #ifdef ENABLE_UCI_LOGGING
+-	tlt_log_event((*package)->e.name, user);
++	if (!ctx->was_empty_commit) {
++		tlt_log_event((*package)->e.name, user);
++	}
+ #endif // ENABLE_UCI_LOGGING
+ 
+ 	return 0;
+Index: uci-2021-10-22-f84f49f0-18/list.c
+===================================================================
+--- uci-2021-10-22-f84f49f0-18.orig/list.c
++++ uci-2021-10-22-f84f49f0-18/list.c
+@@ -75,7 +75,7 @@ uci_free_element(struct uci_element *e)
+ 	free(e);
+ }
+ 
+-static struct uci_option *
++__private struct uci_option *
+ uci_alloc_option(struct uci_section *s, const char *name, const char *value)
+ {
+ 	struct uci_package *p = s->package;
+@@ -114,7 +114,7 @@ uci_free_option(struct uci_option *o)
+ 	uci_free_element(&o->e);
+ }
+ 
+-static struct uci_option *
++__private struct uci_option *
+ uci_alloc_list(struct uci_section *s, const char *name)
+ {
+ 	struct uci_package *p = s->package;
+@@ -208,7 +208,7 @@ static void uci_section_fixup_options(st
+ 	}
+ }
+ 
+-static struct uci_section *
++__private struct uci_section *
+ uci_alloc_section(struct uci_package *p, const char *type, const char *name)
+ {
+ 	struct uci_context *ctx = p->ctx;
+@@ -231,7 +231,7 @@ uci_alloc_section(struct uci_package *p,
+ 	return s;
+ }
+ 
+-static void
++__private void
+ uci_free_section(struct uci_section *s)
+ {
+ 	struct uci_element *o, *tmp;
+@@ -725,16 +725,12 @@ int uci_set(struct uci_context *ctx, str
+ 		ptr->s = uci_alloc_section(ptr->p, ptr->value, ptr->section);
+ 		ptr->last = &ptr->s->e;
+ 	} else if (ptr->o && ptr->option) { /* update option */
+-		struct uci_option *o;
+-
+-		if ((ptr->o->type == UCI_TYPE_STRING) &&
+-			!strcmp(ptr->o->v.string, ptr->value))
+-			return 0;
+-
+-		o = ptr->o;
+-		ptr->o = uci_alloc_option(ptr->s, ptr->option, ptr->value);
+-		uci_free_option(o);
+-		ptr->last = &ptr->o->e;
++		if (ptr->o->type != UCI_TYPE_STRING || strcmp(ptr->o->v.string, ptr->value)) {
++			struct uci_option *o = ptr->o;
++			ptr->o = uci_alloc_option(ptr->s, ptr->option, ptr->value);
++			uci_free_option(o);
++			ptr->last = &ptr->o->e;
++		}
+ 	} else if (ptr->s && ptr->section) { /* update section */
+ 		char *s = uci_strdup(ctx, ptr->value);
+ 
+Index: uci-2021-10-22-f84f49f0-18/lua/uci.c
+===================================================================
+--- uci-2021-10-22-f84f49f0-18.orig/lua/uci.c
++++ uci-2021-10-22-f84f49f0-18/lua/uci.c
+@@ -939,6 +939,14 @@ uci_lua_add_delta(lua_State *L)
+ }
+ 
+ static int
++uci_was_empty_commit(lua_State *L)
++{
++	struct uci_context *ctx = find_context(L, NULL);
++	lua_pushboolean(L, ctx->was_empty_commit);
++	return 1;
++}
++
++static int
+ uci_lua_set_savedir(lua_State *L)
+ {
+ 	struct uci_context *ctx;
+@@ -1044,6 +1052,7 @@ static const luaL_Reg uci[] = {
+ 	{ "get_savedir", uci_lua_get_savedir },
+ 	{ "set_savedir", uci_lua_set_savedir },
+ 	{ "list_configs", uci_lua_list_configs },
++	{ "was_empty_commit", uci_was_empty_commit },
+ 	{ NULL, NULL },
+ };
+ 
+Index: uci-2021-10-22-f84f49f0-18/uci.h
+===================================================================
+--- uci-2021-10-22-f84f49f0-18.orig/uci.h
++++ uci-2021-10-22-f84f49f0-18/uci.h
+@@ -419,6 +419,8 @@ struct uci_context
+ 	/* search path for delta files */
+ 	struct uci_list delta_path;
+ 
++	bool was_empty_commit;
++
+ 	/* private: */
+ 	int err;
+ 	const char *func;
+Index: uci-2021-10-22-f84f49f0-18/uci_internal.h
+===================================================================
+--- uci-2021-10-22-f84f49f0-18.orig/uci_internal.h
++++ uci-2021-10-22-f84f49f0-18/uci_internal.h
+@@ -52,6 +52,10 @@ __private bool uci_validate_str(const ch
+ __private void uci_add_delta(struct uci_context *ctx, struct uci_list *list, int cmd, const char *section, const char *option, const char *value);
+ __private void uci_free_delta(struct uci_delta *h);
+ __private struct uci_package *uci_alloc_package(struct uci_context *ctx, const char *name);
++__private void uci_free_section(struct uci_section *s);
++__private struct uci_section * uci_alloc_section(struct uci_package *p, const char *type, const char *name);
++__private struct uci_option * uci_alloc_option(struct uci_section *s, const char *name, const char *value);
++__private struct uci_option * uci_alloc_list(struct uci_section *s, const char *name);
+ 
+ __private FILE *uci_open_stream(struct uci_context *ctx, const char *filename, const char *origfilename, int pos, bool write, bool create);
+ __private void uci_close_stream(FILE *stream);

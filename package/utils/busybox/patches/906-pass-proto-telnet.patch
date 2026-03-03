@@ -1,0 +1,22 @@
+--- a/networking/telnetd.c
++++ b/networking/telnetd.c
+@@ -429,7 +429,7 @@ make_new_session(
+ #if !ENABLE_FEATURE_TELNETD_STANDALONE
+ 	enum { sock = 0 };
+ #endif
+-	const char *login_argv[6];
++	const char *login_argv[8];
+ 	struct termios termbuf;
+ 	int fd, pid;
+ 	char tty_name[GETPTY_BUFSIZE];
+@@ -574,7 +574,9 @@ make_new_session(
+ 	if (G.port) {
+ 		login_argv[3] = "-P";
+ 		login_argv[4] = G.port;
+-		login_argv[5] = NULL;
++		login_argv[5] = "-R";
++		login_argv[6] = "Telnet";
++		login_argv[7] = NULL;
+ 	}
+ #endif
+ 	/* exec busybox applet (if PREFER_APPLETS=y), if that fails,

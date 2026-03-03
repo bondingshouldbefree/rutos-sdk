@@ -1,0 +1,13 @@
+Index: ubox-2020-10-25-9ef88681/kmodloader.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/kmodloader.c
++++ ubox-2020-10-25-9ef88681/kmodloader.c
+@@ -83,7 +83,7 @@ static int init_module_folders(void)
+ 	if (s)
+ 		e += snprintf(ldpath, sizeof(ldpath), "%s:", s);
+ 
+-	e += snprintf(e, sizeof(ldpath) - (e - ldpath), "/lib");
++	e += snprintf(e, sizeof(ldpath) - (e - ldpath), "/lib:/usr/local/lib");
+ 
+ 	uname(&ver);
+ 

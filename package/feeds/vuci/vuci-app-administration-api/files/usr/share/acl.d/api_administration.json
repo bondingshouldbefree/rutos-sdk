@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"rpc-sys":{"methods":["reboot"]},"rc":{"methods":["init"]}},"send":["vuci.notify"]}

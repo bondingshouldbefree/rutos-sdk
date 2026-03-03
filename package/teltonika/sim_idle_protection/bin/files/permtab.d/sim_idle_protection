@@ -1,0 +1,6 @@
+# Setup permissions for crond
+/etc/crontabs/sim_idle_protection   root:gsm                    660     cf
+
+# Setup permissions for WebUI and SIM idle protection script
+/etc/config/sim_idle_protection     sim_idle_protection:gsm     660     -
+/tmp/.uci/sim_idle_protection       sim_idle_protection:gsm     660     -

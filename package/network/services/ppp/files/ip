@@ -1,0 +1,44 @@
+#!/bin/sh
+
+. /usr/share/libubox/jshn.sh
+
+BIN="/sbin/ip"
+
+main () {
+	case "$1" in
+		list)
+			json_init
+			json_add_object "ip"
+			json_add_array "params"
+			json_close_array
+			json_close_object
+			json_dump
+		;;
+		call)
+			case "$2" in
+				ip)
+					read input
+					json_load "$input"
+					json_is_a params array || return 1
+					local args=""
+					local idx=1
+					json_select params
+					while json_is_a $idx string; do
+						local arg
+						json_get_var arg $idx
+						args="$args $arg"
+						idx=$(( idx + 1 ))
+					done
+					$BIN $args > /dev/null 2>&1
+					code=$?
+					json_init
+					json_add_int code "$code"
+					json_dump
+				;;
+			esac
+
+		;;
+	esac
+}
+
+main "$@"

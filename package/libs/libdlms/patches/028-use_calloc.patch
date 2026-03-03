@@ -1,0 +1,157 @@
+index b67cc01..662576f 100644
+--- a/development/src/gxsetmalloc.c
++++ b/development/src/gxsetmalloc.c
+@@ -325,7 +325,7 @@ int updateSeasonProfile(gxArray* profile, dlmsVARIANT* data)
+     obj_clearSeasonProfile(profile);
+ 
+     if (data->vt == DLMS_DATA_TYPE_ARRAY && data->Arr != NULL) {
+-        dlmsVARIANT tm;
++        dlmsVARIANT tm = { 0 };
+         dlmsVARIANT* tmp, * it;
+         var_init(&tm);
+         for (pos = 0; pos != data->Arr->size; ++pos)
+@@ -335,6 +335,8 @@ int updateSeasonProfile(gxArray* profile, dlmsVARIANT* data)
+             {
+                 return DLMS_ERROR_CODE_OUTOFMEMORY;
+             }
++            memset(sp, 0, sizeof(gxSeasonProfile));
++
+             ret = va_getByIndex(data->Arr, pos, &it);
+             if (ret != DLMS_ERROR_CODE_OK)
+             {
+@@ -502,7 +504,7 @@ int updateDayProfileTable(dlmsSettings* settings, gxArray* profile, dlmsVARIANT*
+             }
+             for (pos2 = 0; pos2 != tmp->Arr->size; ++pos2)
+             {
+-                ac = (gxDayProfileAction*)gxmalloc(sizeof(gxDayProfileAction));
++                ac = (gxDayProfileAction*)gxcalloc(1, sizeof(gxDayProfileAction));
+                 if (ac == NULL)
+                 {
+                     return DLMS_ERROR_CODE_OUTOFMEMORY;
+@@ -518,6 +520,7 @@ int updateDayProfileTable(dlmsSettings* settings, gxArray* profile, dlmsVARIANT*
+                 {
+                     break;
+                 }
++
+                 var_init(&tm);
+                 ret = dlms_changeType2(tmp2, DLMS_DATA_TYPE_TIME, &tm);
+                 if (ret != DLMS_ERROR_CODE_OK)
+@@ -526,6 +529,7 @@ int updateDayProfileTable(dlmsSettings* settings, gxArray* profile, dlmsVARIANT*
+                 }
+                 time_copy(&ac->startTime, tm.dateTime);
+                 var_clear(&tm);
++
+                 //Get script logical name.
+                 ret = va_getByIndex(it2->Arr, 1, &tmp2);
+                 if (ret != DLMS_ERROR_CODE_OK)
+@@ -563,6 +567,7 @@ int updateDayProfileTable(dlmsSettings* settings, gxArray* profile, dlmsVARIANT*
+                     memcpy(ac->scriptLogicalName, tmp2->byteArr->data, 6);
+ #endif //DLMS_IGNORE_OBJECT_POINTERS
+                 }
++
+                 ret = va_getByIndex(it2->Arr, 2, &tmp2);
+                 if (ret != DLMS_ERROR_CODE_OK)
+                 {
+@@ -581,6 +586,7 @@ int updateDayProfileTable(dlmsSettings* settings, gxArray* profile, dlmsVARIANT*
+ 
+     if (ret != 0)
+     {
++        // TODO: Cleanup `profile`, because there will be dangling pointer which could be double freed.
+         if (dp)
+         {
+             gxfree(dp);
+@@ -763,7 +769,7 @@ int cosem_setActionSchedule(
+ #endif // DLMS_USE_EPOCH_TIME
+                 date.dateTime->deviation = (short)0x8000;
+                 date.dateTime->skip |= DATETIME_SKIPS_DEVITATION;
+-                tm = (gxtime*)gxmalloc(sizeof(gxtime));
++                tm = (gxtime*)gxcalloc(1, sizeof(gxtime));
+                 if (tm == NULL)
+                 {
+                     ret = DLMS_ERROR_CODE_OUTOFMEMORY;
+@@ -1461,18 +1467,15 @@ int cosem_setAssociationLogicalName(
+     }
+     else if (index == 11)
+     {
+-        if (object->currentUser.value != NULL)
+-        {
+-            gxfree(object->currentUser.value);
+-        }
+-        if (value->Arr->size == 2)
++        if (value->vt == DLMS_DATA_TYPE_STRUCTURE && value->Arr->size == 2)
+         {
+             ret = va_getByIndex(value->Arr, 0, &tmp);
+             if (ret != DLMS_ERROR_CODE_OK)
+             {
+                 return ret;
+             }
+-            object->currentUser.key = (unsigned char)var_toInteger(tmp);
++            gxKey2 newUser = { 0 };
++            newUser.key = (unsigned char)var_toInteger(tmp);
+             ret = va_getByIndex(value->Arr, 1, &tmp);
+             if (ret != DLMS_ERROR_CODE_OK)
+             {
+@@ -1480,13 +1483,18 @@ int cosem_setAssociationLogicalName(
+             }
+             if (tmp->strVal != NULL && tmp->strVal->size != 0)
+             {
+-                object->currentUser.value = gxmalloc(tmp->strVal->size + 1);
+-                if (object->currentUser.value == NULL)
++                newUser.value = gxmalloc(tmp->strVal->size + 1);
++                if (newUser.value == NULL)
+                 {
+                     return DLMS_ERROR_CODE_OUTOFMEMORY;
+                 }
+-                memcpy(object->currentUser.value, tmp->strVal, tmp->strVal->size);
++                memcpy(newUser.value, tmp->strVal, tmp->strVal->size);
+             }
++
++            if (object->currentUser.value != NULL) {
++                gxfree(object->currentUser.value);
++            }
++            object->currentUser = newUser;
+         }
+         else
+         {
+@@ -1824,8 +1832,8 @@ int cosem_setAutoAnswer(gxAutoAnswer* object, unsigned char index, dlmsVARIANT*
+                 {
+                     return ret;
+                 }
+-                s = (gxtime*)gxmalloc(sizeof(gxtime));
+-                e = (gxtime*)gxmalloc(sizeof(gxtime));
++                s = (gxtime*)gxcalloc(1, sizeof(gxtime));
++                e = (gxtime*)gxcalloc(1, sizeof(gxtime));
+                 time_copy(s, start.dateTime);
+                 time_copy(e, end.dateTime);
+                 arr_push(&object->listeningWindow, key_init(s, e));
+@@ -1920,8 +1928,8 @@ int cosem_setAutoConnect(gxAutoConnect* object, unsigned char index, dlmsVARIANT
+                     {
+                         return ret;
+                     }
+-                    s = (gxtime*)gxmalloc(sizeof(gxtime));
+-                    e = (gxtime*)gxmalloc(sizeof(gxtime));
++                    s = (gxtime*)gxcalloc(1, sizeof(gxtime));
++                    e = (gxtime*)gxcalloc(1, sizeof(gxtime));
+                     arr_push(&object->callingWindow, key_init(s, e));
+                     time_copy(s, start.dateTime);
+                     time_copy(e, end.dateTime);
+@@ -4293,7 +4301,7 @@ int cosem_setSpecialDaysTable(gxSpecialDaysTable* object, unsigned char index, d
+                 {
+                     return ret;
+                 }
+-                specialDay = (gxSpecialDay*)gxmalloc(sizeof(gxSpecialDay));
++                specialDay = (gxSpecialDay*)gxcalloc(1, sizeof(gxSpecialDay));
+                 if (specialDay == NULL)
+                 {
+                     ret = DLMS_ERROR_CODE_OUTOFMEMORY;
+@@ -5639,8 +5647,8 @@ int cosem_setPushSetup(dlmsSettings* settings,
+                 {
+                     break;
+                 }
+-                s = (gxtime*)gxmalloc(sizeof(gxtime));
+-                e = (gxtime*)gxmalloc(sizeof(gxtime));
++                s = (gxtime*)gxcalloc(1, sizeof(gxtime));
++                e = (gxtime*)gxcalloc(1, sizeof(gxtime));
+                 time_copy(s, start.dateTime);
+                 time_copy(e, end.dateTime);
+                 arr_push(&object->communicationWindow, key_init(s, e));

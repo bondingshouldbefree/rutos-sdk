@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"network.interface":{"methods":["dump"]},"network.interface.*":{"methods":["status"]},"service":{"methods":["event"]}}}

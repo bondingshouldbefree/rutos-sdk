@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"rpc-sys":{"methods":["add_user","del_user","set_user_shell"]},"session":{"methods":["list","destroy","access"]},"rc":{"methods":["init"]}}}

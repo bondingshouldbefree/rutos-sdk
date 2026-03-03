@@ -1,0 +1,4 @@
+if [ -n "$(find /etc/vuci-uploads -maxdepth 1 -name 'cbid.modbusgateway.*')" ]; then
+	chown mqtt_modbus_gateway:mqtt_modbus_gateway /etc/vuci-uploads/cbid.modbusgateway.*
+	chmod 0660 /etc/vuci-uploads/cbid.modbusgateway.*
+fi

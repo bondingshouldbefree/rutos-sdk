@@ -1,0 +1,18 @@
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -505,7 +505,6 @@ void hostapd_free_hapd_data(struct hosta
+ 
+ 	wpa_printf(MSG_DEBUG, "%s(%s)", __func__, hapd->conf->iface);
+ 	hostapd_ucode_free_bss(hapd);
+-	hostapd_ubus_free_bss(hapd);
+ 	accounting_deinit(hapd);
+ 	hostapd_deinit_wpa(hapd);
+ 	vlan_deinit(hapd);
+@@ -3020,6 +3019,7 @@ void hostapd_bss_deinit(struct hostapd_d
+ 	wpa_printf(MSG_DEBUG, "%s: deinit bss %s", __func__,
+ 		   hapd->conf ? hapd->conf->iface : "N/A");
+ 	hostapd_bss_deinit_no_free(hapd);
++	hostapd_ubus_free_bss(hapd);
+ 	wpa_msg(hapd->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
+ #ifdef CONFIG_SQLITE
+ 	if (hapd->rad_attr_db) {

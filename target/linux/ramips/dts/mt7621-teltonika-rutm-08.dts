@@ -1,0 +1,37 @@
+#include "common-mt7621/rutm.dtsi"
+#include "common-mt7621/shiftreg.dtsi"
+#include "common-mt7621/input-output.dtsi"
+#include "common-mt7621/eth/3-lan-ports.dtsi"
+
+// PWR, RST |G0|G10|
+// IN, OUT  |G8|G12|
+// SR CTRL  |G5|G9|G11|G15|
+// ETH      |S0-S7|
+/ {
+	model = "Teltonika RUTM08";
+
+	ext_io {
+		shift_io: shift_io@0 {
+			registers-number = <1>;
+			enable-gpios = <&gpio 15 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	tlt_gpios {
+		gpiochip_info {
+			hw_0 {
+				gpiochip_3 = <8>;
+			};
+		};
+	};
+};
+
+&mnfinfo {
+	/delete-node/ simpin1;
+	/delete-node/ simpin2;
+	/delete-node/ mob_vidpid_1;
+
+	sim_count {
+		default =  "0";
+	};
+};

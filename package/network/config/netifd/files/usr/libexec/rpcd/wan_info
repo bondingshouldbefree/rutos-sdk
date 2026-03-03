@@ -1,0 +1,169 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /lib/functions/network.sh
+. /usr/share/libubox/jshn.sh
+
+EXCLUDE_PROTOS="relay sstp pptp gre l2tp l2tpv3 wireguard mirror vrf"
+MWAN_TRACK_DIR="/var/run/mwan3track"
+MIN_METRIC=999999
+MIN_WANIF=""
+INCLUDE_VPN=0
+IGNORE_FAILOVER=0
+
+main() {
+	case "$1" in
+	list)
+		json_init
+		json_add_object "get"
+		json_add_boolean "ipv6" 0
+		json_add_boolean "include_vpn" 0
+		json_add_boolean "ignore_failover" 0
+		json_close_object
+		json_dump
+		;;
+	call)
+		case "$2" in
+		get)
+			read input
+			json_load "$input"
+			json_get_var ipv6 "ipv6"
+			json_get_var INCLUDE_VPN "include_vpn"
+			json_get_var IGNORE_FAILOVER "ignore_failover"
+
+			json_init
+			wanif=$(get_wan_iface "$ipv6")
+			json_add_string "interface" "$wanif"
+			if [ -n "$wanif" ]; then
+				state=$(wanif_to_state "$wanif")
+				adr=$(wanif_to_wanadr "$ipv6" "$wanif")
+				json_add_string "state" "$state"
+
+				json_add_array "ip"
+				for addr in $adr; do
+					json_add_string "" "$addr"
+				done
+				json_close_array
+
+				check_wan_iface_bootstrap "$wanif" && json_add_boolean "bootstrap" "1"
+			fi
+			json_dump
+			;;
+		esac
+		;;
+	esac
+}
+
+# 1: Is interface IPv6
+# 2: Destination variable
+# 3: Consider inactive default routes if "true" (optional)
+# 4: Interface number limit
+find_wan() {
+	if [ "$1" -eq 1 ]; then
+		network_find_wan6 "$2" "$3"
+	else
+		network_find_wan "$2" "$3" "$4"
+	fi
+	return $?
+}
+
+# 1: Is interface IPv6
+# 2: Destination variable
+# 3: Interface name
+get_ipaddrs() {
+	if [ "$1" -eq 1 ]; then
+		network_get_ipaddrs6 "$2" "$3"
+	else
+		network_get_ipaddrs "$2" "$3"
+	fi
+	return $?
+}
+
+get_device_bootstrap_status() {
+	for sim in $(seq 16); do
+		local boot_profile
+		boot_profile=$(/sbin/mnf_info -d "$sim" 2>/dev/null)
+		[ "$boot_profile" = "N/A" ] && continue
+		[ -z "$boot_profile" ] && return 1
+		return 0
+	done
+	return 1
+}
+
+check_wan_iface_bootstrap() {
+	local wanif="$1"
+	get_device_bootstrap_status || return 1
+
+	config_load network
+
+	local bootstrap
+
+	config_get bootstrap "${wanif%_*}" bootstrap
+
+	[ "$bootstrap" = "1" ]
+}
+
+get_wan_iface() {
+	if ! find_wan "$1" wanif "" 10; then
+		wanif=""
+		return
+	fi
+
+	[ -d "$MWAN_TRACK_DIR" ] && [ $IGNORE_FAILOVER -eq 0 ] && {
+		config_load mwan3
+		config_foreach parse_mwan3_wan member
+	}
+
+	if [ -z $MIN_WANIF ]; then
+		for i in $wanif; do
+			network_get_metric metric "$i"
+			network_get_protocol proto "$i"
+			[ "$metric" -gt "$MIN_METRIC" ] || [ -z "$proto" ] && continue
+			[ $INCLUDE_VPN -eq 0 ] && [[ "$EXCLUDE_PROTOS" == *"$proto"* ]] && continue
+			MIN_METRIC="$metric"
+			MIN_WANIF="$i"
+		done
+	fi
+
+	echo "$MIN_WANIF"
+}
+
+parse_mwan3_wan() {
+	local section="$1"
+
+	! echo "$section" | grep -q "_member_mwan" && return
+
+	config_get metric "$section" metric "999999"
+	config_get iface "$section" interface ""
+	network_get_protocol proto "$iface"
+	local is_online=0
+
+	grep -qE '^online$' "${MWAN_TRACK_DIR}/${iface}/STATUS" 2>/dev/null && is_online=1
+
+	[ $is_online -eq 0 ] || [ "$metric" -gt "$MIN_METRIC" ] || [ -z "$proto" ] && return
+	[ $INCLUDE_VPN -eq 0 ] && [[ "$EXCLUDE_PROTOS" == *"$proto"* ]] && return
+	MIN_METRIC="$metric"
+	MIN_WANIF="$iface"
+}
+
+wanif_to_state() {
+	local wandev
+	network_get_device wandev "$1"
+	case "$wandev" in
+	"wwan"* | "rmnet"* | "qmimux"* | "usb"* | "ppp-"*) echo "Mobile" ;;
+	"eth"* | "wan"* | "pppoe-"* | *"_to_wan") echo "Wired" ;;
+	"wlan"* | "apcli"* | "ath"*) echo "WiFi" ;;
+	esac
+}
+
+wanif_to_wanadr() {
+	local wanadr
+	local wanif="$2"
+	for i in "" _4 _6; do
+		get_ipaddrs "$1" wanadr "${wanif}${i}"
+		[ -n "$wanadr" ] && break
+	done
+	echo "$wanadr"
+}
+
+main "$@"

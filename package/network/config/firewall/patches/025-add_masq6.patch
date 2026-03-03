@@ -1,0 +1,88 @@
+--- a/options.h
++++ b/options.h
+@@ -363,6 +363,7 @@ struct fw3_zone
+ 	const char *extra_dest;
+ 
+ 	bool masq;
++	bool masq6;
+ 	bool masq_allow_invalid;
+ 	struct list_head masq_src;
+ 	struct list_head masq_dest;
+--- a/zones.c
++++ b/zones.c
+@@ -37,8 +37,8 @@ static const struct fw3_chain_spec zone_
+ 	C(ANY, FILTER, REJECT,        "zone_?_dest_REJECT"),
+ 	C(ANY, FILTER, DROP,          "zone_?_dest_DROP"),
+ 
+-	C(V4,  NAT,    SNAT,          "zone_?_postrouting"),
+-	C(V4,  NAT,    DNAT,          "zone_?_prerouting"),
++	C(ANY,  NAT,   SNAT,          "zone_?_postrouting"),
++	C(ANY,  NAT,   DNAT,          "zone_?_prerouting"),
+ 
+ 	C(ANY, RAW,    HELPER,        "zone_?_helper"),
+ 	C(ANY, RAW,    NOTRACK,       "zone_?_notrack"),
+@@ -47,8 +47,8 @@ static const struct fw3_chain_spec zone_
+ 	C(ANY, FILTER, CUSTOM_CHAINS, "output_?_rule"),
+ 	C(ANY, FILTER, CUSTOM_CHAINS, "forwarding_?_rule"),
+ 
+-	C(V4,  NAT,    CUSTOM_CHAINS, "prerouting_?_rule"),
+-	C(V4,  NAT,    CUSTOM_CHAINS, "postrouting_?_rule"),
++	C(ANY,  NAT,   CUSTOM_CHAINS, "prerouting_?_rule"),
++	C(ANY,  NAT,   CUSTOM_CHAINS, "postrouting_?_rule"),
+ 
+ 	C(ANY, FILTER, UNSPEC, "zone_?_port_scan"),
+ 
+@@ -75,6 +75,7 @@ const struct fw3_option fw3_zone_opts[]
+ 	FW3_OPT("output",              target,   zone,     policy_output),
+ 
+ 	FW3_OPT("masq",                bool,     zone,     masq),
++	FW3_OPT("masq6",               bool,     zone,     masq6),
+ 	FW3_OPT("masq_allow_invalid",  bool,     zone,     masq_allow_invalid),
+ 	FW3_LIST("masq_src",           network,  zone,     masq_src),
+ 	FW3_LIST("masq_dest",          network,  zone,     masq_dest),
+@@ -319,10 +320,18 @@ fw3_load_zones(struct fw3_state *state,
+ 			fw3_setbit(zone->flags[0], FW3_FLAG_SNAT);
+ 		}
+ 
++		if (zone->masq6)
++		{
++			fw3_setbit(zone->flags[1], FW3_FLAG_SNAT);
++		}
++
+ 		if (zone->custom_chains)
+ 		{
+ 			fw3_setbit(zone->flags[0], FW3_FLAG_SNAT);
+ 			fw3_setbit(zone->flags[0], FW3_FLAG_DNAT);
++
++			fw3_setbit(zone->flags[1], FW3_FLAG_SNAT);
++			fw3_setbit(zone->flags[1], FW3_FLAG_DNAT);
+ 		}
+ 
+ 		resolve_cthelpers(state, e, zone);
+@@ -810,6 +819,13 @@ print_zone_rule(struct fw3_ipt_handle *h
+ 				}
+ 			}
+ 		}
++
++		if (zone->masq6 && handle->family == FW3_FAMILY_V6)
++		{
++			r = fw3_ipt_rule_new(handle);
++			fw3_ipt_rule_target(r, "MASQUERADE");
++			fw3_ipt_rule_append(r, "zone_%s_postrouting", zone->name);
++		}
+ 		break;
+ 
+ 	case FW3_TABLE_RAW:
+--- a/defaults.c
++++ b/defaults.c
+@@ -29,8 +29,8 @@ static const struct fw3_chain_spec defau
+ 	C(ANY, FILTER, CUSTOM_CHAINS, "forwarding_rule"),
+ 	C(ANY, FILTER, SYN_FLOOD,     "syn_flood"),
+ 
+-	C(V4,  NAT,    CUSTOM_CHAINS, "prerouting_rule"),
+-	C(V4,  NAT,    CUSTOM_CHAINS, "postrouting_rule"),
++	C(ANY,  NAT,   CUSTOM_CHAINS, "prerouting_rule"),
++	C(ANY,  NAT,   CUSTOM_CHAINS, "postrouting_rule"),
+ 
+ 	{ }
+ };

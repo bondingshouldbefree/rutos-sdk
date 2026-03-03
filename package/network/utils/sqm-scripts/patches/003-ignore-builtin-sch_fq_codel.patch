@@ -1,0 +1,12 @@
+Index: sqm-scripts-1.5.1/src/functions.sh
+===================================================================
+--- sqm-scripts-1.5.1.orig/src/functions.sh
++++ sqm-scripts-1.5.1/src/functions.sh
+@@ -227,6 +227,7 @@ cmd_wrapper(){
+ 
+ do_modules() {
+     for m in $ALL_MODULES; do
++        [ "$m" = "sch_fq_codel" ] && continue
+         [ -d /sys/module/${m} ] || ${INSMOD} $m 2>>${OUTPUT_TARGET}
+     done
+ }

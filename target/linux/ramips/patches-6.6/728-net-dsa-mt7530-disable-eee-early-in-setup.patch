@@ -1,0 +1,51 @@
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -88,6 +88,37 @@ mt7530_mutex_unlock(struct mt7530_priv *
+ 		mutex_unlock(&priv->bus->mdio_lock);
+ }
+ 
++static int
++write_mmd_indirect(struct mt7530_priv *priv, int port, int prtad,
++			int devad, u32 data)
++{
++	struct mii_bus *bus = priv->bus;
++	int ret;
++
++	/* Write the desired MMD Devad */
++	ret = bus->write(bus, port, MII_MMD_CTRL, devad);
++	if (ret < 0)
++		goto err;
++
++	/* Write the desired MMD register address */
++	ret = bus->write(bus, port, MII_MMD_DATA, prtad);
++	if (ret < 0)
++		goto err;
++
++	/* Select the Function : DATA with no post increment */
++	ret = bus->write(bus, port, MII_MMD_CTRL, (devad | MII_MMD_CTRL_NOINCR));
++	if (ret < 0)
++		goto err;
++
++	/* Write the data into MMD's selected register */
++	ret = bus->write(bus, port, MII_MMD_DATA, data);
++err:
++	if (ret < 0)
++		dev_err(&bus->dev,
++			"failed to write mmd register\n");
++	return ret;
++}
++
+ static void
+ core_write(struct mt7530_priv *priv, u32 reg, u32 val)
+ {
+@@ -2386,6 +2417,10 @@ mt7530_setup(struct dsa_switch *ds)
+ 		mt7530_rmw(priv, MT7530_TRGMII_RD(i),
+ 			   RD_TAP_MASK, RD_TAP(16));
+ 
++	for (i = 0; i < MT7530_NUM_PHYS; i++) {
++		write_mmd_indirect(priv, i, MDIO_AN_EEE_ADV, MDIO_MMD_AN, 0x0);
++	}
++
+ 	/* Allow modifying the trap and directly access PHY registers via the
+ 	 * MDIO bus the switch is on.
+ 	 */

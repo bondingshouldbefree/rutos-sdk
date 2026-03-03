@@ -1,0 +1,29 @@
+Description: NFLOG functionality for tcpdump in minimal configuration
+Author: Julius Barzdziukas <julius.barzdziukas@teltonika.lt>
+Last-Update: 2025-05-08
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+--- a/print.c
++++ b/print.c
+@@ -184,11 +184,9 @@
+ #ifdef DLT_NETANALYZER_TRANSPARENT
+ 	{ netanalyzer_transparent_if_print, DLT_NETANALYZER_TRANSPARENT },
+ #endif
+-#ifndef TCPDUMP_MINI
+ #ifdef DLT_NFLOG
+ 	{ nflog_if_print,	DLT_NFLOG},
+ #endif
+-#endif
+ 	{ null_if_print,	DLT_NULL },
+ #ifdef DLT_LOOP
+ 	{ null_if_print,	DLT_LOOP },
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -120,6 +120,7 @@
+ 	print-lldp.c \
+ 	print-loopback.c \
+ 	print-macsec.c \
++	print-nflog.c \
+ 	print-nfs.c \
+ 	print-ntp.c \
+ 	print-null.c \

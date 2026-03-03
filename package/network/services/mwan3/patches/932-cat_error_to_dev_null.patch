@@ -1,0 +1,47 @@
+--- a/files/usr/share/15-mwan3
++++ b/files/usr/share/15-mwan3
+@@ -64,7 +64,7 @@ LOG notice "Execute $ACTION event on int
+ 
+ case "$ACTION" in
+ 	connected)
+-		wan_status=$(cat "/var/run/mwan3track/${IFNAME}/STATE")
++		wan_status=$(cat "/var/run/mwan3track/${IFNAME}/STATE" 2>/dev/null)
+ 		[ "$wan_status" = "connected" ] && return
+ 
+ 		echo "connected" > /var/run/mwan3track/${IFNAME}/STATE
+@@ -119,7 +119,7 @@ restart_ipsec() {
+ 	config_get ipsec_enabled "$conn_name" enabled 0
+ 	ipsec_restarted=false
+ 
+-	active="$(cat /tmp/run/mwan3/active_wan)"
++	active="$(cat /tmp/run/mwan3/active_wan 2>/dev/null)"
+ 	if [ "$MWAN3_STARTUP" != "init" ] && [ "$ipsec_enabled" = "1" ]; then
+ 		case "$ACTION" in
+ 			ifup|connected)
+@@ -148,7 +148,7 @@ restart_ipsec() {
+ 
+ ipsec_routes() {
+ 	$ipsec_restarted || return 0
+-	local wan_device="$(cat /var/run/mwan3/active_wan)"
++	local wan_device="$(cat /var/run/mwan3/active_wan 2>/dev/null)"
+ 	mwan3_get_true_iface "wan_device" "$wan_device"
+ 	network_get_device "wan_device" "$wan_device"
+ 	local curr="$(ip route show default dev "$wan_device")"
+@@ -164,7 +164,7 @@ restart_openvpn() {
+ 	local restart=0
+ 	config_get enable "$sid" enable
+ 	config_get inst_type "$sid" type
+-	active="$(cat /tmp/run/mwan3/active_wan)"
++	active="$(cat /tmp/run/mwan3/active_wan 2>/dev/null)"
+ 	if [ "$MWAN3_STARTUP" != "init" ] && [ "$enable" = "1" ] && [ "$inst_type" = "client" ]; then
+ 		case "$ACTION" in
+ 			ifup|connected)
+@@ -188,7 +188,7 @@ restart_vpn_services() {
+ 	local restart=0
+ 	config_get disabled "$sid" disabled
+ 	config_get proto "$sid" proto
+-	active="$(cat /tmp/run/mwan3/active_wan)"
++	active="$(cat /tmp/run/mwan3/active_wan 2>/dev/null)"
+ 	if [ "$MWAN3_STARTUP" != "init" ] && [ "$disabled" != "1" ] && { [ "$proto" = "l2tp" ] || [ "$proto" = "wireguard" ]; } && [ "$IFNAME" != "$sid" ]; then
+ 		case "$ACTION" in
+ 			ifup|connected)

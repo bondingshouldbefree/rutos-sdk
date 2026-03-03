@@ -1,0 +1,1225 @@
+Index: ubox-2020-10-25-9ef88681/log/logread.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/logread.c
++++ ubox-2020-10-25-9ef88681/log/logread.c
+@@ -68,10 +68,10 @@ enum {
+ 
+ CODE log_facility_names[] =
+ {
+-	{ "EVENTS", LOG_EVENTS },
+-	{ "SYSTEM", LOG_SYSTEM },
+-	{ "NETWORK", LOG_NETWORK },
+-	{ "CONNECTIONS", LOG_CONNECTIONS },
++	{ "EVENTS", LOG_LOCAL0 },
++	{ "SYSTEM", LOG_LOCAL1 },
++	{ "NETWORK", LOG_LOCAL2 },
++	{ "CONNECTIONS", LOG_LOCAL3 },
+ 	{ NULL, -1 }
+ };
+ 
+@@ -84,6 +84,30 @@ CODE log_facility_names_net[] =
+ 	{ "kernel: ", -1 }
+ };
+ 
++CODE custom_facilitynames[] = {
++	{ "kern", LOG_KERN },
++	{ "user", LOG_USER },
++	{ "mail", LOG_MAIL },
++	{ "daemon", LOG_DAEMON },
++	{ "auth", LOG_AUTH },
++	{ "syslog", LOG_SYSLOG },
++	{ "lpr", LOG_LPR },
++	{ "news", LOG_NEWS },
++	{ "uucp", LOG_UUCP },
++	{ "cron", LOG_CRON },
++	{ "authpriv", LOG_AUTHPRIV },
++	{ "ftp", LOG_FTP },
++	{ "events", LOG_LOCAL0 },     // local0 is "events"
++	{ "system", LOG_LOCAL1 },    // local1 is "system"
++	{ "network", LOG_LOCAL2 }, // local2 is "network"
++	{ "connections", LOG_LOCAL3 },     // local3 is "connections"
++	{ "local4", LOG_LOCAL4 },
++	{ "local5", LOG_LOCAL5 },
++	{ "local6", LOG_LOCAL6 },
++	{ "local7", LOG_LOCAL7 },
++	{ NULL, -1 }
++};
++
+ static const struct blobmsg_policy log_policy[] = {
+ 	[LOG_MSG] = { .name = "msg", .type = BLOBMSG_TYPE_STRING },
+ 	[LOG_ID] = { .name = "id", .type = BLOBMSG_TYPE_INT32 },
+@@ -133,7 +157,7 @@ static void log_handle_reconnect(struct
+ 		uloop_timeout_set(&retry, 1000);
+ 	} else {
+ 		uloop_fd_add(&sender, ULOOP_READ);
+-		syslog(LOG_INFO, "Logread connected to %s:%s\n", log_ip, log_port);
++		fprintf(stdout, "Logread connected to %s:%s\n", log_ip, log_port);
+ 	}
+ }
+ 
+@@ -191,6 +215,15 @@ static int log_notify(struct blob_attr *
+ 	if (tb[LOG_DB])
+ 		db_flag = blobmsg_get_u32(tb[LOG_DB]);
+ 
++	p = blobmsg_get_u32(tb[LOG_PRIO]);
++
++	if (LOG_FAC(p) == (LOG_LOCAL0 >> 3) ||
++		LOG_FAC(p) == (LOG_LOCAL1 >> 3) ||
++		LOG_FAC(p) == (LOG_LOCAL2 >> 3) ||
++		LOG_FAC(p) == (LOG_LOCAL3 >> 3)) {
++		db_flag = 1;
++	}
++
+ 	id = blobmsg_get_u32(tb[LOG_ID]);
+ 
+ 	// Rotate log file
+@@ -227,8 +260,8 @@ static int log_notify(struct blob_attr *
+ 			fprintf(stderr, "failed to open %s: %m\n", log_file);
+ 			exit(-1);
+ 		}
++		chmod(log_file, 0660);
+ 	}
+-	p = blobmsg_get_u32(tb[LOG_PRIO]);
+ 
+ 	if (!check_facility_filter(LOG_FAC(p)))
+ 			return 0;
+@@ -288,18 +321,36 @@ static int log_notify(struct blob_attr *
+ 		}
+ 	} else {
+ 		if (msg_sender && db_flag == 1 && log_db_init) {
+-			action = find_action((char *)getcodetext(src, log_facility_names));
++			const char *facility_name = getcodetext(src, log_facility_names);
++			if (strcmp(facility_name, "<unknown>") == 0) {
++				facility_name = getcodetext(LOG_FAC(p) << 3, custom_facilitynames);
++				if (strcmp(facility_name, "<unknown>") == 0) {
++					facility_name = "SYSTEM";
++				}
++			}
++
++			action = find_action((char *)facility_name);
+ 			sqlite3_stmt *stmt = NULL;
+ 			char INSERT_QUERY[256] = { 0 };
+ 			snprintf(
+ 				INSERT_QUERY, sizeof(INSERT_QUERY),
+ 				"INSERT INTO %s ('TIME', 'NAME', 'TYPE', 'TEXT') VALUES(?, ?, ?, ?);",
+-				getcodetext(src, log_facility_names));
++				facility_name);
++
+ 
+ 			if((stmt = db_prepare(INSERT_QUERY)) == NULL) {
+ 				return -1;
+ 			}
+ 
++			if (m) {
++				size_t sender_len = strlen(msg_sender);
++				if (strncmp(m, msg_sender, sender_len) == 0 && m[sender_len] == ':') {
++					m += sender_len + 1;
++					while (*m == ' ')
++						m++;
++				}
++			}
++
+ 			int i = 1;
+ 			if ( sqlite3_bind_int64(stmt, i++, t) != SQLITE_OK ||
+ 				sqlite3_bind_text(stmt, i++, msg_sender, strlen(msg_sender), SQLITE_STATIC) != SQLITE_OK ||
+@@ -327,16 +378,19 @@ static int log_notify(struct blob_attr *
+ 
+ 			ret = write(sender.fd, buf, strlen(buf));
+ 		} else {
++			const char *prefix = getcodetext(src, custom_facilitynames);
++			if (prefix && strcmp(prefix, "<unknown>") == 0) {
++				prefix = getcodetext(LOG_FAC(p) << 3, custom_facilitynames);
++			}
+ 			snprintf(buf, sizeof(buf), "%u %s %s%s.%s%s %s\n",
+-				 id, c, log_timestamp ? buf_ts : "",
+-				 getcodetext(LOG_FAC(p) << 3, facilitynames),
+-				 getcodetext(LOG_PRI(p), prioritynames),
+-				 (blobmsg_get_u32(tb[LOG_SOURCE])) ? ("") : (" kernel:"), m);
++				id, c, log_timestamp ? buf_ts : "",
++				prefix,
++				getcodetext(LOG_PRI(p), prioritynames),
++				(blobmsg_get_u32(tb[LOG_SOURCE])) ? ("") : (" kernel:"), m);
+ 
+ 			ret = write(sender.fd, buf, strlen(buf));
+ 		}
+ 	}
+-	chmod(compressed_file, 0660);
+ 
+ 	if (log_type == LOG_FILE)
+ 		fsync(sender.fd);
+Index: ubox-2020-10-25-9ef88681/log/servicelog.c
+===================================================================
+--- /dev/null
++++ ubox-2020-10-25-9ef88681/log/servicelog.c
+@@ -0,0 +1,370 @@
++#include "file_utils.h"
++#include <stdio.h>
++#include <time.h>
++#include <string.h>
++#include <errno.h>
++#include <stdlib.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++#include <pthread.h>
++#include <syslog.h>
++#include <dirent.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++
++#include "syslog.h"
++#include "servicelog.h"
++
++typedef struct {
++	const char *c_name;
++	int c_val;
++} CODE;
++
++static const CODE facilitynames[] = {
++	{ "kern", LOG_KERN },
++	{ "user", LOG_USER },
++	{ "mail", LOG_MAIL },
++	{ "daemon", LOG_DAEMON },
++	{ "auth", LOG_AUTH },
++	{ "syslog", LOG_SYSLOG },
++	{ "lpr", LOG_LPR },
++	{ "news", LOG_NEWS },
++	{ "uucp", LOG_UUCP },
++	{ "cron", LOG_CRON },
++	{ "authpriv", LOG_AUTHPRIV },
++	{ "ftp", LOG_FTP },
++	{ "local0", LOG_LOCAL0 },
++	{ "local1", LOG_LOCAL1 },
++	{ "local2", LOG_LOCAL2 },
++	{ "local3", LOG_LOCAL3 },
++	{ "local4", LOG_LOCAL4 },
++	{ "local5", LOG_LOCAL5 },
++	{ "local6", LOG_LOCAL6 },
++	{ "local7", LOG_LOCAL7 },
++	{ NULL, -1 }
++};
++
++static const CODE prioritynames[] = {
++	{ "emerg", LOG_EMERG },
++	{ "alert", LOG_ALERT },
++	{ "crit", LOG_CRIT },
++	{ "err", LOG_ERR },
++	{ "warn", LOG_WARNING },
++	{ "notice", LOG_NOTICE },
++	{ "info", LOG_INFO },
++	{ "debug", LOG_DEBUG },
++	{ NULL, -1 }
++};
++
++static const char *getcodetext(int value, const CODE *codetable)
++{
++	if (value < 0)
++		return "<unknown>";
++
++	for (const CODE *i = codetable; i->c_val != -1; i++) {
++		if (i->c_val == value)
++			return i->c_name;
++	}
++
++	return "<unknown>";
++}
++
++static long get_service_logs_total_size(void)
++{
++	DIR *dir = opendir(SERVICE_LOG_PATH);
++	if (!dir) {
++		fprintf(stderr, "Failed to open service log directory: %s\n",
++			SERVICE_LOG_PATH);
++		return 0;
++	}
++
++	long total_size = 0;
++	struct dirent *entry;
++	struct stat st;
++	char path[512];
++
++	while ((entry = readdir(dir)) != NULL) {
++		if (entry->d_name[0] == '.')
++			continue;
++
++		snprintf(path, sizeof(path), "%s%s", SERVICE_LOG_PATH, entry->d_name);
++		if (stat(path, &st) == 0)
++			total_size += st.st_size;
++	}
++
++	closedir(dir);
++	return total_size;
++}
++
++typedef struct {
++	char path[512];
++	time_t mtime;
++} log_file_t;
++
++static int compare_mtime(const void *a, const void *b)
++{
++	const log_file_t *fa = a;
++	const log_file_t *fb = b;
++	return (fa->mtime > fb->mtime) - (fa->mtime < fb->mtime);
++}
++
++static int collect_log_files(log_file_t **files, int *count)
++{
++	DIR *dir = opendir(SERVICE_LOG_PATH);
++	if (!dir)
++		return -1;
++
++	*count = 0;
++	struct dirent *entry;
++	while ((entry = readdir(dir)) != NULL) {
++		if (entry->d_name[0] != '.')
++			(*count)++;
++	}
++	rewinddir(dir);
++
++	if (*count == 0) {
++		closedir(dir);
++		return 0;
++	}
++
++	*files = malloc(*count * sizeof(log_file_t));
++	if (!*files) {
++		closedir(dir);
++		return -1;
++	}
++
++	int i = 0;
++	struct stat st;
++	while ((entry = readdir(dir)) != NULL && i < *count) {
++		if (entry->d_name[0] == '.')
++			continue;
++
++		snprintf((*files)[i].path, sizeof((*files)[i].path), "%s%s",
++			 SERVICE_LOG_PATH, entry->d_name);
++
++		if (stat((*files)[i].path, &st) == 0) {
++			(*files)[i].mtime = st.st_mtime;
++			i++;
++		}
++	}
++
++	closedir(dir);
++	*count = i;
++	return 0;
++}
++
++static void delete_oldest_files(log_file_t *files, int count, long size_limit,
++				long total_size)
++{
++	struct stat st;
++
++	for (int i = 0; i < count && total_size > size_limit; i++) {
++		if (stat(files[i].path, &st) == 0) {
++			total_size -= st.st_size;
++			unlink(files[i].path);
++		}
++	}
++}
++
++static int manage_service_logs_directory(int service_logs)
++{
++	if (service_logs <= 0)
++		return 0;
++
++	struct stat st;
++	if (stat(SERVICE_LOG_PATH, &st) == -1) {
++		mkdir(SERVICE_LOG_PATH, 0755);
++		return 0;
++	}
++
++	long total_size = get_service_logs_total_size();
++	long size_limit = service_logs * 1024;
++
++	if (total_size <= size_limit)
++		return 0;
++
++	log_file_t *files = NULL;
++	int file_count = 0;
++
++	if (collect_log_files(&files, &file_count) < 0)
++		return -1;
++
++	if (file_count == 0)
++		return 0;
++
++	qsort(files, file_count, sizeof(log_file_t), compare_mtime);
++	delete_oldest_files(files, file_count, size_limit, total_size);
++
++	free(files);
++	return 0;
++}
++
++static int format_log_line(char *buf, size_t size, const struct log_head *log,
++			   const char *time_str)
++{
++	const char *fac_name = getcodetext(LOG_FAC(log->priority) << 3, facilitynames);
++	const char *prio_name = getcodetext(LOG_PRI(log->priority), prioritynames);
++
++	int len = snprintf(buf, size, "%u %s %s.%s %.*s\n",
++			   log->id, time_str, fac_name, prio_name,
++			   log->size, log->data);
++
++	if (len < 0 || len >= (int)size) {
++		fprintf(stderr, "Log message too long, truncated\n");
++		len = size - 1;
++		buf[len] = '\0';
++	}
++
++	return len;
++}
++
++int write_service_log(const char *sender, const struct log_head *log, int service_logs)
++{
++	if (!sender || !log || log->size == 0 || !log->data)
++		return -1;
++
++	manage_service_logs_directory(service_logs);
++
++	char log_file_path[512];
++	snprintf(log_file_path, sizeof(log_file_path), "%s%s.log",
++		 SERVICE_LOG_PATH, sender);
++
++	struct tm tm_info;
++	localtime_r(&log->ts.tv_sec, &tm_info);
++	char time_str[64];
++	strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
++
++	char log_line[MAX_LOG_MSG];
++	format_log_line(log_line, sizeof(log_line), log, time_str);
++	size_t log_len = strlen(log_line);
++
++	// Use file_utils rotation (no compression for service logs)
++	rotate_log_file_if_needed(log_file_path, SERVICE_LOG_MAX_SIZE, 0);
++
++	if (write_log_file(log_file_path, log_line, log_len) < 0) {
++		fprintf(stderr, "Failed to write to log file %s: %s\n",
++			log_file_path, strerror(errno));
++		return -1;
++	}
++
++	return 0;
++}
++
++static void extract_sender_base(const char *sender, char *base, size_t size)
++{
++	strncpy(base, sender, size - 1);
++	base[size - 1] = '\0';
++
++	char *at = strchr(base, '@');
++	if (at)
++		*at = '\0';
++}
++
++static int find_service_levels(const struct log_config *cfg, const char *sender)
++{
++	if (!cfg || !sender)
++		return -1;
++
++	char sender_base[128];
++	extract_sender_base(sender, sender_base, sizeof(sender_base));
++
++	for (uint8_t i = 0; i < cfg->service_count; i++) {
++		char service_base[128];
++		extract_sender_base(cfg->services[i].name, service_base, sizeof(service_base));
++
++		if (strcmp(sender_base, service_base) == 0) {
++			return cfg->services[i].levels;
++		}
++	}
++
++	return -1;
++}
++
++int get_service_log_level(const struct log_config *cfg, const char *sender)
++{
++	int levels = find_service_levels(cfg, sender);
++	return (levels >= 0) ? levels : cfg->global_levels;
++}
++
++int process_service_log(struct log_config *cfg, const char *sender,
++			const struct log_head *log)
++{
++	if (!cfg || !sender || !log)
++		return -1;
++
++	int service_log_level = find_service_levels(cfg, sender);
++	if (service_log_level < 0)
++		return 0;
++
++	int severity = log->priority & 7;
++	if (severity > service_log_level)
++		return 1;
++
++	return write_service_log(sender, log, cfg->service_logs);
++}
++
++static void send_to_client(int fd, const char *msg, int *clients, int index)
++{
++	if (send(fd, msg, strlen(msg), 0) < 0) {
++		close(fd);
++		clients[index] = -1;
++	}
++}
++
++static void notify_globally(pthread_mutex_t *clients_mtx, int *clients,
++			    const char *msg)
++{
++	pthread_mutex_lock(clients_mtx);
++
++	for (int i = 0; i < MAX_CLIENTS; i++) {
++		if (clients[i] >= 0)
++			send_to_client(clients[i], msg, clients, i);
++	}
++
++	pthread_mutex_unlock(clients_mtx);
++}
++
++static void notify_service_levels(pthread_mutex_t *clients_mtx, int *clients,
++				  const struct log_config *cfg)
++{
++	pthread_mutex_lock(clients_mtx);
++
++	for (int i = 0; i < MAX_CLIENTS; i++) {
++		if (clients[i] < 0)
++			continue;
++
++		for (uint8_t j = 0; j < cfg->service_count; j++) {
++			if (!cfg->services[j].require_notify)
++				continue;
++
++			char msg[128];
++			snprintf(msg, sizeof(msg), "%s.log_level=%d\n",
++				 cfg->services[j].name, cfg->services[j].levels);
++
++			if (send(clients[i], msg, strlen(msg), 0) < 0) {
++				close(clients[i]);
++				clients[i] = -1;
++				break;
++			}
++		}
++	}
++
++	pthread_mutex_unlock(clients_mtx);
++}
++
++int notify_services(const struct log_config *cfg, pthread_mutex_t *clients_mtx,
++		    int *clients)
++{
++	if (!cfg)
++		return -1;
++
++	char global_msg[128];
++	snprintf(global_msg, sizeof(global_msg), "global.log_level=%u\n",
++		 cfg->global_levels);
++
++	notify_globally(clients_mtx, clients, global_msg);
++	notify_service_levels(clients_mtx, clients, cfg);
++
++	return 0;
++}
+\ No newline at end of file
+Index: ubox-2020-10-25-9ef88681/log/servicelog.h
+===================================================================
+--- /dev/null
++++ ubox-2020-10-25-9ef88681/log/servicelog.h
+@@ -0,0 +1,14 @@
++#ifndef SERVICELOG_H
++#define SERVICELOG_H
++
++#include "syslog.h"
++
++#define SERVICE_LOG_PATH "/var/run/logd/services/"
++#define MAX_LOG_MSG 1024
++#define SERVICE_LOG_MAX_SIZE (10 * 1024) // 10 KB
++
++int write_service_log(const char *sender, const struct log_head *log, int service_logs);
++int get_service_log_level(const struct log_config *cfg, const char *sender);
++int process_service_log(struct log_config *cfg, const char *sender, const struct log_head *log);
++int notify_services(const struct log_config *cfg, pthread_mutex_t *clients_mtx, int *clients);
++#endif
+\ No newline at end of file
+Index: ubox-2020-10-25-9ef88681/log/syslog.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/syslog.c
++++ ubox-2020-10-25-9ef88681/log/syslog.c
+@@ -33,12 +33,14 @@
+ #include <glob.h>
+ #include <zlib.h>
+ #include <libgen.h>
++#include <pthread.h>
+ 
+ #include <libubox/uloop.h>
+ #include <libubox/usock.h>
+ #include <libubox/ustream.h>
+ 
+ #include "syslog.h"
++#include "servicelog.h"
+ 
+ #define LOG_DEFAULT_SIZE	(16 * 1024)
+ #define LOG_DEFAULT_SOCKET	"/var/run/logd/log"
+@@ -48,6 +50,14 @@
+ 
+ #define PAD(x) (x % 4) ? (((x) - (x % 4)) + 4) : (x)
+ 
++static struct log_config cfg = {
++	.global_levels = DEFAULT_BITMASK,
++	.eventlog_level = DEFAULT_BITMASK,
++	.size = LOG_DEFAULT_SIZE,
++	.service_logs = 0,
++	.service_count = 0,
++};
++
+ static char *log_dev = LOG_DEFAULT_SOCKET;
+ static int log_size = LOG_DEFAULT_SIZE;
+ static struct log_head *log, *log_end, *oldest, *newest;
+@@ -55,6 +65,9 @@ static int current_id = 0;
+ static bool inited = false;
+ static regex_t pat_prio;
+ static regex_t pat_tstamp;
++static int log_socket_fd = -1;
++pthread_mutex_t clients_mtx = PTHREAD_MUTEX_INITIALIZER;
++static int clients[MAX_CLIENTS] = {0};
+ 
+ struct log_entry {
+ 	unsigned int id;
+@@ -142,8 +155,11 @@ log_add(char *buf, int size, int source)
+ 	regmatch_t matches[4];
+ 	struct log_head *next;
+ 	int priority = 0;
++	int facility = 0;
+ 	int ret;
+ 	char *c;
++	char sender[64] = {0};
++	bool no_syslog = false;
+ 
+ 	/* bounce out if we don't have init'ed yet (regmatch etc will blow) */
+ 	if (!log) {
+@@ -168,6 +184,11 @@ log_add(char *buf, int size, int source)
+ 	ret = regexec(&pat_prio, buf, 3, matches, 0);
+ 	if (!ret) {
+ 		priority = atoi(&buf[matches[1].rm_so]);
++		int severity = priority & 7;
++		facility = priority - severity;
++		if (!(cfg.global_levels & (1U << severity)))
++			no_syslog = true;
++
+ 		size -= matches[2].rm_so;
+ 		buf += matches[2].rm_so;
+ 	}
+@@ -187,22 +208,49 @@ log_add(char *buf, int size, int source)
+ 		buf += SYSLOG_PADDING;
+ 	}
+ 
+-	//fprintf(stderr, "-> %d - %s\n", priority, buf);
++	char *colon = strchr(buf, ':');
++	if (colon) {
++		char *end   = colon;
++		char *start = buf;
++
++		while (start < end && isspace(*start))
++			start++;
++
++		size_t len = end - start;
++		if (len > 0 && len < sizeof(sender)) {
++			strncpy(sender, start, len);
++			sender[len] = '\0';
++
++			char *bracket = strchr(sender, '[');
++			if (bracket)
++				*bracket = '\0';
++
++			size_t slen = strlen(sender);
++			while (slen > 0 && isspace(sender[slen - 1]))
++				sender[--slen] = '\0';
++		}
++	}
+ 
+-	/* find new oldest entry */
+ 	next = log_wrap(size);
+ 
+-	/* add the log message */
+ 	newest->size = size;
+ 	newest->id = current_id++;
+ 	newest->priority = priority;
+ 	newest->source = source;
+ 	clock_gettime(CLOCK_REALTIME, &newest->ts);
+ 	strcpy(newest->data, buf);
++	process_service_log(&cfg, sender, newest);
+ 
+-	ubus_notify_log(newest);
+-
+-	newest = next;
++	if (!no_syslog) {
++		if (facility == LOG_LOCAL0 || facility == LOG_LOCAL1 ||
++		    facility == LOG_LOCAL2 || facility == LOG_LOCAL3) {
++			strcpy(newest->data, buf);
++			ubus_notify_log_extended(newest, sender, 1);
++		} else {
++			ubus_notify_log(newest);
++		}
++		newest = next;
++	}
+ }
+ 
+ static void log_add_entry(struct log_entry *entry) {
+@@ -240,7 +288,7 @@ static void log_add_entry(struct log_ent
+ 	newest->ts.tv_sec = entry->timestamp;
+ 
+ 	if (entry->sender) {
+-		ubus_notify_log_extended(newest, entry->sender, 0);
++		log_add_extended(entry->msg, size, entry->sender, entry->source, entry->priority, 1);
+ 	} else {
+ 		ubus_notify_log(newest);
+ 	}
+@@ -307,7 +355,6 @@ syslog_handle_fd(struct uloop_fd *fd, un
+ 			break;
+ 
+ 		buf[len] = 0;
+-
+ 		log_add(buf, strlen(buf) + 1, SOURCE_SYSLOG);
+ 	}
+ }
+@@ -459,23 +506,178 @@ static void parse_log_line(const char *l
+ 	entry->priority = (entry->source * 8) + severity_code;
+ }
+ 
+-static char* load_log_path() {
+-	struct uci_context *ctx = uci_alloc_context();
+-	struct uci_ptr ptr;
+-	char uci_path[] = "system.system.log_file";
+-	char *log_file = NULL;
++static void parse_level_bitmask(struct uci_context *ctx, struct uci_section *s, const char *option_name,
++				uint32_t *levels)
++{
++	struct uci_option *opt = uci_lookup_option(ctx, s, option_name);
++	if (!opt || opt->type != UCI_TYPE_LIST)
++		return;
++
++	*levels = 0;
++	struct uci_element *le;
++	uci_foreach_element (&opt->v.list, le) {
++		int lvl = atoi(le->name);
++		if (lvl >= 0 && lvl < 32)
++			*levels |= (1U << lvl);
++	}
++}
++
++static void parse_global_config(struct uci_context *ctx, struct uci_section *s)
++{
++	const char *v;
++
++	if ((v = uci_lookup_option_string(ctx, s, "size")))
++		cfg.size = atoi(v) * 1024;
++	if ((v = uci_lookup_option_string(ctx, s, "eventlog_level")))
++		cfg.eventlog_level = atoi(v);
++	if ((v = uci_lookup_option_string(ctx, s, "service_logs")))
++		cfg.service_logs = atoi(v);
++	if ((v = uci_lookup_option_string(ctx, s, "log_path")))
++		strncpy(cfg.log_path, v, sizeof(cfg.log_path) - 1);
++
++	parse_level_bitmask(ctx, s, "log_levels", &cfg.global_levels);
++}
++
++static int find_service_index(struct service_log_cfg *services, int count, const char *name)
++{
++	for (int i = 0; i < count; i++) {
++		if (strcmp(services[i].name, name) == 0)
++			return i;
++	}
++	return -1;
++}
++
++static bool check_service_notify_needed(const char *name, uint32_t new_levels,
++					struct service_log_cfg *old_services, int old_count,
++					struct service_log_cfg *temp_services)
++{
++	int old_idx = find_service_index(old_services, old_count, name);
++
++	if (old_idx < 0)
++		return true; // New service
++
++	if (old_services[old_idx].levels != new_levels)
++		return true; // Levels changed
++
++	// Preserve old notify state if levels unchanged
++	int temp_idx = find_service_index(temp_services, old_count, name);
++	if (temp_idx >= 0)
++		return temp_services[temp_idx].require_notify;
++
++	return false;
++}
++
++static bool is_valid_service_name(const char *name)
++{
++	if (!name || !*name)
++		return false;
++
++	for (const char *p = name; *p; p++) {
++		if (!(isalnum(*p) || *p == '_' || *p == '-'))
++			return false;
++	}
+ 
++	if (strstr(name, ".."))
++		return false;
++
++	return true;
++}
++
++static void parse_service_config(struct uci_context *ctx, struct uci_section *s, bool reload,
++				 uint32_t old_global_levels, struct service_log_cfg *old_services,
++				 int old_service_count, struct service_log_cfg *temp_services)
++{
++	if (cfg.service_count >= 64)
++		return;
++
++	const char *name = uci_lookup_option_string(ctx, s, "name");
++
++	if (!is_valid_service_name(name)) {
++		fprintf(stderr, "Invalid service name in log configuration: %s\n", name ? name : "(null)");
++		return;
++	}
++
++	int idx			    = cfg.service_count;
++	struct service_log_cfg *svc = &cfg.services[idx];
++
++	strncpy(svc->name, name, sizeof(svc->name) - 1);
++
++	parse_level_bitmask(ctx, s, "log_levels", &svc->levels);
++
++	// If no levels defined, inherit global
++	if (svc->levels == 0)
++		svc->levels = cfg.global_levels;
++
++	if (reload) {
++		svc->require_notify = check_service_notify_needed(name, svc->levels, old_services,
++								  old_service_count, temp_services);
++	} else {
++		svc->require_notify = true;
++	}
++
++	cfg.service_count++;
++}
++
++static void update_global_level_changes(uint32_t old_global_levels, struct service_log_cfg *old_services,
++					int old_service_count)
++{
++	if (old_global_levels == cfg.global_levels)
++		return;
++
++	for (int i = 0; i < cfg.service_count; i++) {
++		int old_idx = find_service_index(old_services, old_service_count, cfg.services[i].name);
++
++		if (old_idx >= 0 && old_services[old_idx].levels == old_global_levels)
++			cfg.services[i].require_notify = true;
++	}
++}
++
++static void load_log_config(bool reload)
++{
++	uint32_t old_global_levels		 = 0;
++	int old_service_count			 = 0;
++	struct service_log_cfg old_services[64]	 = { 0 };
++	struct service_log_cfg temp_services[64] = { 0 };
++
++	if (reload) {
++		old_global_levels = cfg.global_levels;
++		old_service_count = cfg.service_count;
++		memcpy(old_services, cfg.services, sizeof(old_services));
++		memcpy(temp_services, cfg.services, sizeof(temp_services));
++	}
++
++	memset(&cfg, 0, sizeof(cfg));
++
++	struct uci_context *ctx = uci_alloc_context();
+ 	if (!ctx) {
+ 		fprintf(stderr, "Failed to allocate UCI context\n");
+-		return NULL;
++		return;
+ 	}
+ 
+-	if (uci_lookup_ptr(ctx, &ptr, uci_path, true) == UCI_OK && ptr.o && ptr.o->type == UCI_TYPE_STRING) {
+-		log_file = strdup(ptr.o->v.string);
++	struct uci_package *pkg = NULL;
++	if (uci_load(ctx, "log", &pkg) != UCI_OK) {
++		fprintf(stderr, "Failed to load log configuration, using defaults\n");
++		uci_free_context(ctx);
++		return;
+ 	}
+ 
++	struct uci_element *e;
++	uci_foreach_element (&pkg->sections, e) {
++		struct uci_section *s = uci_to_section(e);
++
++		if (strcmp(s->type, "global") == 0) {
++			parse_global_config(ctx, s);
++		} else if (strcmp(s->type, "logservice") == 0) {
++			parse_service_config(ctx, s, reload, old_global_levels, old_services,
++					     old_service_count, temp_services);
++		}
++	}
++
++	if (reload)
++		update_global_level_changes(old_global_levels, old_services, old_service_count);
++
++	uci_unload(ctx, pkg);
+ 	uci_free_context(ctx);
+-	return log_file;
+ }
+ 
+ static int compare_files(const void *a, const void *b) {
+@@ -649,11 +851,189 @@ log_buffer_init(int size)
+ 	return 0;
+ }
+ 
+-void
+-log_init(int _log_size)
++static int handle_client_msg(int fd)
+ {
+-	char *log_file = load_log_path();
++	char buf[256];
+ 
++	int n = read(fd, buf, sizeof(buf) - 1);
++	if (n < 0) {
++		if (errno == EAGAIN || errno == EWOULDBLOCK) {
++			return 0; // no data now, still connected
++		}
++		fprintf(stderr, "read");
++		return -1; // fatal error
++	} else if (n == 0) {
++		return -1;
++	}
++
++	buf[n] = '\0';
++	char prog[64];
++	if (sscanf(buf, "%63[^.].log_level?", prog) == 1) {
++		int level = get_service_log_level(&cfg, prog);
++		char reply[64];
++		snprintf(reply, sizeof(reply), "%d\n", level);
++
++		if (write(fd, reply, strlen(reply)) < 0) {
++			fprintf(stderr, "write");
++			return -1; // client disconnected while writing
++		}
++	}
++
++	return 0;
++}
++
++static void init_clients(void)
++{
++	for (int i = 0; i < MAX_CLIENTS; i++) {
++		clients[i] = -1;
++	}
++}
++
++static int accept_new_client(void)
++{
++	struct sockaddr_un addr;
++	socklen_t addrlen = sizeof(addr);
++	int new_fd	  = accept(log_socket_fd, (struct sockaddr *)&addr, &addrlen);
++
++	if (new_fd < 0) {
++		if (errno != EAGAIN && errno != EWOULDBLOCK)
++			fprintf(stderr, "accept error\n");
++		return -1;
++	}
++
++	fcntl(new_fd, F_SETFL, O_NONBLOCK);
++	return new_fd;
++}
++
++static int add_client(int fd)
++{
++	pthread_mutex_lock(&clients_mtx);
++
++	for (int i = 0; i < MAX_CLIENTS; i++) {
++		if (clients[i] <= 0) {
++			clients[i] = fd;
++			handle_client_msg(fd);
++			pthread_mutex_unlock(&clients_mtx);
++			return 0;
++		}
++	}
++
++	pthread_mutex_unlock(&clients_mtx);
++	return -1;
++}
++
++static void setup_fd_set(fd_set *read_fds, int *max_fd)
++{
++	FD_ZERO(read_fds);
++	FD_SET(log_socket_fd, read_fds);
++	*max_fd = log_socket_fd;
++
++	pthread_mutex_lock(&clients_mtx);
++	for (int i = 0; i < MAX_CLIENTS; i++) {
++		if (clients[i] > 0) {
++			FD_SET(clients[i], read_fds);
++			if (clients[i] > *max_fd)
++				*max_fd = clients[i];
++		}
++	}
++	pthread_mutex_unlock(&clients_mtx);
++}
++
++static void handle_new_connection(void)
++{
++	int new_fd = accept_new_client();
++	if (new_fd < 0)
++		return;
++
++	if (add_client(new_fd) < 0) {
++		fprintf(stderr, "No room for new client, closing connection\n");
++		close(new_fd);
++	}
++}
++
++static void *socket_thread(void *arg)
++{
++	(void)arg;
++	init_clients();
++
++	while (1) {
++		fd_set read_fds;
++		int max_fd;
++
++		setup_fd_set(&read_fds, &max_fd);
++
++		int activity = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
++		if (activity < 0) {
++			if (errno == EINTR)
++				continue;
++			fprintf(stderr, "select");
++			break;
++		}
++
++		if (FD_ISSET(log_socket_fd, &read_fds))
++			handle_new_connection();
++
++		pthread_mutex_lock(&clients_mtx);
++		for (int i = 0; i < MAX_CLIENTS; i++) {
++			int fd = clients[i];
++			if (fd <= 0 || !FD_ISSET(fd, &read_fds))
++				continue;
++
++			if (handle_client_msg(fd) < 0) {
++				close(fd);
++				clients[i] = -1;
++			}
++		}
++		pthread_mutex_unlock(&clients_mtx);
++	}
++
++	return NULL;
++}
++
++static void log_socket_init(void)
++{
++	struct sockaddr_un addr;
++
++	log_socket_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
++	if (log_socket_fd < 0) {
++		fprintf(stderr, "socket");
++		return;
++	}
++
++	memset(&addr, 0, sizeof(addr));
++	addr.sun_family = AF_UNIX;
++	strncpy(addr.sun_path, "/tmp/logd.sock", sizeof(addr.sun_path) - 1);
++
++	unlink("/tmp/logd.sock");
++
++	if (bind(log_socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
++		fprintf(stderr, "bind");
++		close(log_socket_fd);
++		log_socket_fd = -1;
++		return;
++	}
++
++	if (chmod(addr.sun_path, 0770) < 0) {
++		fprintf(stderr, "chmod");
++	}
++
++	if (listen(log_socket_fd, MAX_CLIENTS) < 0) {
++		close(log_socket_fd);
++		log_socket_fd = -1;
++		return;
++	}
++
++	pthread_t tid;
++	pthread_create(&tid, NULL, socket_thread, NULL);
++	pthread_detach(tid);
++}
++
++void log_init(int _log_size)
++{
++	mode_t old_umask = umask(0);
++	mkdir(SERVICE_LOG_PATH, 0775);
++	umask(old_umask);
++	load_log_config(false);
+ 	if (_log_size > 0)
+ 		log_size = _log_size;
+ 
+@@ -664,16 +1044,24 @@ log_init(int _log_size)
+ 		fprintf(stderr, "Failed to allocate log memory\n");
+ 		exit(-1);
+ 	}
+-	if (log_file && !inited) {
+-		load_logs_from_file(log_file);
+-		free(log_file);
++	if (cfg.log_path && !inited) {
++		load_logs_from_file(cfg.log_path);
+ 		inited = true;
+ 	}
+ 
+-
+ 	syslog_open();
+ 	klog_open();
+ 	openlog("sysinit", LOG_CONS, LOG_DAEMON);
++
++	log_socket_init();
++	notify_services(&cfg, &clients_mtx, clients);
++}
++
++void sighup_cb(struct uloop_signal *s)
++{
++	(void)s;
++	load_log_config(true);
++	notify_services(&cfg, &clients_mtx, clients);
+ }
+ 
+ void
+Index: ubox-2020-10-25-9ef88681/log/syslog.h
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/syslog.h
++++ ubox-2020-10-25-9ef88681/log/syslog.h
+@@ -14,7 +14,14 @@
+ #ifndef __SYSLOG_H
+ #define __SYSLOG_H
+ 
++#include <stdint.h>
++#include <time.h>
++#include <libubox/uloop.h>
++
+ #define LOG_LINE_SIZE		1024
++#define DEFAULT_BITMASK (1U << 6)
++#define SOCKET_PATH		"/var/logd.sock"
++#define MAX_CLIENTS 16
+ 
+ enum {
+ 	SOURCE_KLOG = 0,
+@@ -32,7 +39,23 @@ struct log_head {
+ 	char data[];
+ };
+ 
++struct log_config {
++	int32_t size;
++	uint32_t global_levels;
++	int8_t eventlog_level;
++	int8_t service_count;
++	uint16_t service_logs;
++	char log_path[128];
++	uint8_t log_count;
++	struct service_log_cfg {
++		char name[32];
++		uint32_t levels;
++		bool require_notify;
++	} services[64];
++};
++
+ void log_init(int log_size);
++void sighup_cb(struct uloop_signal *s);
+ void log_shutdown(void);
+ 
+ typedef void (*log_list_cb)(struct log_head *h);
+Index: ubox-2020-10-25-9ef88681/log/logd.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/logd.c
++++ ubox-2020-10-25-9ef88681/log/logd.c
+@@ -416,7 +416,18 @@ static int write_ext_log(struct ubus_con
+ 	if (tb[WRITE_DB])
+ 		write_db = blobmsg_get_u32(tb[WRITE_DB]);
+ 
+-	if (log_add_extended(event, strlen(event) + 1, sender, table, priority, write_db) != 0)
++
++	int syslog_num;
++	switch(table) {
++		case 0: syslog_num = LOG_LOCAL0; break;
++		case 1: syslog_num = LOG_LOCAL1; break;
++		case 2: syslog_num = LOG_LOCAL2; break;
++		case 3: syslog_num = LOG_LOCAL3; break;
++		default:
++			syslog_num = table;
++	}
++
++	if (log_add_extended(event, strlen(event) + 1, sender, syslog_num, priority, write_db) != 0)
+ 		return UBUS_STATUS_UNKNOWN_ERROR;
+ 
+ 	return UBUS_STATUS_OK;
+@@ -469,13 +480,13 @@ static int get_log_table(struct log_head
+ 
+ 	switch (facility) {
+ 		case LOG_LOCAL0:
+-			return 1;
++			return 0;
+ 		case LOG_LOCAL1:
+-			return 2;
++			return 1;
+ 		case LOG_LOCAL2:
+-			return 3;
++			return 2;
+ 		case LOG_LOCAL3:
+-			return 4;
++			return 3;
+ 	}
+ 
+ 	return 1;
+@@ -533,9 +544,11 @@ ubus_connect_handler(struct ubus_context
+ int
+ main(int argc, char **argv)
+ {
++	static struct uloop_signal sighup;
+ 	int ch, log_size = 16;
+ 
+ 	signal(SIGPIPE, SIG_IGN);
++
+ 	while ((ch = getopt(argc, argv, "S:")) != -1) {
+ 		switch (ch) {
+ 		case 'S':
+@@ -549,10 +562,18 @@ main(int argc, char **argv)
+ 
+ 	uloop_init();
+ 	log_init(log_size);
++
++	/* Reload config safely on SIGHUP */
++	sighup.cb    = sighup_cb;
++	sighup.signo = SIGHUP;
++	uloop_signal_add(&sighup);
++
+ 	conn.cb = ubus_connect_handler;
+ 	ubus_auto_connect(&conn);
+ 	conn.ctx.connection_lost = logd_die;
++
+ 	uloop_run();
++
+ 	log_shutdown();
+ 	uloop_done();
+ 	ubus_auto_shutdown(&conn);
+Index: ubox-2020-10-25-9ef88681/CMakeLists.txt
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/CMakeLists.txt
++++ ubox-2020-10-25-9ef88681/CMakeLists.txt
+@@ -61,7 +61,7 @@ INCLUDE_DIRECTORIES(${uci_include_dir})
+ 
+ find_package(ZLIB REQUIRED)
+ 
+-ADD_EXECUTABLE(logd log/logd.c log/syslog.c log/logdb.c)
++ADD_EXECUTABLE(logd log/logd.c log/syslog.c log/logdb.c log/file_utils.c log/servicelog.c)
+ TARGET_LINK_LIBRARIES(logd ubox ubus sqlite3 uci ZLIB::ZLIB)
+ INSTALL(TARGETS logd
+ 	RUNTIME DESTINATION sbin

@@ -1,0 +1,13 @@
+Index: git/ubus.c
+===================================================================
+--- git.orig/ubus.c
++++ git/ubus.c
+@@ -621,7 +621,7 @@ static void uh_ubus_list_cb(struct ubus_
+ 	struct blob_attr *sig, *attr;
+ 	struct list_data *data = priv;
+ 	int rem, rem2;
+-	void *t, *o;
++	void *t, *o = NULL;
+ 
+ 	if (!data->verbose) {
+ 		blobmsg_add_string(data->buf, NULL, obj->path);

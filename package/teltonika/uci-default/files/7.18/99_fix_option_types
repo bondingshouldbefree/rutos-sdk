@@ -1,0 +1,26 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CONFIG="certificates"
+
+# List of boolean options to fix
+OPTIONS="auto_renew tpm2"
+
+fix_option() {
+	local section="$1"
+	local option value
+
+	for option in $OPTIONS; do
+		# normalize option 
+		config_get_bool value "$section" "$option"
+		[ -z "$value" ] && continue
+		uci_set "$CONFIG" "$section" "$option" "$value"
+	done
+}
+
+config_load "$CONFIG"
+config_foreach fix_option certificate
+
+uci_commit "$CONFIG"
+exit 0

@@ -1,0 +1,11 @@
+--- a/interface-ip.c
++++ b/interface-ip.c
+@@ -154,7 +154,7 @@ static int set_ip_lo_policy(bool add, bo
+ {
+ 	struct iprule rule = {
+ 		.flags = IPRULE_IN | IPRULE_LOOKUP | IPRULE_PRIORITY,
+-		.priority = IPRULE_PRIORITY_NW + iface->l3_dev.dev->ifindex,
++		.priority = IPRULE_PRIORITY_NW + iface->metric,
+ 		.lookup = (v6) ? iface->ip6table : iface->ip4table,
+ 		.in_dev = "lo"
+ 	};

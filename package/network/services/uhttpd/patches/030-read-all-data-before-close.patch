@@ -1,0 +1,13 @@
+index 9b314af..ed54271 100644
+--- a/relay.c
++++ b/relay.c
+@@ -159,7 +159,8 @@ static void relay_close_if_done(struct uloop_timeout *timeout)
+ 
+ 	while (ustream_poll(&r->sfd.stream));
+ 
+-	if (!(r->process_done || s->eof) || ustream_pending_data(s, false))
++	struct http_request *request = &r->cl->request;
++	if (!(r->process_done || s->eof) || ustream_pending_data(s, false) || request->content_length > 0 || request->transfer_chunked > 0)
+ 		return;
+ 
+ 	uh_relay_close(r, r->ret);

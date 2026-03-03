@@ -1,0 +1,42 @@
+{
+  "network/routes": {
+    "title": "Routing",
+    "index": 80
+  },
+  "network/routes/dynamic_routes": {
+    "title": "Dynamic Routes",
+    "index": 30
+  },
+  "network/routes/dynamic_routes/proto_bgp": {
+    "title": "BGP",
+    "index": 10,
+    "view": "network/ProtoBgp",
+    "acls": ["network/routes/dynamic_routes/proto_bgp"],
+    "main_page": true,
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-bgpd", "frr5-bgpd"]
+      }
+    }
+  },
+  "status/routes": {
+    "title": "Routes",
+    "index": 35
+  },
+  "status/routes/dynamic": {
+    "title": "Dynamic",
+    "index": 20
+  },
+  "status/routes/dynamic/bgp": {
+    "title": "BGP",
+    "index": 10,
+    "view": "status/ProtoBgp",
+    "acls": ["status/routes/dynamic/bgp"],
+    "files": ["/etc/config/bgp"],
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-bgpd", "frr5-bgpd"]
+      }
+    }
+  }
+}

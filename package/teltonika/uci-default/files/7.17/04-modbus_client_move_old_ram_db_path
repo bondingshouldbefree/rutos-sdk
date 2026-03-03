@@ -1,0 +1,15 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+OLD_PATH="/tmp/modbus_db"
+NEW_PATH="/var/run/modbus_client/modbus.db"
+
+config_load modbus_client
+config_get db_path main db_path
+if [ "$db_path" = "${OLD_PATH}" ] ; then
+	uci set "modbus_client.main.db_path=${NEW_PATH}"
+	uci commit
+fi
+
+exit 0

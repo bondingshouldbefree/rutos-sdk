@@ -1,0 +1,7 @@
+#!/bin/sh
+
+[ "$ACTION" = 'ifup' ] || [ "$ACTION" = 'ifdown' ] && {
+	[ "$(uci -q get network.$INTERFACE.area_type)" != "wan" ] && return
+	logger -t "https-dns-proxy" "Reloading https-dns-proxy due to $ACTION of $INTERFACE"
+	/etc/init.d/https-dns-proxy reload
+}

@@ -1,0 +1,3 @@
+/etc/config/ip_blockd                   ip_blockd:ip_blockd       660       -
+/usr/local/share/ip_block               ip_blockd:ip_blockd       775       r
+/usr/local/share/ip_block/attempts.db   ip_blockd:ip_blockd       660       -

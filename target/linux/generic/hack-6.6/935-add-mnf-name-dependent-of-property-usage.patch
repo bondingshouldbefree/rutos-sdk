@@ -1,0 +1,275 @@
+--- a/drivers/gpio/gpiolib-of.c
++++ b/drivers/gpio/gpiolib-of.c
+@@ -1163,6 +1163,9 @@ static int of_gpio_export_probe(struct p
+ 		int max_gpio = 1;
+ 		int i;
+ 
++		if (!of_device_is_mnf_compatible(cnp))
++			continue;
++
+ 		of_property_read_string(cnp, "gpio-export,name", &name);
+ 
+ 		if (!name)
+--- a/drivers/of/base.c
++++ b/drivers/of/base.c
+@@ -27,7 +27,7 @@
+ #include <linux/slab.h>
+ #include <linux/string.h>
+ #include <linux/proc_fs.h>
+-
++#include <linux/sysfs-mnfinfo.h>
+ #include "of_private.h"
+ 
+ LIST_HEAD(aliases_lookup);
+@@ -415,6 +415,170 @@ int of_machine_is_compatible(const char
+ }
+ EXPORT_SYMBOL(of_machine_is_compatible);
+ 
++bool __of_mnf_name_is_compatible(const struct device_node *device) {
++	size_t l;
++	int i, j;
++	const char *p, *end, *dev_name;
++	const struct property *prop;
++
++	prop = __of_find_property(device, "tlt-mnf,device" , NULL);
++	if (!prop)
++		return true;
++
++	if (!prop->value) {
++		pr_err("%s:%d %s->%s has no value\n", __func__, __LINE__, device->full_name, prop->name);
++		return false;
++	}
++
++	if (!(dev_name = mnf_info_get_device_name())) {
++		pr_debug("%s:%d Failed to get device name\n", __func__, __LINE__);
++		return false;
++	}
++
++	p = prop->value;
++	end = p + prop->length;
++
++	for (i = 0; p < end; i++, p += l) {
++		l = strnlen(p, end - p) + 1;
++		if (p + l > end)
++			goto err;
++
++		for (j=0; j < strlen(p); j++)
++			if (p[j] != '*' && p[j] != dev_name[j])
++				break;
++
++		if (j == strlen(p)) {
++			pr_debug("%s:%d Compatible %s->%s=\"%s\" for %s\n", __func__, __LINE__,
++					device->full_name, prop->name, p, dev_name);
++			return true;
++		}
++	}
++err:
++	pr_debug("%s:%d Incompatible %s->%s=\"%s\"\n", __func__, __LINE__,
++			device->full_name, prop->name, dev_name);
++	return false;
++}
++
++bool __of_mnf_branch_is_compatible(const struct device_node *device) {
++	size_t l;
++	int i;
++	const char *p, *end, *branch;
++	const struct property *prop;
++
++	prop = __of_find_property(device, "tlt-mnf,branch" , NULL);
++	if (!prop)
++		return true;
++
++	if (!prop->value) {
++		pr_err("%s:%d %s->%s has no value\n", __func__, __LINE__, device->full_name, prop->name);
++		return false;
++	}
++
++	if (!(branch = mnf_info_get_branch())) {
++		pr_debug("%s:%d Failed to get hw branch\n", __func__, __LINE__);
++		return false;
++	}
++
++	p = prop->value;
++	end = p + prop->length;
++
++	for (i = 0; p < end; i++, p += l) {
++		l = strnlen(p, end - p) + 1;
++		if (p + l > end) {
++			pr_err("%s:%d Parsing failure for %s->%s\n", __func__, __LINE__, device->full_name, prop->name);
++			return false;
++		}
++		if (strstr(branch, p)) {
++			pr_debug("%s:%d Compatible %s->%s=%s \n", __func__, __LINE__, device->full_name, prop->name, branch);
++			return true; /* Found it */
++		}
++	}
++
++	pr_debug("%s:%d Incompatible %s->%s=%s \n", __func__, __LINE__, device->full_name, prop->name, branch);
++
++	return false;
++}
++
++bool __of_mnf_hwver_is_compatible(const struct device_node *device) {
++	int cur_hwver = 0, i, len;
++	const __be32 *val;
++	const struct property *prop;
++
++	prop = __of_find_property(device, "tlt-mnf,hwver" , NULL);
++	if (!prop)
++		return true;
++
++	if ((cur_hwver = mnf_info_get_full_hw_version()) < 0) {
++		pr_debug("%s:%d Failed to get full hw version\n", __func__, __LINE__);
++		return false;
++	}
++
++	if (!cur_hwver) {
++		pr_info("Forced compatability for %s->%s\n", device->full_name, prop->name);
++		return true;
++	}
++
++	if (!prop->value) {
++		pr_err("%s:%d %s->%s has no value\n", __func__, __LINE__, device->full_name, prop->name);
++		return false;
++	}
++
++	len = prop->length / sizeof(__be32);
++
++	if (len < 2) {
++		pr_err("%s:%d %s->%s has to have at least 2 values\n", __func__, __LINE__, device->full_name, prop->name);
++		return false;
++	}
++
++	val = prop->value;
++
++	for (i = 0; i < len; i += 2) {
++		if (be32_to_cpup(val + i) <= cur_hwver && cur_hwver <= be32_to_cpup(val + i + 1)) {
++			pr_debug("%s:%d Compatible %s->%s %d <= %d <= %d\n", __func__, __LINE__,
++					device->full_name, prop->name, be32_to_cpup(val + i), cur_hwver, be32_to_cpup(val + i + 1));
++			return true;
++		}
++	}
++
++	pr_debug("%s:%d Incompatible hwver for %s->%s\n", __func__, __LINE__, device->full_name, prop->name);
++
++	return false;
++}
++
++
++static bool __of_device_is_mnf_compatible(const struct device_node *device)
++{
++	if (!device)
++		return false;
++
++	if (!__of_mnf_name_is_compatible(device))
++		goto err;
++
++	if (!__of_mnf_branch_is_compatible(device))
++		goto err;
++
++	if (!__of_mnf_hwver_is_compatible(device))
++		goto err;
++
++	return true;
++err:
++	pr_debug("%s:%d Incompatible device=%s\n", __func__, __LINE__, device->full_name);
++	return false;
++}
++
++bool of_device_is_mnf_compatible(const struct device_node *device)
++{
++	unsigned long flags;
++	bool res;
++
++	raw_spin_lock_irqsave(&devtree_lock, flags);
++	res = __of_device_is_mnf_compatible(device);
++	raw_spin_unlock_irqrestore(&devtree_lock, flags);
++	return res;
++
++}
++EXPORT_SYMBOL(of_device_is_mnf_compatible);
++
+ /**
+  *  __of_device_is_available - check if a device is available for use
+  *
+@@ -431,6 +595,9 @@ static bool __of_device_is_available(con
+ 	if (!device)
+ 		return false;
+ 
++	if (!__of_device_is_mnf_compatible(device))
++		return false;
++
+ 	status = __of_get_property(device, "status", &statlen);
+ 	if (status == NULL)
+ 		return true;
+@@ -442,7 +609,6 @@ static bool __of_device_is_available(con
+ 
+ 	return false;
+ }
+-
+ /**
+  *  of_device_is_available - check if a device is available for use
+  *
+--- a/include/linux/of.h
++++ b/include/linux/of.h
+@@ -420,6 +420,8 @@ extern int of_update_property(struct dev
+ extern int of_attach_node(struct device_node *);
+ extern int of_detach_node(struct device_node *);
+ 
++extern bool of_device_is_mnf_compatible(const struct device_node *device);
++
+ #define of_match_ptr(_ptr)	(_ptr)
+ 
+ /*
+--- a/drivers/leds/leds-gpio.c
++++ b/drivers/leds/leds-gpio.c
+@@ -145,6 +145,34 @@ struct gpio_leds_priv {
+ 	struct gpio_led_data leds[];
+ };
+ 
++static int led_name_available(struct gpio_leds_priv *priv, struct fwnode_handle *fwnode)
++{
++
++	const char *label;
++	int ret, i;
++
++	if (!fwnode)
++		return -EINVAL;
++
++	if (fwnode_property_present(fwnode, "label")) {
++		ret = fwnode_property_read_string(fwnode, "label", &label);
++		if (ret) {
++			pr_err("Error parsing 'label' property (%d)\n", ret);
++			return ret;
++		}
++	}
++
++	for (i = 0; i < priv->num_leds; i++) {
++		if (priv->leds[i].cdev.dev && priv->leds[i].cdev.dev->kobj.name
++				&& !strcmp(priv->leds[i].cdev.dev->kobj.name, label)) {
++			pr_debug("%s:%d label %s is in use\n", __func__, __LINE__, label);
++			return 1;
++		}
++	}
++
++	return 0;
++}
++
+ static struct gpio_leds_priv *gpio_leds_create(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -163,6 +191,14 @@ static struct gpio_leds_priv *gpio_leds_
+ 	device_for_each_child_node(dev, child) {
+ 		struct gpio_led_data *led_dat = &priv->leds[priv->num_leds];
+ 		struct gpio_led led = {};
++		struct device_node *node;
++
++		node = to_of_node(child);
++		if (!of_device_is_mnf_compatible(node))
++			continue;
++
++		if (led_name_available(priv, child))
++			continue;
+ 
+ 		/*
+ 		 * Acquire gpiod from DT with uninitialized label, which

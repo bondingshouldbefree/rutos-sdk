@@ -1,0 +1,43 @@
+#ifndef BOARD_IPQ5332_H
+#define BOARD_IPQ5332_H
+
+#include <configs/ipq5332.h>
+
+#define SHIFTREG_ANIMATION_TIME_STEP 500LL
+#define SHIFTREG_BLINK_TIME_STEP     100LL
+#define SHIFTREG_TIME_UNIT	     1 /* 1 usec */
+#define SHIFTREG_CLK		     33
+#define SHIFTREG_LATCH		     36
+#define SHIFTREG_DATA		     34
+#define SHIFT_OE		     38
+#define RST_BTN			     39
+
+/* Helper defines */
+
+#define ARRAY_MAX_LED_COUNT 16
+#define ARRAYSIZE(x)	    (sizeof(x) / sizeof(x[0]))
+
+/* LED Shift Register Configuration */
+
+/* RUTN50/54 */
+#define RUTN50_SR_GEN_RD_LED  0x01DFFFFFLL
+#define RUTN50_SR_GEN_GR_LED  0x01BFFFFFLL
+#define RUTN50_SR_GEN_BL_LED  0x017FFFFFLL
+#define RUTN50_SR_SSID_RD_LED 0x01FBFFFFLL
+#define RUTN50_SR_SSID_GR_LED 0x01F7FFFFLL
+#define RUTN50_SR_SSID_BL_LED 0x01EFFFFFLL
+#define RUTN50_SR_USER_RD_LED 0x01FFF7FFLL
+#define RUTN50_SR_USER_GR_LED 0x01FFFBFFLL
+#define RUTN50_SR_USER_BL_LED 0x01FFFDFFLL
+#define RUTN50_SR_WAN_GR_LED 0x01FFFEFFLL
+#define RUTN50_SR_WAN_RD_LED 0x01FFFF7FLL
+#define RUTN50_SR_WAN_RD_LED 0x01FFFFBFLL
+
+#define RUTN50_SR_ALL_LEDS_ON  0x01B7FAFFLL
+#define RUTN50_SR_ALL_LEDS_OFF 0x01FFFFFFLL
+
+#define RUTN50_SR_RST_TPM 0x40000000LL
+
+void init_led_conf(void);
+
+#endif

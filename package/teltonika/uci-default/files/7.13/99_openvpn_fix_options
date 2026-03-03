@@ -1,0 +1,31 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+fix_ovpn_conf() {
+    local sid="$1"
+    config_get verb "$sid" "verb" ""
+    config_get persist_tun "$sid" "persist_tun" ""
+    config_get persist_key "$sid" "persist_key" ""
+    config_get extra "$sid" "extra" ""
+
+    if [ -n "$verb" ] && [ "$verb" != "5" ]; then
+        if ! echo "$extra" | grep -q "verb "; then
+            uci_add_list "openvpn" "$sid" "extra" "verb $verb"
+        fi
+        uci_remove "openvpn" "$sid" "verb"
+    fi
+    if [ "$persist_tun" = "1" ] && ! echo "$extra" | grep -q "persist-tun "; then
+        uci_add_list "openvpn" "$sid" "extra" "persist-tun"
+    fi
+    [ -n "$persist_tun" ] && uci_remove "openvpn" "$sid" "persist_tun"
+
+    if [ "$persist_key" = "1" ] && ! echo "$extra" | grep -q "persist-key "; then
+        uci_add_list "openvpn" "$sid" "extra" "persist-key"
+    fi
+    [ -n "$persist_key" ] && uci_remove "openvpn" "$sid" "persist_key"
+}
+
+config_load "openvpn"
+config_foreach fix_ovpn_conf "openvpn"
+uci_commit openvpn

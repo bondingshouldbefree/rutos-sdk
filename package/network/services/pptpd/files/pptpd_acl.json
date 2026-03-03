@@ -1,0 +1,8 @@
+{
+  "user": "pptpd",
+  "access": {
+    "ip": {
+      "methods": ["ip"]
+    }
+  }
+}

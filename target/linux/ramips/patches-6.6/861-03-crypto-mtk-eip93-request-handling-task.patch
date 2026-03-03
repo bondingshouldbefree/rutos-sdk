@@ -1,0 +1,356 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed Oct 30 10:50:39 2024 +0200
+Subject: crypto: mtk-eip93: implement request submission worker
+
+mtk_send_req isn't thread-safe due to saState allocation and descriptor logic.
+Simplest performant way to fix that is to just move it to a separate thread.
+
+Fixes packet drops when using an IPsec tunnel (mis{de,en}cryptions due to racy saSate allocation).
+Adds support for CRYPTO_TFM_REQ_MAY_BACKLOG due to use of crypto_queue.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/crypto/mtk-eip93/eip93-aead.c   |    9 +
+ drivers/crypto/mtk-eip93/eip93-cipher.c |    9 +
+ drivers/crypto/mtk-eip93/eip93-common.c |  145 +++++++++++++++++++++++++++++++-
+ drivers/crypto/mtk-eip93/eip93-common.h |    7 +
+ drivers/crypto/mtk-eip93/eip93-main.c   |   25 ++++-
+ drivers/crypto/mtk-eip93/eip93-main.h   |    8 +
+ 6 files changed, 192 insertions(+), 11 deletions(-)
+
+--- a/drivers/crypto/mtk-eip93/eip93-aead.c
++++ b/drivers/crypto/mtk-eip93/eip93-aead.c
+@@ -47,7 +47,7 @@ void mtk_aead_handle_result(struct crypt
+ 	aead_request_complete(req, err);
+ }
+ 
+-static int mtk_aead_send_req(struct crypto_async_request *async)
++static int mtk_aead_send_req(struct mtk_device *mtk, struct crypto_async_request *async)
+ {
+ 	struct aead_request *req = aead_request_cast(async);
+ 	struct mtk_cipher_reqctx *rctx = aead_request_ctx(req);
+@@ -59,7 +59,10 @@ static int mtk_aead_send_req(struct cryp
+ 		return err;
+ 	}
+ 
+-	return mtk_send_req(async, req->iv, rctx);
++	err = mtk_enqueue_req(mtk, async);
++	if (err && err != -EINPROGRESS)
++		mtk_req_free_sg_copies(rctx, req->src, req->dst);
++	return err;
+ }
+ 
+ /* Crypto aead API functions */
+@@ -276,7 +279,7 @@ static int mtk_aead_crypt(struct aead_re
+ 	if IS_DECRYPT(rctx->flags)
+ 		rctx->textsize -= rctx->authsize;
+ 
+-	return mtk_aead_send_req(async);
++	return mtk_aead_send_req(ctx->mtk, async);
+ }
+ 
+ static int mtk_aead_encrypt(struct aead_request *req)
+--- a/drivers/crypto/mtk-eip93/eip93-cipher.c
++++ b/drivers/crypto/mtk-eip93/eip93-cipher.c
+@@ -38,7 +38,7 @@ static inline bool mtk_skcipher_is_fallb
+ 	       !IS_RFC3686(flags);
+ }
+ 
+-static int mtk_skcipher_send_req(struct crypto_async_request *async)
++static int mtk_skcipher_send_req(struct mtk_device *mtk, struct crypto_async_request *async)
+ {
+ 	struct skcipher_request *req = skcipher_request_cast(async);
+ 	struct mtk_cipher_reqctx *rctx = skcipher_request_ctx(req);
+@@ -51,7 +51,10 @@ static int mtk_skcipher_send_req(struct
+ 		return err;
+ 	}
+ 
+-	return mtk_send_req(async, req->iv, rctx);
++	err = mtk_enqueue_req(mtk, async);
++	if (err && err != -EINPROGRESS)
++		mtk_req_free_sg_copies(rctx, req->src, req->dst);
++	return err;
+ }
+ 
+ /* Crypto skcipher API functions */
+@@ -235,7 +238,7 @@ static int mtk_skcipher_crypt(struct skc
+ 	if (!IS_ECB(rctx->flags))
+ 		rctx->flags |= MTK_DESC_DMA_IV;
+ 
+-	return mtk_skcipher_send_req(async);
++	return mtk_skcipher_send_req(ctx->mtk, async);
+ }
+ 
+ static int mtk_skcipher_encrypt(struct skcipher_request *req)
+--- a/drivers/crypto/mtk-eip93/eip93-common.c
++++ b/drivers/crypto/mtk-eip93/eip93-common.c
+@@ -140,6 +140,19 @@ static inline void mtk_free_sg_copy(cons
+ 	*sg = NULL;
+ }
+ 
++void mtk_req_free_sg_copies(struct mtk_cipher_reqctx *rctx,
++			    struct scatterlist *reqsrc,
++			    struct scatterlist *reqdst)
++{
++	u32 len = rctx->assoclen + rctx->textsize + rctx->authsize;
++
++	if (rctx->sg_src != reqsrc)
++		mtk_free_sg_copy(len, &rctx->sg_src);
++
++	if (rctx->sg_dst != reqdst)
++		mtk_free_sg_copy(len, &rctx->sg_dst);
++}
++
+ static inline int mtk_make_sg_copy(struct scatterlist *src,
+ 			struct scatterlist **dst,
+ 			const uint32_t len, const bool copy)
+@@ -501,7 +514,7 @@ again:
+ 		ndesc_cdr++;
+ 	} while (n);
+ 
+-	return -EINPROGRESS;
++	return 0;
+ }
+ 
+ int mtk_send_req(struct crypto_async_request *async,
+@@ -625,6 +638,136 @@ send_err:
+ 	return err;
+ }
+ 
++static int mtk_send_skcipher_req(struct crypto_async_request *async)
++{
++	struct skcipher_request *req = skcipher_request_cast(async);
++	struct mtk_cipher_reqctx *rctx = skcipher_request_ctx(req);
++	int err;
++
++	err = mtk_send_req(async, req->iv, rctx);
++	if (err)
++		mtk_req_free_sg_copies(rctx, req->src, req->dst);
++	return err;
++}
++
++static int mtk_send_aead_req(struct crypto_async_request *async)
++{
++	struct aead_request *req = aead_request_cast(async);
++	struct mtk_cipher_reqctx *rctx = aead_request_ctx(req);
++	int err;
++
++	err = mtk_send_req(async, req->iv, rctx);
++	if (err)
++		mtk_req_free_sg_copies(rctx, req->src, req->dst);
++	return err;
++}
++
++int mtk_send_async_req(struct crypto_async_request *req)
++{
++	switch (crypto_tfm_alg_type(req->tfm)) {
++	case CRYPTO_ALG_TYPE_SKCIPHER:
++		return mtk_send_skcipher_req(req);
++	case CRYPTO_ALG_TYPE_AEAD:
++		return mtk_send_aead_req(req);
++	default:
++		BUG();
++	}
++}
++
++static struct crypto_async_request *
++mtk_dequeue_request(struct mtk_device *mtk,
++		    struct crypto_async_request **backlog)
++{
++	struct crypto_async_request *req;
++
++	spin_lock_bh(&mtk->request_lock);
++	*backlog = crypto_get_backlog(&mtk->request_queue);
++	req = crypto_dequeue_request(&mtk->request_queue);
++	spin_unlock_bh(&mtk->request_lock);
++
++	return req;
++}
++
++void mtk_request_work(struct work_struct *work)
++{
++	struct mtk_device *mtk = container_of(work, struct mtk_device, request_work);
++	struct crypto_async_request *req, *backlog;
++	int done = 0;
++	int ret;
++
++	local_bh_disable();
++
++	while (true) {
++		req = mtk_dequeue_request(mtk, &backlog);
++
++		if (!req)
++			break;
++
++		ret = mtk_send_async_req(req);
++		if (ret)
++			crypto_request_complete(req, ret);
++
++		if (backlog)
++			crypto_request_complete(backlog, -EINPROGRESS);
++
++		done++;
++		if (done == MTK_BURST_SIZE) {
++			local_bh_enable();
++			cond_resched();
++			local_bh_disable();
++			done = 0;
++		}
++	}
++
++	local_bh_enable();
++}
++
++int mtk_enqueue_req(struct mtk_device *mtk, struct crypto_async_request *req)
++{
++	int ret;
++	int qlen;
++	int free;
++
++	spin_lock_bh(&mtk->request_lock);
++	qlen = crypto_queue_len(&mtk->request_queue);
++	ret = crypto_enqueue_request(&mtk->request_queue, req);
++	spin_unlock_bh(&mtk->request_lock);
++
++	if (ret != -EINPROGRESS)
++		return ret;
++
++	if (work_pending(&mtk->request_work))
++		return -EINPROGRESS;
++
++	// If there are requests in HW ring we rely on rdr_work to wake up
++	// request_work work with some delay, as otherwise request_work completes too
++	// quickly and requires excessive wake up calls (does not batch enough
++	// requests).
++	// So yes, this is a hacky and uncontrollable method of adding a small
++	// amount of delay, but this driver is used on platforms that don't support
++	// highres timers (mt7621), so we make do. Tasklets are an ok solution, but
++	// in most cases this core is the performance bottleneck, so it's nice to
++	// move this work to other CPU's
++
++	free = atomic_read(&mtk->ring->free);
++
++	// CDR is empty, always wake request_task.
++	if (free == (MTK_RING_SIZE - 1))
++		goto wake_request_work;
++
++	// If there are are enough requests in request_queue, and enough
++	// free space in CDR, we skip rdr_work and queue request task directly,
++	// to make sure we don't overflow request_queue.
++	if (qlen >= MTK_BURST_SIZE && free >= MTK_BURST_SIZE)
++		goto wake_request_work;
++
++	return -EINPROGRESS;
++
++wake_request_work:
++	queue_work(mtk->request_workqueue, &mtk->request_work);
++	return -EINPROGRESS;
++}
++
+ void mtk_unmap_dma(struct mtk_device *mtk, struct mtk_cipher_reqctx *rctx,
+ 			struct scatterlist *reqsrc, struct scatterlist *reqdst)
+ {
+--- a/drivers/crypto/mtk-eip93/eip93-common.h
++++ b/drivers/crypto/mtk-eip93/eip93-common.h
+@@ -10,6 +10,9 @@
+ 
+ #include "eip93-main.h"
+ 
++void mtk_request_work(struct work_struct *work);
++int mtk_enqueue_req(struct mtk_device *mtk, struct crypto_async_request *req);
++
+ inline int mtk_put_descriptor(struct mtk_device *mtk,
+ 					struct eip93_descriptor_s *desc);
+ 
+@@ -17,6 +20,10 @@ inline void *mtk_get_descriptor(struct m
+ 
+ inline int mtk_get_free_saState(struct mtk_device *mtk);
+ 
++void mtk_req_free_sg_copies(struct mtk_cipher_reqctx *rctx,
++			    struct scatterlist *reqsrc,
++			    struct scatterlist *reqdst);
++
+ void mtk_set_saRecord(struct saRecord_s *saRecord, const unsigned int keylen,
+ 				const u32 flags);
+ 
+--- a/drivers/crypto/mtk-eip93/eip93-main.c
++++ b/drivers/crypto/mtk-eip93/eip93-main.c
+@@ -197,6 +197,9 @@ static void mtk_done_task(unsigned long
+ 	struct mtk_device *mtk = (struct mtk_device *)data;
+ 
+ 	mtk_handle_result_descriptor(mtk);
++
++	// Always wake up the request task, see `mtk_enqueue_req`
++	queue_work(mtk->request_workqueue, &mtk->request_work);
+ }
+ 
+ static irqreturn_t mtk_irq_handler(int irq, void *dev_id)
+@@ -414,26 +417,40 @@ static int mtk_crypto_probe(struct platf
+ 	spin_lock_init(&mtk->ring->read_lock);
+ 	spin_lock_init(&mtk->ring->write_lock);
+ 
++	crypto_init_queue(&mtk->request_queue, MTK_REQUEST_QLEN);
++	spin_lock_init(&mtk->request_lock);
++	INIT_WORK(&mtk->request_work, mtk_request_work);
++	mtk->request_workqueue = alloc_ordered_workqueue("eip93-req", 0);
++	if (!mtk->request_workqueue) {
++		err = -ENOMEM;
++		goto err_cleanup;
++	}
++
+ 	mtk_initialize(mtk);
+ 
+ 	/* Init. finished, enable RDR interupt */
+ 	mtk_irq_enable(mtk, EIP93_INT_PE_RDRTHRESH_REQ);
+ 
+ 	err = mtk_register_algs(mtk);
+-	if (err) {
+-		mtk_cleanup(mtk);
+-		return err;
+-	}
++	if (err)
++		goto err_req_queue;
+ 
+ 	dev_info(mtk->dev, "EIP93 Crypto Engine Initialized.");
+ 
+ 	return 0;
++
++err_req_queue:
++	destroy_workqueue(mtk->request_workqueue);
++err_cleanup:
++	mtk_cleanup(mtk);
++	return err;
+ }
+ 
+ static int mtk_crypto_remove(struct platform_device *pdev)
+ {
+ 	struct mtk_device *mtk = platform_get_drvdata(pdev);
+ 
++	destroy_workqueue(mtk->request_workqueue);
+ 	mtk_unregister_algs(ARRAY_SIZE(mtk_algs));
+ 	mtk_cleanup(mtk);
+ 	dev_info(mtk->dev, "EIP93 removed.\n");
+--- a/drivers/crypto/mtk-eip93/eip93-main.h
++++ b/drivers/crypto/mtk-eip93/eip93-main.h
+@@ -17,6 +17,8 @@
+ #define MTK_RING_SIZE			512
+ #define MTK_RING_BUSY			32
+ #define MTK_CRA_PRIORITY		1500
++#define MTK_REQUEST_QLEN		256
++#define MTK_BURST_SIZE			64
+ 
+ /* cipher algorithms */
+ #define MTK_ALG_DES			BIT(0)
+@@ -95,6 +97,12 @@ struct mtk_device {
+ 	int			irq;
+ 	struct mtk_ring		*ring;
+ 	struct mtk_state_pool	*saState_pool;
++	/* request queue */
++	struct crypto_queue	request_queue;
++	spinlock_t		request_lock;
++	struct workqueue_struct	*request_workqueue;
++	/* workqueue tasks */
++	struct work_struct	request_work;
+ };
+ 
+ struct mtk_desc_ring {

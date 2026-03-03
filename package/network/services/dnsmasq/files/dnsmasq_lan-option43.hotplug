@@ -1,0 +1,26 @@
+#!/bin/sh
+
+[ "$ACTION" = "ifup" ] || exit 0
+
+case "$INTERFACE" in
+	lan*)
+		;;
+	*)
+		exit 0
+		;;
+esac
+
+IP=$(ubus call network.interface."$INTERFACE" status | jsonfilter -e '@["ipv4-address"][0].address')
+
+for opt in $(uci -q get dhcp."$INTERFACE".dhcp_option); do
+	case "$opt" in
+		43,*)
+			uci del_list dhcp."$INTERFACE".dhcp_option="$opt"
+			;;
+	esac
+done
+
+uci add_list dhcp."$INTERFACE".dhcp_option="43,$IP"
+uci commit dhcp
+
+/etc/init.d/dnsmasq reload

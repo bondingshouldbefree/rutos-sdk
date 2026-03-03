@@ -1,0 +1,7 @@
+# these scripts are run when local_firewall and remote_firewall options are disabled
+
+/etc/hotplug.d/ipsec/01-user
+/etc/hotplug.d/ipsec/02-gre-over-ipsec
+/etc/hotplug.d/ipsec/03-dns-update
+/etc/hotplug.d/ipsec/07-flush-conntrack
+/etc/hotplug.d/ipsec/08-status-gen

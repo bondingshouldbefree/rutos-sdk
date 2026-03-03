@@ -1,0 +1,59 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2006-2011 OpenWrt.org
+
+. /lib/functions.sh
+
+[ -f /lib/functions/target-defaults.sh ] && \
+	. /lib/functions/target-defaults.sh
+
+START=02
+STOP=90
+
+boot() {
+	[ -f /proc/mounts ] || /sbin/mount_root
+	[ -f /proc/jffs2_bbc ] && echo "S" > /proc/jffs2_bbc
+
+	mkdir -p /var/run
+	mkdir -p /var/log
+	mkdir -p /var/lock
+	mkdir -p /var/state
+	mkdir -p /var/tmp
+	mkdir -p /tmp/.uci
+	touch /var/log/wtmp
+	touch /var/log/lastlog
+	mkdir -p /tmp/resolv.conf.d
+	touch /tmp/resolv.conf.d/resolv.conf.auto
+	ln -sf /tmp/resolv.conf.d/resolv.conf.auto /tmp/resolv.conf
+	grep -q debugfs /proc/filesystems && /bin/mount -o noatime -t debugfs debugfs /sys/kernel/debug
+	grep -q bpf /proc/filesystems && /bin/mount -o nosuid,nodev,noexec,noatime,mode=0700 -t bpf bpffs /sys/fs/bpf
+	grep -q pstore /proc/filesystems && /bin/mount -o noatime -t pstore pstore /sys/fs/pstore
+	grep -q efivarfs /proc/filesystems && /bin/mount -o noatime -t efivarfs efivarfs /sys/firmware/efi/efivars
+
+	# mount all entries in fstab
+	/bin/mount -a &
+
+	type boot_target_pre_board_detect &> /dev/null && \
+		boot_target_pre_board_detect
+
+	# before config generation run permtab to setup permissions
+	/sbin/perm -r /etc/config
+
+	/bin/config_generate
+
+	/sbin/kmodloader
+
+	uci_apply_defaults
+
+	# Remove indication if firmware was uploaded with keep-settings
+	rm /tmp/.ksrestored &> /dev/null
+
+	type boot_target_post_uci_defaults &> /dev/null && \
+		boot_target_post_uci_defaults
+
+	# temporary hack until configd exists
+	/sbin/reload_config
+	# leave finished boot script indication
+	touch /var/run/boot-done
+	# run permtab to setup permissions
+	/sbin/perm -a
+}

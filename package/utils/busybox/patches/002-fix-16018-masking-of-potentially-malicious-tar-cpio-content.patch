@@ -1,0 +1,89 @@
+Prevent unprintable bytes including terminal escapes being printed when
+listing tar file contents in a terminal as this can be used to hide
+malicious archive content from users prior to unpacking a file.
+
+Fixes #16018
+
+Also added bb_safe_dump_str() to include/libbb.h
+
+
+---
+archival/libarchive/header_list.c         |  3 ++-
+archival/libarchive/header_verbose_list.c | 14 +++++++-------
+include/libbb.h                           |  8 ++++++++
+3 files changed, 17 insertions(+), 8 deletions(-)
+
+--- a/archival/libarchive/header_list.c
++++ b/archival/libarchive/header_list.c
+@@ -8,5 +8,6 @@
+ void FAST_FUNC header_list(const file_header_t *file_header)
+ {
+ //TODO: cpio -vp DIR should output "DIR/NAME", not just "NAME" */
+-	puts(file_header->name);
++	bb_safe_dump_str(stdout, file_header->name);
++	bb_putchar('\n');
+ }
+--- a/archival/libarchive/header_verbose_list.c
++++ b/archival/libarchive/header_verbose_list.c
+@@ -28,7 +28,7 @@ void FAST_FUNC header_verbose_list(const
+ 		/*sprintf(gid, "%u", (unsigned)file_header->gid);*/
+ 		group = utoa(file_header->gid);
+ 	}
+-	printf("%s %s/%s %9"OFF_FMT"u %4u-%02u-%02u %02u:%02u:%02u %s",
++	printf("%s %s/%s %9"OFF_FMT"u %4u-%02u-%02u %02u:%02u:%02u ",
+ 		bb_mode_string(file_header->mode),
+ 		user,
+ 		group,
+@@ -38,14 +38,13 @@ void FAST_FUNC header_verbose_list(const
+ 		ptm->tm_mday,
+ 		ptm->tm_hour,
+ 		ptm->tm_min,
+-		ptm->tm_sec,
+-		file_header->name);
++		ptm->tm_sec);
+ 
+ #else /* !FEATURE_TAR_UNAME_GNAME */
+ 
+ 	localtime_r(&file_header->mtime, ptm);
+ 
+-	printf("%s %u/%u %9"OFF_FMT"u %4u-%02u-%02u %02u:%02u:%02u %s",
++	printf("%s %u/%u %9"OFF_FMT"u %4u-%02u-%02u %02u:%02u:%02u ",
+ 		bb_mode_string(file_header->mode),
+ 		(unsigned)file_header->uid,
+ 		(unsigned)file_header->gid,
+@@ -55,14 +54,15 @@ void FAST_FUNC header_verbose_list(const
+ 		ptm->tm_mday,
+ 		ptm->tm_hour,
+ 		ptm->tm_min,
+-		ptm->tm_sec,
+-		file_header->name);
++		ptm->tm_sec);
+ 
+ #endif /* FEATURE_TAR_UNAME_GNAME */
+ 
++	bb_safe_dump_str(stdout, file_header->name);
+ 	/* NB: GNU tar shows "->" for symlinks and "link to" for hardlinks */
+ 	if (file_header->link_target) {
+-		printf(" -> %s", file_header->link_target);
++		printf(" -> ");
++		bb_safe_dump_str(stdout, file_header->link_target);
+ 	}
+ 	bb_putchar('\n');
+ }
+--- a/include/libbb.h
++++ b/include/libbb.h
+@@ -2465,6 +2465,14 @@ static ALWAYS_INLINE unsigned char bb_as
+ #define isgraph_asciionly(a) ((unsigned)((a) - 0x21) <= 0x7e - 0x21)
+ #define isprint_asciionly(a) ((unsigned)((a) - 0x20) <= 0x7e - 0x20)
+ 
++/* Print msg to a file-descriptor, replacing any unprintable and terminal escape bytes with '?' if fd is a TTY */
++static ALWAYS_INLINE void bb_safe_dump_str(FILE* fd, const char* msg) {
++	int fdno = fileno(fd);
++	if (isatty(fdno)) {
++		msg = printable_string(msg);
++	}
++	fprintf(fd, "%s", msg);
++}
+ 
+ /* Simple unit-testing framework */
+ 

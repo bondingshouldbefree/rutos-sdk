@@ -1,0 +1,3 @@
+# Setup dfota status permissions
+/tmp/dfota_updates.json		dfota:dfota		644		-
+/tmp/dfota_status.json		dfota:dfota		644		-

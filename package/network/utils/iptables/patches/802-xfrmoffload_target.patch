@@ -1,0 +1,95 @@
+Index: iptables-1.8.7/include/linux/netfilter/xt_FLOWOFFLOAD.h
+===================================================================
+--- iptables-1.8.7.orig/include/linux/netfilter/xt_FLOWOFFLOAD.h
++++ iptables-1.8.7/include/linux/netfilter/xt_FLOWOFFLOAD.h
+@@ -19,4 +19,14 @@ struct xt_flowoffload_target_info {
+ 	__u32 flags;
+ };
+ 
++enum {
++	XT_XFRMOFFLOAD_HW	= 1 << 0,
++
++	XT_XFRMOFFLOAD_MASK	= XT_XFRMOFFLOAD_HW,
++};
++
++struct xt_xfrmoffload_target_info {
++	__u32 flags;
++};
++
+ #endif /* _XT_FLOWOFFLOAD_H */
+Index: iptables-1.8.7/extensions/libxt_FLOWOFFLOAD.c
+===================================================================
+--- iptables-1.8.7.orig/extensions/libxt_FLOWOFFLOAD.c
++++ iptables-1.8.7/extensions/libxt_FLOWOFFLOAD.c
+@@ -60,6 +60,51 @@ static void offload_save(const void *ip,
+ 		printf(" --xfrm");
+ }
+ 
++static void xfrmoffload_help(void)
++{
++	printf(
++"XFRMOFFLOAD target options:\n"
++" --hw				Use HW-enabled flowtable"
++	);
++}
++
++static const struct xt_option_entry xfrmoffload_opts[] = {
++	{.name = "hw", .id = O_HW, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++
++static void xfrmoffload_parse(struct xt_option_call *cb)
++{
++	struct xt_xfrmoffload_target_info *info = cb->data;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_HW:
++		info->flags |= XT_XFRMOFFLOAD_HW;
++		break;
++	}
++
++}
++
++static void xfrmoffload_print(const void *ip, const struct xt_entry_target *target, int numeric)
++{
++	const struct xt_xfrmoffload_target_info *info =
++		(const struct xt_xfrmoffload_target_info *)target->data;
++
++	printf(" XFRMOFFLOAD");
++	if (info->flags & XT_XFRMOFFLOAD_HW)
++		printf(" hw");
++}
++
++static void xfrmoffload_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct xt_xfrmoffload_target_info *info =
++		(const struct xt_xfrmoffload_target_info *)target->data;
++
++	if (info->flags & XT_XFRMOFFLOAD_HW)
++		printf(" --hw");
++}
++
+ static struct xtables_target offload_tg_reg[] = {
+ 	{
+ 		.family		= NFPROTO_UNSPEC,
+@@ -74,6 +119,19 @@ static struct xtables_target offload_tg_
+ 		.x6_parse	= offload_parse,
+ 		.x6_options	= offload_opts,
+ 	},
++	{
++		.family		= NFPROTO_UNSPEC,
++		.name		= "XFRMOFFLOAD",
++		.revision	= 0,
++		.version	= XTABLES_VERSION,
++		.size		= XT_ALIGN(sizeof(struct xt_xfrmoffload_target_info)),
++		.userspacesize	= sizeof(struct xt_xfrmoffload_target_info),
++		.help		= xfrmoffload_help,
++		.print		= xfrmoffload_print,
++		.save		= xfrmoffload_save,
++		.x6_parse	= xfrmoffload_parse,
++		.x6_options	= xfrmoffload_opts,
++	},
+ };
+ 
+ void _init(void)

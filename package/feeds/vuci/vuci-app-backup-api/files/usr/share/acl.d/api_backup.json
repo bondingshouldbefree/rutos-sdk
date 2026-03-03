@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"log":{"methods":["write_ext"]},"system":{"methods":["backup","sysupgrade"]},"rpc-sys-ext":{"methods":["firstboot","userdefaults"]},"rpc-format":{"methods":["sme"]},"rpc-sys":{"methods":["reboot"]},"rc":{"methods":["init"]}}}

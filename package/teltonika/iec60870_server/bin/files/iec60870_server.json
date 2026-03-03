@@ -1,0 +1,43 @@
+{
+	"user": "iec60870_server",
+	"publish": [ "iec60870_server" ],
+	"listen": [
+		"ubus.object.add"
+	],
+	"subscribe": [
+		"gpsd",
+		"ioman.*"
+	],
+	"access": {
+		"mdcollect": {
+			"methods": [
+				"get"
+			]
+		},
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gpsd": {
+			"methods": [
+				"position"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"get_signal_query",
+				"get_temperature",
+				"get_imsi"
+			]
+		},
+		"ioman.*": {
+			"methods": [
+				"status",
+				"location",
+				"update"
+			]
+		}
+	}
+}

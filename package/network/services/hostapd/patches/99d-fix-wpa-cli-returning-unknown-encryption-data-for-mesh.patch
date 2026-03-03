@@ -1,0 +1,57 @@
+Index: hostapd-2.12-dev/wpa_supplicant/ctrl_iface.c
+===================================================================
+--- hostapd-2.12-dev/wpa_supplicant/ctrl_iface.c
++++ hostapd-2.12-dev/wpa_supplicant/ctrl_iface.c
+@@ -2256,6 +2256,40 @@ static int wpa_supplicant_ctrl_iface_ctr
+ #endif /* IEEE8021X_EAPOL */
+ }
+ 
++int mesh_ctrl_iface_wpa_get_status(struct wpa_supplicant *wpa_s, char *buf,
++				 size_t buflen, int verbose)
++{
++	char *pos = buf, *end = buf + buflen;
++	int ret, pairwise_cipher, group_cipher;
++	struct wpa_ssid *ssid;
++
++	if (!wpa_s->current_ssid)
++		return 0;
++
++	ssid = wpa_s->current_ssid;
++	if (ssid->key_mgmt == WPA_KEY_MGMT_NONE) {
++		pairwise_cipher = WPA_CIPHER_NONE;
++		group_cipher = WPA_CIPHER_NONE;
++		goto out;
++	}
++
++	pairwise_cipher = wpa_pick_pairwise_cipher(ssid->pairwise_cipher, 0);
++	group_cipher = wpa_pick_group_cipher(ssid->group_cipher);
++
++out:		
++	ret = os_snprintf(pos, end - pos,
++		  "pairwise_cipher=%s\n"
++		  "group_cipher=%s\n"
++		  "key_mgmt=%s\n",
++		  wpa_cipher_txt(pairwise_cipher),
++		  wpa_cipher_txt(group_cipher),
++		  wpa_key_mgmt_txt(ssid->key_mgmt, ssid->proto));
++
++	if (os_snprintf_error(end - pos, ret))
++		return pos - buf;
++	pos += ret;
++	return pos - buf;
++}
+ 
+ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
+ 					    const char *params,
+@@ -2381,7 +2415,10 @@ static int wpa_supplicant_ctrl_iface_sta
+ 							    verbose);
+ 		} else
+ #endif /* CONFIG_AP */
+-		pos += wpa_sm_get_status(wpa_s->wpa, pos, end - pos, verbose);
++		if (ssid->mode == WPAS_MODE_MESH)
++			pos += mesh_ctrl_iface_wpa_get_status(wpa_s, pos, end - pos, verbose);
++		else
++			pos += wpa_sm_get_status(wpa_s->wpa, pos, end - pos, verbose);
+ 	}
+ #ifdef CONFIG_SME
+ #ifdef CONFIG_SAE

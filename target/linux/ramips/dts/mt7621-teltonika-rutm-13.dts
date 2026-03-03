@@ -1,0 +1,138 @@
+#include "common-mt7621/rutm.dtsi"
+#include "common-mt7621/shiftreg.dtsi"
+#include "common-mt7621/leds/wan.dtsi"
+#include "common-mt7621/modem/4g.dtsi"
+
+// PWR, RST |G47|G10|
+// IN, OUT  |G7|G8|
+// SR CTRL  |G5|G9|G11|G12|
+// WAN      |G41|G44|G45|G42|
+// ETH      |S0-S7|
+// 4G		|G13|G14|G16|G18|S9-S15|
+// VDSL     |S8|
+/ {
+	model = "Teltonika RUTM13";
+
+	ext_io {
+		shift_io: shift_io@0 {
+			enable-gpios = <&gpio 12 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_modem_status {
+			gpio-export,name = "modem_status";
+			gpio-export,input = <0>;
+			gpios = <&gpio 13 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_sim_select {
+			gpio-export,name = "sim_sel";
+			gpio-export,output = <0>;
+			gpios = <&gpio 18 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	leds {
+		led_power {
+			gpios = <&gpio 47 GPIO_ACTIVE_LOW>;
+		};
+
+		led_wan_sim2 {
+			gpios = <&gpio 44 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_vdsl {
+			label = "led_vdsl";
+			gpios = <&shift_io 8 GPIO_ACTIVE_HIGH>;
+		};
+
+		/delete-node/ led_gen_2;
+
+		led_eth_g4 {
+			label = "eth_g4";
+			gpios = <&shift_io 0 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y4 {
+			label = "eth_y4";
+			gpios = <&shift_io 1 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g3 {
+			label = "eth_g3";
+			gpios = <&shift_io 2 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_y3 {
+			label = "eth_y3";
+			gpios = <&shift_io 3 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_g2 {
+			label = "eth_g2";
+			gpios = <&shift_io 4 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y2 {
+			label = "eth_y2";
+			gpios = <&shift_io 5 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g1 {
+			label = "eth_g1";
+			gpios = <&shift_io 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y1 {
+			label = "eth_y1";
+			gpios = <&shift_io 7 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	tlt_gpios {
+		ioman {
+			GPIO_8 {
+				line_name = "GPIO_OUT_1";
+			};
+			GPIO_7 {
+				line_name = "GPIO_IN_1";
+				active_low;
+			};
+		};
+
+		misc {
+			GPIO_18 {
+				line_name = "GPIO_SIM_SELECT";
+			};
+		};
+	};
+};
+
+&switch0 {
+	ports {
+		port@1 {
+			status = "okay";
+			label = "lan1";
+		};
+
+		port@2 {
+			status = "okay";
+			label = "lan2";
+		};
+
+		port@3 {
+			status = "okay";
+			label = "lan3";
+		};
+	};
+};
+
+&mnfinfo {
+	sim_cfg {
+		default = "2111010_2112010";
+	};
+};

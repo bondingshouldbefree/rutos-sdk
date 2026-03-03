@@ -1,0 +1,14 @@
+{
+  "system/maintenance/troubleshoot/tcp_dump": {
+    "title": "TCP dump",
+    "acls": ["system/maintenance/troubleshoot/tcp_dump"],
+    "view": "system/TCPdump",
+    "index": 30,
+    "main_page": true,
+    "depends": {
+      "packages": {
+        "allOf": ["tcpdump"]
+      }
+    }
+  }
+}

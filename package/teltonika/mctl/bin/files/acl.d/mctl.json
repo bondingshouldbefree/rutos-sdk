@@ -1,0 +1,58 @@
+{
+	"user": "mctl",
+	"access": {
+		"log": {
+			"methods": [
+				"write_ext"
+			]
+		},
+		"mctl": {
+			"methods": [
+				"*"
+			]
+		},
+		"hotplug.mctl": {
+			"methods": [
+				"call"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"set_func",
+				"exec"
+			]
+		},
+		"gsm": {
+			"methods": [
+				"attach",
+				"deattach"
+			]
+		},
+		"boardjson": {
+			"methods": [
+				"get"
+			]
+		},
+		"service": {
+			"methods": [
+				"set",
+				"list",
+				"delete",
+				"signal"
+			]
+		}
+	},
+	"publish": [
+		"mctl"
+	],
+	"send": [
+		"mctl.modem_state"
+
+	],
+	"listen": [
+		"gsm.modem.hang",
+		"hotplug.modem_removed",
+		"hotplug.modem_added"
+	]
+}
+

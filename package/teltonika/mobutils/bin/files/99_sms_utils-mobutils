@@ -1,0 +1,55 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+fix_sms_utils(){
+	local sec="$1" action
+
+	config_get action "$sec" "action"
+	config_get smstext "$sec" "smstext"
+	case "$action" in
+	"wifi")
+		[ -z "$wifi" ] || [ "$wifi" -eq 0 ] && {
+			uci_remove "sms_utils" "$sec"
+		}
+		;;
+	"gps"|"gps_coordinates")
+		[ -z "$gps" ] || [ "$gps" -eq 0 ] && {
+			uci_remove "sms_utils" "$sec"
+		}
+		;;
+	"mobile")
+		[ -z "$mobile" ] || [ "$mobile" -eq 0 ] && {
+			uci_remove "sms_utils" "$sec"
+		}
+		;;
+	"switch_sim")
+		[ -z "$dual_sim" ] || [ "$dual_sim" -eq 0 ] && {
+			uci_remove "sms_utils" "$sec"
+		}
+		;;
+	"io_set")
+		[ -z "$ios" ] || [ "$ios" -eq 0 ] && {
+			uci_remove "sms_utils" "$sec"
+		}
+		;;
+	"send_status")
+		{ [ -z "$smstext" ] || [ "$smstext" = "iostatus" ]; } && { [ -z "$ios" ] || [ "$ios" -eq 0 ]; } && {
+			uci_remove "sms_utils" "$sec"
+		}
+		;;
+	"esim_list"|"esim_change"|"esim_install")
+		[ -z "$esim" ] || [ "$esim" -eq 0 ] && {
+			uci_remove "sms_utils" "$sec"
+		}
+	esac
+}
+
+json_load_file "/etc/board.json"
+json_select hwinfo
+json_get_vars dual_sim wifi mobile gps ios esim
+
+config_load "sms_utils"
+config_foreach fix_sms_utils "rule"
+uci_commit "sms_utils"

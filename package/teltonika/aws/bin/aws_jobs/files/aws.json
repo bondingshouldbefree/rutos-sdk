@@ -1,0 +1,14 @@
+{
+	"user": "aws",
+	"publish": [ "aws" ],
+	"access": {
+		"api": {
+			"methods": [
+				"post",
+				"get",
+				"put",
+				"delete"
+			]
+		}
+	}
+}

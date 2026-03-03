@@ -1,0 +1,47 @@
+{
+	"user": "preboot",
+	"access": {
+		"gsm.modem*": {
+			"methods": [
+				"info",
+				"send_sms",
+				"get_sim_slot"
+			]
+		},
+		"log": {
+			"methods": [
+				"write_ext"
+			]
+		},
+		"quota_limit": {
+			"methods": [
+				"status"
+			]
+		},
+		"poeman": {
+			"methods": [
+				"set"
+			]
+		},
+		"network.interface*": {
+			"methods": [
+				"status",
+				"up",
+				"down"
+			]
+		},
+		"rpc-sys": {
+			"methods": [
+				"reboot"
+			]
+		},
+		"mctl": {
+			"methods": [
+				"reboot"
+			]
+		},
+		"wireless_reboot": {
+			"methods": ["get_stats", "full_reset"]
+		}
+	}
+}

@@ -1,0 +1,184 @@
+index 5b4350e..4f9a748 100644
+--- a/lib60870-C/examples/cs101_master_balanced/master_example.c
++++ b/lib60870-C/examples/cs101_master_balanced/master_example.c
+@@ -122,7 +122,7 @@ main(int argc, char** argv)
+     if (argc > 1)
+         serialPort = argv[1];
+ 
+-    SerialPort port = SerialPort_create(serialPort, 9600, 8, 'E', 1);
++    SerialPort port = SerialPort_create(serialPort, 9600, 8, PARITY_EVEN, 1, FLOW_CONTROL_NONE);
+ 
+     CS101_Master master = CS101_Master_create(port, NULL, NULL, IEC60870_LINK_LAYER_BALANCED);
+ 
+index eb93379..1b25d5c 100644
+--- a/lib60870-C/examples/cs101_master_unbalanced/master_example.c
++++ b/lib60870-C/examples/cs101_master_unbalanced/master_example.c
+@@ -156,7 +156,7 @@ main(int argc, char** argv)
+     if (argc > 1)
+         serialPort = argv[1];
+ 
+-    SerialPort port = SerialPort_create(serialPort, 9600, 8, 'E', 1);
++    SerialPort port = SerialPort_create(serialPort, 9600, 8, PARITY_EVEN, 1, FLOW_CONTROL_NONE);
+ 
+     CS101_Master master = CS101_Master_create(port, NULL, NULL, IEC60870_LINK_LAYER_UNBALANCED);
+ 
+index d76f334..d07d3a3 100644
+--- a/lib60870-C/examples/cs101_slave/slave_example.c
++++ b/lib60870-C/examples/cs101_slave/slave_example.c
+@@ -234,7 +234,7 @@ main(int argc, char** argv)
+     if (argc > 1)
+         serialPort = argv[1];
+ 
+-    SerialPort port = SerialPort_create(serialPort, 9600, 8, 'E', 1);
++    SerialPort port = SerialPort_create(serialPort, 9600, 8, PARITY_EVEN, 1, FLOW_CONTROL_NONE);
+ 
+     /* create a new slave/server instance with default link layer and application layer parameters */
+     // CS101_Slave slave = CS101_Slave_create(port, NULL, NULL, IEC60870_LINK_LAYER_BALANCED);
+index 619ddd9..afcf899 100644
+--- a/lib60870-C/examples/cs101_slave_files/cs101_slave_files.c
++++ b/lib60870-C/examples/cs101_slave_files/cs101_slave_files.c
+@@ -379,7 +379,7 @@ main(int argc, char** argv)
+     if (argc > 1)
+         serialPort = argv[1];
+ 
+-    SerialPort port = SerialPort_create(serialPort, 9600, 8, 'E', 1);
++    SerialPort port = SerialPort_create(serialPort, 9600, 8, PARITY_EVEN, 1, FLOW_CONTROL_NONE);
+ 
+     /* create a new slave/server instance with default link layer and application layer parameters */
+     // CS101_Slave slave = CS101_Slave_create(port, NULL, NULL, IEC60870_LINK_LAYER_UNBALANCED);
+index a02a1a1..998728d 100644
+--- a/lib60870-C/src/hal/inc/hal_serial.h
++++ b/lib60870-C/src/hal/inc/hal_serial.h
+@@ -46,6 +46,20 @@ typedef enum {
+     SERIAL_PORT_ERROR_UNKNOWN = 99
+ } SerialPortError;
+ 
++typedef enum {
++    FLOW_CONTROL_NONE = 0,
++    FLOW_CONTROL_RTS_CTS = 1,
++    FLOW_CONTROL_XON_XOFF = 2,
++} FlowControl;
++
++typedef enum {
++    PARITY_NONE = 0,
++    PARITY_ODD = 1,
++    PARITY_EVEN = 2,
++    PARITY_MARK = 3,
++    PARITY_SPACE = 4
++} Parity;
++
+ /**
+  * \brief Create a new SerialPort instance
+  *
+@@ -54,11 +68,13 @@ typedef enum {
+  * \param dataBits the number of data bits (usually 8)
+  * \param parity defines what kind of parity to use ('E' - even parity, 'O' - odd parity, 'N' - no parity)
+  * \param stopBits the number of stop buts (usually 1)
++ * \param flowControl flow control mode
+  *
+  * \return the new SerialPort instance
+  */
+ PAL_API SerialPort
+-SerialPort_create(const char* interfaceName, int baudRate, uint8_t dataBits, char parity, uint8_t stopBits);
++SerialPort_create(const char* interfaceName, int baudRate, uint8_t dataBits, Parity parity, uint8_t stopBits,
++                  FlowControl flowControl);
+ 
+ /**
+  * \brief Destroy the SerialPort instance and release all resources
+index d226cfd..d680d18 100644
+--- a/lib60870-C/src/hal/serial/linux/serial_port_linux.c
++++ b/lib60870-C/src/hal/serial/linux/serial_port_linux.c
+@@ -26,15 +26,17 @@ struct sSerialPort {
+     int fd;
+     int baudRate;
+     uint8_t dataBits;
+-    char parity;
++    Parity parity;
+     uint8_t stopBits;
++    FlowControl flowControl;
+     uint64_t lastSentTime;
+     struct timeval timeout;
+     SerialPortError lastError;
+ };
+ 
+ SerialPort
+-SerialPort_create(const char* interfaceName, int baudRate, uint8_t dataBits, char parity, uint8_t stopBits)
++SerialPort_create(const char* interfaceName, int baudRate, uint8_t dataBits, Parity parity, uint8_t stopBits,
++                  FlowControl flowControl)
+ {
+     SerialPort self = (SerialPort) GLOBAL_MALLOC(sizeof(struct sSerialPort));
+ 
+@@ -44,6 +46,7 @@ SerialPort_create(const char* interfaceName, int baudRate, uint8_t dataBits, cha
+         self->dataBits = dataBits;
+         self->stopBits = stopBits;
+         self->parity = parity;
++        self->flowControl = flowControl;
+         self->lastSentTime = 0;
+         self->timeout.tv_sec = 0;
+         self->timeout.tv_usec = 100000; /* 100 ms */
+@@ -150,28 +153,54 @@ SerialPort_open(SerialPort self)
+     else /* 2 */
+         tios.c_cflag |= CSTOPB;
+ 
+-    if (self->parity == 'N') {
+-        tios.c_cflag &=~ PARENB;
+-    } else if (self->parity == 'E') {
++    switch (self->parity) {
++    case PARITY_EVEN:
+         tios.c_cflag |= PARENB;
+-        tios.c_cflag &=~ PARODD;
+-    } else { /* 'O' */
+-        tios.c_cflag |= PARENB;
+-        tios.c_cflag |= PARODD;
++        tios.c_cflag &= ~PARODD;
++        break;
++    case PARITY_ODD:
++        tios.c_cflag |= (PARENB | PARODD);
++        break;
++    case PARITY_MARK:
++        tios.c_cflag |= (PARENB | CMSPAR | PARODD);
++        break;
++    case PARITY_SPACE:
++        tios.c_cflag |= (PARENB | CMSPAR);
++        tios.c_cflag &= ~PARODD;
++        break;
++    default:
++    case PARITY_NONE:
++        tios.c_cflag &= ~PARENB;
++        break;
++    }
++
++    switch (self->flowControl) {
++    case FLOW_CONTROL_RTS_CTS:
++        tios.c_cflag |= CRTSCTS;
++        break;
++    case FLOW_CONTROL_XON_XOFF:
++        tios.c_iflag |= (IXON | IXOFF);
++        break;
++    default:
++    case FLOW_CONTROL_NONE:
++        tios.c_cflag &= ~CRTSCTS;
++        tios.c_iflag &= ~(IXON | IXOFF);
++        break;
+     }
+ 
+-    tios.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
++    tios.c_lflag &= ~(ECHO | ECHOE | ECHOCTL | ECHOKE | ECHOK);
++    tios.c_lflag &= ~(ICANON | ISIG | IEXTEN);
+ 
+-    if (self->parity == 'N') {
++    if (self->parity == PARITY_NONE) {
+         tios.c_iflag &= ~INPCK;
+     } else {
+         tios.c_iflag |= INPCK;
+     }
+ 
+-    tios.c_iflag &= ~(IXON | IXOFF | IXANY | ICRNL);
++    tios.c_iflag &= ~(IXANY | ICRNL);
+     tios.c_iflag |= IGNBRK; /* Set ignore break to allow 0xff characters */
+     tios.c_iflag |= IGNPAR;
+-    tios.c_oflag &=~ OPOST;
++    tios.c_oflag &= ~(ONLCR | OCRNL | ONOCR | OPOST);
+ 
+     tios.c_cc[VMIN] = 0;
+     tios.c_cc[VTIME] = 0;

@@ -1,0 +1,2 @@
+/etc/config/periodic_reboot	preboot:preboot		660
+/etc/config/ping_reboot		preboot:preboot		660

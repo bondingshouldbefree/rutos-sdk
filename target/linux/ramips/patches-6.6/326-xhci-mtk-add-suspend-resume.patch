@@ -1,0 +1,23 @@
+--- a/drivers/usb/host/xhci-mtk.c
++++ b/drivers/usb/host/xhci-mtk.c
+@@ -704,6 +704,9 @@ disable_pm:
+ 	return ret;
+ }
+ 
++static int __maybe_unused xhci_mtk_suspend(struct device *dev);
++static int __maybe_unused xhci_mtk_resume(struct device *dev);
++
+ static void xhci_mtk_remove(struct platform_device *pdev)
+ {
+ 	struct xhci_hcd_mtk *mtk = platform_get_drvdata(pdev);
+@@ -712,6 +715,10 @@ static void xhci_mtk_remove(struct platf
+ 	struct usb_hcd  *shared_hcd = xhci->shared_hcd;
+ 	struct device *dev = &pdev->dev;
+ 
++	xhci_mtk_suspend(mtk->dev);
++	udelay(10);
++	xhci_mtk_resume(mtk->dev);
++
+ 	pm_runtime_get_sync(dev);
+ 	xhci->xhc_state |= XHCI_STATE_REMOVING;
+ 	dev_pm_clear_wake_irq(dev);

@@ -1,0 +1,12 @@
+--- a/iwinfo_lua.c
++++ b/iwinfo_lua.c
+@@ -494,6 +494,9 @@ static int iwinfo_L_freqlist(lua_State *
+ 		{
+ 			e = (struct iwinfo_freqlist_entry *) &rv[i];
+ 
++			if (e->channel == 14 && e->band == IWINFO_BAND_24)
++				continue;
++
+ 			lua_newtable(L);
+ 
+ 			/* MHz */

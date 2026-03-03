@@ -1,0 +1,14 @@
+{
+  "network/wireless/relayd": {
+    "title": "Relayd",
+    "index": 30,
+    "view": "network/Relayd",
+    "acls": ["network/wireless/relayd"],
+    "depends": {
+      "board": {
+        "anyOf": ["has_wifi"]
+      }
+    },
+    "main_page": true
+  }
+}

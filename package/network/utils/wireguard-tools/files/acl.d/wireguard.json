@@ -1,0 +1,11 @@
+{
+  "user": "wireguard",
+  "access": {
+    "network.interface*": {
+      "methods": ["dump", "up", "down"]
+    },
+    "network": {
+      "methods": ["reload"]
+    }
+  }
+}

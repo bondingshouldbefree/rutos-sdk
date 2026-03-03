@@ -1,0 +1,43 @@
+--- a/block.c
++++ b/block.c
+@@ -25,6 +25,7 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <limits.h>
++#include <grp.h>
+ 
+ #include <sys/stat.h>
+ #include <sys/types.h>
+@@ -1173,7 +1174,8 @@ static int mount_device(struct probe_inf
+ 	if (check_fs)
+ 		check_filesystem(pr);
+ 
+-	mkdir_p(target, 0755);
++	mkdir_p(target, 0775);
++
+ 	if (!lstat(target, &st) && S_ISLNK(st.st_mode))
+ 		unlink(target);
+ 
+@@ -1188,6 +1190,13 @@ static int mount_device(struct probe_inf
+ 		return err;
+ 	}
+ 
++	struct group *gr = getgrnam("mount");
++	if (chown(target, 0, gr->gr_gid) != 0) {
++		/* FAT32 does not support ownerships. So.. its OK to fail here */
++		if (strcmp(pr->type, "vfat") && strcmp(pr->type, "exfat") && strcmp(pr->type, "ntfs"))
++			syslog(LOG_ERR, "Failed to set ownership on %s: %m", target);
++	}
++
+ 	if (_target)
+ 		free(_target);
+ 
+@@ -1603,7 +1612,7 @@ static int mount_extroot(char *cfg)
+ 
+ 		if (m->overlay)
+ 			path = overlay;
+-		mkdir_p(path, 0755);
++		mkdir_p(path, 0775);
+ 
+ #ifdef FS_ROOTFS_READONLY
+ 		path = "/ext";

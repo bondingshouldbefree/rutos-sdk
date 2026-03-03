@@ -1,0 +1,7 @@
+
+/etc/package_restore/       opkg:opkg   770 cd
+/etc/backup_packages/       opkg:opkg   777 cd
+/etc/backup_packages/       opkg:opkg   777 r
+/etc/package_restore.txt    opkg:opkg   660 -
+/etc/config/package_restore opkg:opkg   660 -
+/tmp/pkgman/                opkg:opkg   2775 cd

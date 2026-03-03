@@ -1,0 +1,183 @@
+net: netfiler: flowtables: implement nf_flow_xfrm_it_harder
+
+'nf_flow_xfrm_it_harder' helps better mimic Linux network stack (slowpath) behavior
+around XFRM lookups and NAT. In the slowpath, if the packet had address translation
+performed after the XFRM output policy lookups, a repeated lookup is performed 
+(in the amusingly named 'nf_xfrm_me_harder') to make sure the policy is consistent
+with current packet address fields.
+
+'nf_flow_xfrm_it_harder' implements this by using flow info from conntrack, instead
+of the packet itself.
+
+Integration with xtables FLOWOFFLOAD is included.
+
+--- a/include/net/netfilter/nf_flow_table_xfrm.h
++++ b/include/net/netfilter/nf_flow_table_xfrm.h
+@@ -122,4 +122,20 @@ static inline int flow_offload_xfrm_deca
+ 	return 0;
+ }
+ 
++#ifdef CONFIG_XFRM
++int nf_flow_xfrm_it_harder(struct sk_buff *skb, const struct nf_conn *ct,
++			   enum ip_conntrack_dir dir,
++			   struct dst_entry **dst_orig, u8 family,
++			   struct net *net);
++#else
++static inline int nf_flow_xfrm_it_harder(struct sk_buff *skb,
++					 const struct nf_conn *ct,
++					 enum ip_conntrack_dir dir,
++					 struct dst_entry **dst_orig, u8 family,
++					 struct net *net)
++{
++	return 0;
++}
++#endif
++
+ #endif /* _NF_FLOW_TABLE_XFRM_H */
+--- a/net/netfilter/Makefile
++++ b/net/netfilter/Makefile
+@@ -144,6 +144,7 @@ obj-$(CONFIG_NF_FLOW_TABLE)	+= nf_flow_t
+ nf_flow_table-objs		:= nf_flow_table_core.o nf_flow_table_ip.o \
+ 				   nf_flow_table_offload.o
+ nf_flow_table-$(CONFIG_NF_FLOW_TABLE_PROCFS) += nf_flow_table_procfs.o
++nf_flow_table-$(CONFIG_XFRM)	+= nf_flow_table_xfrm.o
+ 
+ obj-$(CONFIG_NF_FLOW_TABLE_INET) += nf_flow_table_inet.o
+ 
+--- /dev/null
++++ b/net/netfilter/nf_flow_table_xfrm.c
+@@ -0,0 +1,106 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <net/netfilter/nf_flow_table.h>
++#include <net/netfilter/nf_flow_table_xfrm.h>
++
++static void nf_flow_xfrm4_decode_session(struct sk_buff *skb, struct flowi *fl,
++					 const struct nf_conn *ct,
++					 enum ip_conntrack_dir dir,
++					 struct dst_entry *orig_dst)
++{
++	struct flowi4 *fl4 = &fl->u.ip4;
++
++	memset(fl4, 0, sizeof(struct flowi4));
++	fl4->flowi4_mark = skb->mark;
++	fl4->flowi4_oif = orig_dst->dev ? orig_dst->dev->ifindex : 0;
++	fl4->flowi4_proto = ct->tuplehash[dir].tuple.dst.protonum;
++
++	fl4->saddr = ct->tuplehash[!dir].tuple.dst.u3.ip;
++	fl4->daddr = ct->tuplehash[!dir].tuple.src.u3.ip;
++
++	switch (ct->tuplehash[dir].tuple.dst.protonum) {
++	case IPPROTO_TCP:
++	case IPPROTO_UDP:
++		fl4->fl4_sport = ct->tuplehash[!dir].tuple.dst.u.all;
++		fl4->fl4_dport = ct->tuplehash[!dir].tuple.src.u.all;
++		break;
++	default:
++		BUG();
++	}
++}
++
++static void nf_flow_xfrm6_decode_session(struct sk_buff *skb, struct flowi *fl,
++					 const struct nf_conn *ct,
++					 enum ip_conntrack_dir dir,
++					 struct dst_entry *orig_dst)
++{
++	struct flowi6 *fl6 = &fl->u.ip6;
++
++	memset(fl6, 0, sizeof(struct flowi6));
++	fl6->flowi6_mark = skb->mark;
++	fl6->flowi6_oif = orig_dst->dev ? orig_dst->dev->ifindex : 0;
++	fl6->flowi6_proto = ct->tuplehash[dir].tuple.dst.protonum;
++
++	fl6->saddr = ct->tuplehash[!dir].tuple.dst.u3.in6;
++	fl6->daddr = ct->tuplehash[!dir].tuple.src.u3.in6;
++
++	switch (ct->tuplehash[dir].tuple.dst.protonum) {
++	case IPPROTO_TCP:
++	case IPPROTO_UDP:
++		fl6->fl6_sport = ct->tuplehash[!dir].tuple.dst.u.all;
++		fl6->fl6_dport = ct->tuplehash[!dir].tuple.src.u.all;
++		break;
++	default:
++		BUG();
++	}
++}
++
++int nf_flow_xfrm_it_harder(struct sk_buff *skb, const struct nf_conn *ct,
++			   enum ip_conntrack_dir dir,
++			   struct dst_entry **dst_orig, u8 family,
++			   struct net *net)
++{
++	struct flowi fl;
++	bool need_ip_nat, need_port_nat;
++	struct dst_entry *dst = *dst_orig;
++	struct dst_entry *ndst;
++
++	switch (family) {
++	case NFPROTO_IPV4:
++		nf_flow_xfrm4_decode_session(skb, &fl, ct, dir, dst);
++		need_ip_nat = ct->tuplehash[dir].tuple.src.u3.ip !=
++				      ct->tuplehash[!dir].tuple.dst.u3.ip ||
++			      ct->tuplehash[dir].tuple.dst.u3.ip !=
++				      ct->tuplehash[!dir].tuple.src.u3.ip;
++		break;
++	case NFPROTO_IPV6:
++		nf_flow_xfrm6_decode_session(skb, &fl, ct, dir, dst);
++		need_ip_nat =
++			!nf_inet_addr_cmp(&ct->tuplehash[dir].tuple.src.u3,
++					  &ct->tuplehash[!dir].tuple.dst.u3) ||
++			!nf_inet_addr_cmp(&ct->tuplehash[dir].tuple.dst.u3,
++					  &ct->tuplehash[!dir].tuple.src.u3);
++		break;
++	}
++
++	need_port_nat = ct->tuplehash[dir].tuple.src.u.all !=
++				ct->tuplehash[!dir].tuple.dst.u.all ||
++			ct->tuplehash[dir].tuple.dst.u.all !=
++				ct->tuplehash[!dir].tuple.src.u.all;
++
++	if (!need_ip_nat && !need_port_nat)
++		return 0;
++
++	if (dst->xfrm)
++		dst = ((struct xfrm_dst *)dst)->route;
++
++	dst_hold(dst);
++
++	ndst = xfrm_lookup(net, dst, &fl, NULL, 0);
++	if (IS_ERR(dst))
++		return PTR_ERR(dst);
++
++	dst_release(*dst_orig);
++	*dst_orig = ndst;
++	return 0;
++}
++EXPORT_SYMBOL_GPL(nf_flow_xfrm_it_harder);
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -488,6 +488,15 @@ xt_flowoffload_route(struct sk_buff *skb
+ 	if (nf_flow_xfrm_tuple_disect(skb, &route->in.xfrm_tuple))
+ 		return -1;
+ 
++	if (!dst_hold_safe(this_dst))
++		return -1;
++
++	if (nf_flow_xfrm_it_harder(skb, ct, dir, &this_dst, xt_family(par),
++				   xt_net(par))) {
++		dst_release(this_dst);
++		return -1;
++	}
++
+ 	memset(&fl, 0, sizeof(fl));
+ 	switch (xt_family(par)) {
+ 	case NFPROTO_IPV4:
+@@ -501,9 +510,6 @@ xt_flowoffload_route(struct sk_buff *skb
+ 		break;
+ 	}
+ 
+-	if (!dst_hold_safe(this_dst))
+-		return -ENOENT;
+-
+ 	nf_route(xt_net(par), &other_dst, &fl, false, xt_family(par));
+ 
+ 	nf_default_forward_path(route, this_dst, dir, *indev);

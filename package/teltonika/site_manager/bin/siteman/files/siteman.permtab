@@ -1,0 +1,11 @@
+/etc/config/siteman siteman:siteman 660
+/etc/config/siteman_devices siteman:siteman 660
+/etc/config/siteman_groups siteman:siteman 660
+/etc/config/siteman_network siteman:siteman 660
+/etc/config/siteman_periodic_reboot siteman:siteman 660
+/etc/config/siteman_ping_reboot siteman:siteman 660
+/etc/config/siteman_ports siteman:siteman 660
+/etc/config/siteman_vlan siteman:siteman 660
+/etc/config/siteman_wireless siteman:siteman 660
+/etc/siteman siteman:siteman 770
+/etc/siteman/certs siteman:siteman 770

@@ -1,0 +1,29 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+generate_dot1x_client() {
+	touch /etc/config/dot1x
+
+	json_select network
+	json_select lan
+	json_get_values values ports
+	json_select ports
+	for i in $values; do
+		uci -q batch <<-EOF
+			set dot1x._$i='port'
+			set dot1x._$i.role='client'
+			set dot1x._$i.enabled='0'
+			set dot1x._$i.iface='$i'
+		EOF
+		json_select ..
+	done
+	uci -q batch <<-EOF
+		set dot1x._wan='port'
+		set dot1x._wan.role='client'
+		set dot1x._wan.enabled='0'
+		set dot1x._wan.iface='wan'
+	EOF
+}
+
+conf_file_register_hook generate_dot1x_client /etc/config/dot1x

@@ -1,0 +1,209 @@
+--- a/iptables.c
++++ b/iptables.c
+@@ -1253,6 +1253,20 @@ fw3_ipt_rule_dscp(struct fw3_ipt_rule *r
+ 	fw3_ipt_rule_addarg(r, dscp->invert, "--dscp", buf);
+ }
+ 
++void 
++fw3_ipt_rule_tcpmss(struct fw3_ipt_rule *r, struct fw3_tcpmss *tcpmss)
++{
++	char buf[6];
++
++	if (!tcpmss || !tcpmss->set)
++		return;
++
++	snprintf(buf, sizeof(buf), "%d", tcpmss->tcpmss);
++
++	fw3_ipt_rule_addarg(r, false, "-m", "tcpmss");
++	fw3_ipt_rule_addarg(r, tcpmss->invert, "--set-mss", buf);
++}
++
+ void
+ fw3_ipt_rule_comment(struct fw3_ipt_rule *r, const char *fmt, ...)
+ {
+--- a/iptables.h
++++ b/iptables.h
+@@ -97,6 +97,8 @@ void fw3_ipt_rule_mark(struct fw3_ipt_ru
+ 
+ void fw3_ipt_rule_dscp(struct fw3_ipt_rule *r, struct fw3_dscp *dscp);
+ 
++void fw3_ipt_rule_tcpmss(struct fw3_ipt_rule *r, struct fw3_tcpmss *tcpmss);
++
+ void fw3_ipt_rule_comment(struct fw3_ipt_rule *r, const char *fmt, ...);
+ 
+ void fw3_ipt_rule_extra(struct fw3_ipt_rule *r, const char *extra);
+--- a/options.c
++++ b/options.c
+@@ -78,6 +78,7 @@ const char *fw3_flag_names[__FW3_FLAG_MA
+ 	"HELPER",
+ 	"MARK",
+ 	"DSCP",
++	"TCPMSS",
+ 	"TTL",
+ 	"DNAT",
+ 	"SNAT",
+@@ -948,6 +949,24 @@ fw3_parse_dscp(void *ptr, const char *va
+ 	return true;
+ }
+ 
++bool
++fw3_parse_tcpmss(void *ptr, const char *val, bool is_list)
++{
++	int n;
++
++	if (!fw3_parse_int(&n, val, is_list))
++		return false;
++
++	if (n < 0 || n > 65515)
++		return false;
++
++	struct fw3_tcpmss *tcpmss = ptr;
++	tcpmss->tcpmss = n;
++	tcpmss->set = true;
++
++	return true;
++}
++
+ bool
+ fw3_parse_setmatch(void *ptr, const char *val, bool is_list)
+ {
+--- a/options.h
++++ b/options.h
+@@ -74,19 +74,20 @@ enum fw3_flag
+ 	FW3_FLAG_HELPER        = 10,
+ 	FW3_FLAG_MARK          = 11,
+ 	FW3_FLAG_DSCP          = 12,
+-	FW3_FLAG_TTL           = 13,
+-	FW3_FLAG_DNAT          = 14,
+-	FW3_FLAG_SNAT          = 15,
+-	FW3_FLAG_MASQUERADE    = 16,
+-	FW3_FLAG_JOOL	       = 17,
+-	FW3_FLAG_SRC_ACCEPT    = 18,
+-	FW3_FLAG_SRC_REJECT    = 19,
+-	FW3_FLAG_SRC_DROP      = 20,
+-	FW3_FLAG_CUSTOM_CHAINS = 21,
+-	FW3_FLAG_SYN_FLOOD     = 22,
+-	FW3_FLAG_MTU_FIX       = 23,
+-	FW3_FLAG_DROP_INVALID  = 24,
+-	FW3_FLAG_HOTPLUG       = 25,
++	FW3_FLAG_TCPMSS        = 13,
++	FW3_FLAG_TTL           = 14,
++	FW3_FLAG_DNAT          = 15,
++	FW3_FLAG_SNAT          = 16,
++	FW3_FLAG_MASQUERADE    = 17,
++	FW3_FLAG_JOOL	       = 18,
++	FW3_FLAG_SRC_ACCEPT    = 19,
++	FW3_FLAG_SRC_REJECT    = 20,
++	FW3_FLAG_SRC_DROP      = 21,
++	FW3_FLAG_CUSTOM_CHAINS = 22,
++	FW3_FLAG_SYN_FLOOD     = 23,
++	FW3_FLAG_MTU_FIX       = 24,
++	FW3_FLAG_DROP_INVALID  = 25,
++	FW3_FLAG_HOTPLUG       = 26,
+ 
+ 	__FW3_FLAG_MAX
+ };
+@@ -286,6 +287,13 @@ struct fw3_dscp
+ 	uint8_t dscp;
+ };
+ 
++struct fw3_tcpmss
++{
++	bool set;
++	bool invert;
++	uint16_t tcpmss;
++};
++
+ struct fw3_cthelpermatch
+ {
+ 	struct list_head list;
+@@ -402,11 +410,13 @@ struct fw3_rule
+ 	struct fw3_time time;
+ 	struct fw3_mark mark;
+ 	struct fw3_dscp dscp;
++	struct fw3_tcpmss tcpmss;
+ 
+ 	enum fw3_flag target;
+ 	struct fw3_mark set_mark;
+ 	struct fw3_mark set_xmark;
+ 	struct fw3_dscp set_dscp;
++	struct fw3_tcpmss set_mss;
+ 	struct fw3_cthelpermatch set_helper;
+ 
+ 	enum fw3_ttl_action ttl_action;
+@@ -671,6 +681,7 @@ bool fw3_parse_weekdays(void *ptr, const
+ bool fw3_parse_monthdays(void *ptr, const char *val, bool is_list);
+ bool fw3_parse_mark(void *ptr, const char *val, bool is_list);
+ bool fw3_parse_dscp(void *ptr, const char *val, bool is_list);
++bool fw3_parse_tcpmss(void *ptr, const char *val, bool is_list);
+ bool fw3_parse_setmatch(void *ptr, const char *val, bool is_list);
+ bool fw3_parse_direction(void *ptr, const char *val, bool is_list);
+ bool fw3_parse_cthelper(void *ptr, const char *val, bool is_list);
+--- a/rules.c
++++ b/rules.c
+@@ -65,6 +65,9 @@ const struct fw3_option fw3_rule_opts[]
+ 	FW3_OPT("dscp",                dscp,      rule,     dscp),
+ 	FW3_OPT("set_dscp",            dscp,      rule,     set_dscp),
+ 
++	FW3_OPT("tcpmss",              tcpmss,    rule,     tcpmss),
++	FW3_OPT("set_mss",             tcpmss,    rule,     set_mss),
++
+ 	FW3_OPT("ttl_action",          ttl_action,     rule,     ttl_action),
+ 	FW3_OPT("ttl_value",           ttl_value,      rule,     ttl_value),
+ 
+@@ -181,6 +184,13 @@ check_rule(struct fw3_state *state, stru
+ 		return false;
+ 	}
+ 
++	if (!r->set_mss.set && r->target == FW3_FLAG_TCPMSS)
++	{
++		warn_section("rule", r, e, "is set to target TCPMSS but specifies no "
++		                           "'set_mss' option");
++		return false;
++	}
++
+ 	if (!r->set_helper.set && r->target == FW3_FLAG_HELPER)
+ 	{
+ 		warn_section("rule", r, e, "is set to target HELPER but specifies "
+@@ -388,6 +398,13 @@ static void set_target(struct fw3_ipt_ru
+ 		fw3_ipt_rule_addarg(r, false, "--set-dscp", buf);
+ 		return;
+ 
++	case FW3_FLAG_TCPMSS:
++		snprintf(buf, sizeof(buf), "%d", rule->set_mss.tcpmss);
++
++		fw3_ipt_rule_target(r, "TCPMSS");
++		fw3_ipt_rule_addarg(r, false, "--set-mss", buf);
++		return;
++
+ 	case FW3_FLAG_NOTRACK:
+ 		fw3_ipt_rule_target(r, "CT");
+ 		fw3_ipt_rule_addarg(r, false, "--notrack", NULL);
+@@ -548,6 +565,7 @@ print_rule(struct fw3_ipt_handle *handle
+ 		fw3_ipt_rule_time(r, &rule->time);
+ 		fw3_ipt_rule_mark(r, &rule->mark);
+ 		fw3_ipt_rule_dscp(r, &rule->dscp);
++		fw3_ipt_rule_tcpmss(r, &rule->tcpmss);
+ 		set_target(r, rule, handle->family);
+ 		fw3_ipt_rule_extra(r, rule->extra);
+ 		set_comment(r, rule->name, num);
+@@ -577,12 +595,13 @@ expand_rule(struct fw3_ipt_handle *handl
+ 	if (!fw3_is_family(rule, handle->family))
+ 		return;
+ 
+-	if ((rule->target == FW3_FLAG_NOTRACK && handle->table != FW3_TABLE_RAW) ||
+-	    (rule->target == FW3_FLAG_HELPER && handle->table != FW3_TABLE_RAW)  ||
+-	    (rule->target == FW3_FLAG_MARK && handle->table != FW3_TABLE_MANGLE) ||
+-	    (rule->target == FW3_FLAG_DSCP && handle->table != FW3_TABLE_MANGLE) ||
+-		(rule->target == FW3_FLAG_TTL && handle->table != FW3_TABLE_MANGLE) ||
+-		(rule->target < FW3_FLAG_NOTRACK && handle->table != FW3_TABLE_FILTER))
++	if ((rule->target == FW3_FLAG_NOTRACK && handle->table != FW3_TABLE_RAW)   ||
++	    (rule->target == FW3_FLAG_HELPER && handle->table != FW3_TABLE_RAW)    ||
++	    (rule->target == FW3_FLAG_MARK && handle->table != FW3_TABLE_MANGLE)   ||
++	    (rule->target == FW3_FLAG_DSCP && handle->table != FW3_TABLE_MANGLE)   ||
++	    (rule->target == FW3_FLAG_TCPMSS && handle->table != FW3_TABLE_MANGLE) ||
++	    (rule->target == FW3_FLAG_TTL && handle->table != FW3_TABLE_MANGLE)    ||
++	    (rule->target < FW3_FLAG_NOTRACK && handle->table != FW3_TABLE_FILTER))
+ 		return;
+ 
+ 	if (rule->name)

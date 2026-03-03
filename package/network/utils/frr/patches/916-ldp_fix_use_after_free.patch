@@ -1,0 +1,12 @@
+--- a/ldpd/ldpd.c
++++ b/ldpd/ldpd.c
+@@ -489,7 +489,9 @@ ldpd_shutdown(void)
+ 	}
+ 
+ 	free(iev_ldpe);
++	iev_ldpe = NULL;
+ 	free(iev_lde);
++	iev_lde = NULL;
+ 
+ 	log_info("terminating");
+ 

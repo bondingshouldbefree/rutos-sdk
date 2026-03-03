@@ -1,0 +1,5 @@
+/log/rms_id rms:rms 660 cf
+/log/demo_rms_id rms:rms 660 cf
+/log/local_rms_id rms:rms 660 cf
+/etc/rms_mqtt rms:rms 2770 r
+/etc/config/rms_mqtt rms:rms 660

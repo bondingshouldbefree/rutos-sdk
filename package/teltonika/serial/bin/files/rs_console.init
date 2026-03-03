@@ -1,0 +1,38 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=99
+STOP=01
+
+CONFIG="rs_console"
+PROGRAM="/usr/bin/rs_console"
+
+set_service() {
+	local section="$1"
+
+	config_get ENABLED "$section" "enabled"
+	[ "$ENABLED" != "1" ] && return 1
+
+	procd_open_instance "$section"
+	section_hash=$(uci show "$CONFIG"."$section" | md5sum | head -c 32)
+	procd_set_param data hash=$section_hash
+	procd_set_param data config_id=$section
+
+	# The $section_hash variable must be appended to the end of the command,
+	# even though is is not used it is required for only restarting processess
+	# for which config changed.
+	procd_set_param command "$PROGRAM" "$section" $section_hash
+	procd_set_param respawn 0 10 0
+	procd_set_param term_timeout 0
+	procd_close_instance
+}
+
+start_service() {
+	config_load "$CONFIG"
+	config_foreach set_service
+}
+
+service_triggers() {
+	procd_add_reload_trigger "$CONFIG"
+}
+

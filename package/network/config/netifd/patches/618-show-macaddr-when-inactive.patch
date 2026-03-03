@@ -1,0 +1,31 @@
+--- a/device.c
++++ b/device.c
+@@ -1360,14 +1360,17 @@ device_dump_status(struct blob_buf *b, s
+ 	if (dev->tags)
+ 		blobmsg_add_blob(b, dev->tags);
+ 
++	system_if_get_settings(dev, &dev->settings);
++	device_merge_settings(dev, &st);
++	if (st.flags & DEV_OPT_MACADDR)
++		blobmsg_add_string(b, "macaddr", format_macaddr(st.macaddr));
++
+ 	if (dev->type->dump_info)
+ 		dev->type->dump_info(dev, b);
+ 	else
+ 		system_if_dump_info(dev, b);
+ 
+ 	if (dev->active) {
+-		system_if_get_settings(dev, &dev->settings);
+-		device_merge_settings(dev, &st);
+ 		if (st.flags & DEV_OPT_MASTER) {
+ 			char buf[64], *devname;
+ 
+@@ -1379,8 +1382,6 @@ device_dump_status(struct blob_buf *b, s
+ 			blobmsg_add_u32(b, "mtu", st.mtu);
+ 		if (st.flags & DEV_OPT_MTU6)
+ 			blobmsg_add_u32(b, "mtu6", st.mtu6);
+-		if (st.flags & DEV_OPT_MACADDR)
+-			blobmsg_add_string(b, "macaddr", format_macaddr(st.macaddr));
+ 		if (st.flags & DEV_OPT_TXQUEUELEN)
+ 			blobmsg_add_u32(b, "txqueuelen", st.txqueuelen);
+ 		if (st.flags & DEV_OPT_IPV6)

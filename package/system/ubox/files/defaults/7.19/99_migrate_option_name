@@ -1,0 +1,14 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+config_load system
+val=$(uci_get system system size)
+
+[ -n "$val" ] && {
+	uci_set system system log_size_limit "$val"
+	uci_remove system system size
+	uci_commit system
+}
+
+exit 0

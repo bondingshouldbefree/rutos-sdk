@@ -1,0 +1,17 @@
+{
+	"user": "openvpn",
+	"access": {
+		"rc": {
+			"methods": [ "init" ]
+		},
+		"network.interface": {
+			"methods": ["dump"]
+		},
+		"ip_block": {
+			"methods": ["show", "unblock", "push"]
+		},
+		"hotplug.openvpn": {
+			"methods": ["call"]
+		}
+	}
+}

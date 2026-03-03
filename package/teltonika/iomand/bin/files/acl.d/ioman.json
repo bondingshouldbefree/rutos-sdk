@@ -1,0 +1,21 @@
+{
+	"user": "ioman",
+	"access": {
+		"gsm": {
+			"methods": [
+				"info"
+			]
+		},
+		"gsm.modem*": {
+			"methods": [
+				"get_adc_value"
+			]
+		}
+	},
+	"publish": [
+		"ioman*"
+	],
+	"listen": [
+		"ubus.object.add"
+	]
+}

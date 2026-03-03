@@ -1,0 +1,40 @@
+#!/bin/sh
+
+. /lib/functions.sh
+ID=
+get_id() {
+	[ -n "$ID" ] && return
+	ID="$1"
+}
+config_load "xl2tpd"
+config_foreach "get_id" "service"
+[ -z "$ID" ] && exit 0
+
+BINDING=0
+check_bind() {
+	local section="$1"
+	local bind_to
+	config_get bind_to "$section" bind_to
+	if [ "$bind_to" = "$ID" ]; then
+		BINDING=1
+		return
+	fi
+}
+config_load "ipsec"
+config_foreach "check_bind" "connection"
+[ "$BINDING" = "0" ] && exit 0
+
+disable_l2tp_traffic_rule() {
+	local section="$1"
+	local name
+	config_get name "$section" name
+	[ "$name" = "Allow-l2tp-traffic" ] && {
+		uci_set "firewall" "$section" "enabled" "0"
+	}
+}
+
+config_load "firewall"
+config_foreach "disable_l2tp_traffic_rule" "rule"
+uci_commit "firewall"
+
+exit 0

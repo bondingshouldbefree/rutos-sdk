@@ -1,0 +1,60 @@
+Index: libiwinfo-2025-02-06-9cec6b4d/include/iwinfo.h
+===================================================================
+--- libiwinfo-2025-02-06-9cec6b4d/include/iwinfo.h
++++ libiwinfo-2025-02-06-9cec6b4d/include/iwinfo.h
+@@ -418,6 +418,7 @@ struct iwinfo_ops {
+ 	int (*lookup_phy)(const char *, char *);
+ 	int (*phy_path)(const char *phyname, const char **path);
+ 	void (*close)(void);
++	int (*scan_results)(const char *, char *, int *);
+ };
+ 
+ const char * iwinfo_type(const char *ifname);
+Index: libiwinfo-2025-02-06-9cec6b4d/iwinfo_nl80211.c
+===================================================================
+--- libiwinfo-2025-02-06-9cec6b4d/iwinfo_nl80211.c
++++ libiwinfo-2025-02-06-9cec6b4d/iwinfo_nl80211.c
+@@ -3708,6 +3708,36 @@ static int nl80211_phy_path(const char *
+ 	return 0;
+ }
+ 
++static int nl80211_get_scan_results(const char *ifname, char *buf, int *len)
++{
++	struct nl80211_scanlist sl = { .e = (struct iwinfo_scanlist_entry *)buf };
++	char *res = NULL;
++	int rv;
++
++	*len = 0;
++	
++	if (!strncmp(ifname, "radio", 5)) {
++		if ((res = nl80211_phy2ifname(ifname)) != NULL) {
++			return nl80211_get_scan_results(res, buf, len);
++		} else if ((res = nl80211_ifadd(ifname)) != NULL) {
++			rv = nl80211_get_scan_results(res, buf, len);
++			nl80211_ifdel(res);
++			return rv;
++		}
++	}
++
++	if (nl80211_request(ifname, NL80211_CMD_GET_SCAN, NLM_F_DUMP,
++						nl80211_get_scanlist_cb, &sl))
++		goto out;
++
++	*len = sl.len * sizeof(struct iwinfo_scanlist_entry);
++	return 0;
++
++out:
++	*len = 0;
++	return -1;
++}
++
+ const struct iwinfo_ops nl80211_ops = {
+ 	.name             = "nl80211",
+ 	.probe            = nl80211_probe,
+@@ -3743,5 +3773,6 @@ const struct iwinfo_ops nl80211_ops = {
+ 	.survey           = nl80211_get_survey,
+ 	.lookup_phy       = nl80211_lookup_phyname,
+ 	.phy_path         = nl80211_phy_path,
++	.scan_results     = nl80211_get_scan_results,
+	.close            = nl80211_close
+ };

@@ -1,0 +1,1 @@
+{"services/cloud_solutions/aws/jobs":{"description":"aws iot core jobs configuration","read":{"api":{"/aws/*":["*"]}},"write":{"api":["/aws/jobs/*"]}},"services/cloud_solutions/aws/provisioning":{"description":"aws iot core provisioning configuration","read":{"api":{"/aws/*":["*"]}},"write":{"api":["/aws/provisioning/*"]}}}

@@ -1,0 +1,84 @@
+/ {
+	/* dtsi is for 4 LAN port devices + 1 WAN
+	 * LAN+WAN port leds are controlled by shift register (default on most RUTMs)
+	 * Green |0|1|2|3|4|
+	 * Yellow |5|6|7|8|9|
+	 */
+	leds {
+		compatible = "gpio-leds";
+
+		led_eth_y4 {
+			label = "eth_y4";
+			gpios = <&shift_io 9 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y3 {
+			label = "eth_y3";
+			gpios = <&shift_io 8 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_y2 {
+			label = "eth_y2";
+			gpios = <&shift_io 7 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y1 {
+			label = "eth_y1";
+			gpios = <&shift_io 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y0 {
+			label = "eth_y0";
+			gpios = <&shift_io 5 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g4 {
+			label = "eth_g4";
+			gpios = <&shift_io 4 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g3 {
+			label = "eth_g3";
+			gpios = <&shift_io 3 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_g2 {
+			label = "eth_g2";
+			gpios = <&shift_io 2 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g1 {
+			label = "eth_g1";
+			gpios = <&shift_io 1 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g0 {
+			label = "eth_g0";
+			gpios = <&shift_io 0 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};
+
+&switch0 {
+	ports {
+		port@0 {
+			status = "okay";
+			label = "lan1";
+		};
+
+		port@1 {
+			status = "okay";
+			label = "lan2";
+		};
+
+		port@2 {
+			status = "okay";
+			label = "lan3";
+		};
+
+		port@3 {
+			status = "okay";
+			label = "lan4";
+		};
+	};
+};

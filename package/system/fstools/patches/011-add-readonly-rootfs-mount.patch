@@ -1,0 +1,441 @@
+--- a/mount_root.c
++++ b/mount_root.c
+@@ -44,11 +44,29 @@ start(int argc, char *argv[1])
+ 		mount("/dev/root", "/", NULL, MS_NOATIME | MS_REMOUNT, 0);
+ 	}
+ 
++#ifndef FS_ROOTFS_READONLY
+ 	/* Check for extroot config in rootfs before even trying rootfs_data */
+ 	if (!mount_extroot("")) {
+ 		ULOG_NOTE("switched to extroot\n");
+ 		return 0;
+ 	}
++#else
++	if (!mount_extroot(NULL)) {
++		umount("/usr/local");
++
++		if (mount_overlay_fs("/ext", "/usr/local") == -1) {
++			ULOG_ERR("mount_overlay_fs failed: %m\n");
++
++			if (mount_overlay_fs("/overlay/root", "/usr/local") == -1) {
++				ULOG_ERR("mount_overlay_fs failed: %m\n");
++				return -1;
++			}
++		}
++
++		ULOG_INFO("switched to extroot\n");
++		return 0;
++	}
++#endif // FS_ROOTFS_READONLY
+ 
+ 	/* There isn't extroot, so just try to mount "rootfs_data" */
+ 	volume_init(data);
+--- a/libfstools/mount.c
++++ b/libfstools/mount.c
+@@ -141,14 +141,85 @@ fopivot(char *rw_root, char *ro_root)
+ 	return pivot("/mnt", ro_root);
+ }
+ 
++#ifdef FS_ROOTFS_READONLY
++/**
++ * mount_overlay_fs - mount overlay file system on specified target point
++ *
++ * @base:   writable directory that will be for overlay fs to mount
++ * @target: directory where mount point will be put and used as lower dir
++ */
++int
++mount_overlay_fs(const char *base, const char *target)
++{
++	char upperdir[64], workdir[64], merged[64], options[128];
++
++	snprintf(upperdir, sizeof(upperdir), "%s/upper", base);
++	snprintf(workdir, sizeof(workdir), "%s/work", base);
++	snprintf(merged, sizeof(merged), "%s/merged", base);
++
++	mkdir(base, 0755);
++	mkdir(upperdir, 0755);
++	mkdir(workdir, 0755);
++	mkdir(merged, 0755);
++
++	snprintf(options, sizeof(options), "lowerdir=%s,upperdir=%s,workdir=%s",
++		 target, upperdir, workdir);
++
++	if (mount("overlay", merged, "overlay", MS_NOATIME, options) == -1) {
++		ULOG_ERR("mount failed: %m, options %s\n", options);
++		return -1;
++	}
++
++	if (mount(merged, target, NULL, MS_MOVE, NULL) == -1) {
++		ULOG_ERR("mount failed: %m\n");
++		return -1;
++	}
++
++	return 0;
++}
++#endif // FS_ROOTFS_READONLY
++
+ /**
+  * ramoverlay - use RAM to store filesystem changes on top of RO root
+  */
+ int
+ ramoverlay(void)
+ {
++#ifdef FS_ROOTFS_READONLY
++	// move /etc to /rom/etc
++	if (mount("/etc", "/rom/etc", NULL, MS_BIND, NULL) == -1) {
++		ULOG_ERR("mount failed: %m\n");
++		return -1;
++	}
++
++	// prepare and mount /tmp/overlay with tmpfs
++	if (mkdir("/tmp/overlay", 0755) == -1) {
++		ULOG_ERR("mkdir failed: %m\n");
++		return -1;
++	}
++
++	if (mount("tmpfs", "/tmp/overlay", "tmpfs", MS_NOATIME, "mode=0755") == -1) {
++		ULOG_ERR("mount failed: %m, options: %s\n", "mode=0755");
++		return -1;
++	}
++
++	// mount /etc on overlayfs in tmpfs
++	if (mount_overlay_fs("/tmp/overlay/etc", "/etc") == -1) {
++		ULOG_ERR("mount_overlay_fs failed: %m\n");
++		return -1;
++	}
++
++	// mount /usr/local on overlayfs in tmpfs
++	if (mount_overlay_fs("/tmp/overlay/root", "/usr/local") == -1) {
++		ULOG_ERR("mount_overlay_fs failed: %m\n");
++		return -1;
++	}
++
++	return 0;
++#else
+ 	mkdir("/tmp/root", 0755);
+ 	mount("tmpfs", "/tmp/root", "tmpfs", MS_NOATIME, "mode=0755");
+ 
+ 	return fopivot("/tmp/root", "/rom");
++#endif // FS_ROOTFS_READONLY
+ }
+--- a/libfstools/libfstools.h
++++ b/libfstools/libfstools.h
+@@ -63,4 +63,8 @@ extern void overlay_delete(const char *d
+ enum fs_state fs_state_get(const char *dir);
+ int fs_state_set(const char *dir, enum fs_state state);
+ 
++#ifdef FS_ROOTFS_READONLY
++extern int mount_overlay_fs(const char *base, const char *target);
++#endif // FS_ROOTFS_READONLY
++
+ #endif
+--- a/libfstools/overlay.c
++++ b/libfstools/overlay.c
+@@ -35,7 +35,11 @@
+ #endif
+ 
+ #define SWITCH_JFFS2 "/tmp/.switch_jffs2"
++#ifdef FS_ROOTFS_READONLY
++#define OVERLAYDIR "/overlay"
++#else
+ #define OVERLAYDIR "/rom/overlay"
++#endif // FS_ROOTFS_READONLY
+ 
+ static void handle_glob(struct stat *s, glob_t *gl, int (*cb)(const char*));
+ static bool keep_sysupgrade;
+@@ -139,6 +143,7 @@ foreachdir(const char *dir, int (*cb)(co
+ 	cb(dir);
+ }
+ 
++#ifndef FS_ROOTFS_READONLY
+ static void foreach_mount(int (*cb)(const char *, const char *))
+ {
+ 	FILE *fp = fopen("/proc/mounts", "r");
+@@ -156,6 +161,7 @@ static void foreach_mount(int (*cb)(cons
+ 
+ 	fclose(fp);
+ }
++#endif // FS_ROOTFS_READONLY
+ 
+ void
+ overlay_delete(const char *dir, bool _keep_sysupgrade)
+@@ -180,6 +186,7 @@ overlay_mount(struct volume *v, char *fs
+ 	return 0;
+ }
+ 
++#ifndef FS_ROOTFS_READONLY
+ /**
+  * ovl_move_mount - move mount point to the new root
+  */
+@@ -192,6 +199,7 @@ static int ovl_move_mount(const char *de
+ 
+ 	return mount_move(prefix, "/", mount_point + strlen(prefix));
+ }
++#endif // FS_ROOTFS_READONLY
+ 
+ static int
+ switch2jffs(struct volume *v)
+@@ -218,6 +226,24 @@ switch2jffs(struct volume *v)
+ 		return -1;
+ 	}
+ 
++#ifdef FS_ROOTFS_READONLY
++	if (system("cp -a /tmp/overlay/* /overlay")) {
++		ULOG_ERR("failed - cp -a /tmp/overlay/* /overlay: %m\n");
++		return -1;
++	}
++
++	umount2("/etc", MNT_DETACH);
++	umount2("/usr/local", MNT_DETACH);
++
++	if (mount_overlay_fs("/overlay/etc", "/etc") == -1) {
++		ULOG_ERR("mount_overlay_fs failed: %m\n");
++		return -1;
++	}
++
++	if (mount_overlay_fs("/overlay/root", "/usr/local") == -1) {
++		ULOG_ERR("mount_overlay_fs failed: %m\n");
++	}
++#else
+ 	if (mount("none", "/", NULL, MS_NOATIME | MS_REMOUNT, 0)) {
+ 		ULOG_ERR("failed - mount -o remount,ro none: %m\n");
+ 		return -1;
+@@ -250,7 +276,7 @@ switch2jffs(struct volume *v)
+ 	 *    /propagate/ files to the target dir.
+ 	 */
+ 	foreach_mount(ovl_move_mount);
+-
++#endif // FS_ROOTFS_READONLY
+ 	return ret;
+ }
+ 
+@@ -311,7 +337,11 @@ jffs2_switch(struct volume *v)
+ 	char *mp, *fs_name;
+ 	int type;
+ 
++#ifdef FS_ROOTFS_READONLY
++	if (find_overlay_mount("tmpfs /tmp/overlay"))
++#else
+ 	if (find_overlay_mount("overlayfs:/tmp/root"))
++#endif // FS_ROOTFS_READONLY
+ 		return -1;
+ 
+ 	if (find_filesystem("overlay")) {
+@@ -339,6 +369,9 @@ jffs2_switch(struct volume *v)
+ 			return -1;
+ 
+ 		ULOG_INFO("performing overlay whiteout\n");
++#ifdef FS_ROOTFS_READONLY
++		umount2("/tmp/overlay", MNT_DETACH);
++#else
+ 		umount2("/tmp/root", MNT_DETACH);
+ 		foreachdir("/overlay/", handle_whiteout);
+ 
+@@ -346,6 +379,7 @@ jffs2_switch(struct volume *v)
+ 		ULOG_INFO("synchronizing overlay\n");
+ 		if (system("cp -a /tmp/root/upper/* / 2>/dev/null"))
+ 			ULOG_ERR("failed to sync jffs2 overlay\n");
++#endif // FS_ROOTFS_READONLY
+ 		break;
+ 
+ 	case FS_EXT4:
+@@ -353,10 +387,27 @@ jffs2_switch(struct volume *v)
+ 	case FS_UBIFS:
+ 		if (overlay_mount(v, fs_name))
+ 			return -1;
++#ifdef FS_ROOTFS_READONLY
++		if (mount_move("/tmp", "", "/overlay")) {
++			ULOG_ERR("switching to %s failed\n", fs_name);
++			return -1;
++		}
++
++		if (mount_overlay_fs("/overlay/etc", "/etc") == -1) {
++			ULOG_ERR("mount_overlay_fs failed: %m\n");
++			return -1;
++		}
++
++		if (mount_overlay_fs("/overlay/root", "/usr/local") == -1) {
++			ULOG_ERR("mount_overlay_fs failed: %m\n");
++			return -1;
++		}
++#else
+ 		if (mount_move("/tmp", "", "/overlay") || fopivot("/overlay", "/rom")) {
+ 			ULOG_ERR("switching to %s failed\n", fs_name);
+ 			return -1;
+ 		}
++#endif // FS_ROOTFS_READONLY
+ 		break;
+ 	}
+ 
+@@ -454,6 +505,7 @@ int mount_overlay(struct volume *v)
+ 	if (err)
+ 		return err;
+ 
++#ifndef FS_ROOTFS_READONLY
+ 	/*
+ 	 * Check for extroot config in overlay (rootfs_data) and if present then
+ 	 * prefer it over rootfs_data.
+@@ -462,6 +514,7 @@ int mount_overlay(struct volume *v)
+ 		ULOG_INFO("switched to extroot\n");
+ 		return 0;
+ 	}
++#endif // FS_ROOTFS_READONLY
+ 
+ 	switch (fs_state_get(overlay_mp)) {
+ 	case FS_STATE_UNKNOWN:
+@@ -480,10 +533,47 @@ int mount_overlay(struct volume *v)
+ 
+ 	fs_name = overlay_fs_name(volume_identify(v));
+ 	ULOG_INFO("switching to %s overlay\n", fs_name);
++#ifdef FS_ROOTFS_READONLY
++	if (mount_move("/tmp", "", "/overlay")) {
++		ULOG_ERR("switching to %s failed - fallback to ramoverlay\n", fs_name);
++		return ramoverlay();
++	}
++
++	if (mount("/etc", "/rom/etc", NULL, MS_BIND, NULL) == -1) {
++		ULOG_ERR("mount failed: %m\n");
++		return -1;
++	}
++
++	if (mount_overlay_fs("/overlay/etc", "/etc") == -1) {
++		ULOG_ERR("mount_overlay_fs failed: %m\n");
++		return -1;
++	}
++
++	if (!mount_extroot(NULL)) {
++		if (mount_overlay_fs("/ext", "/usr/local") == -1) {
++			ULOG_ERR("mount_overlay_fs failed: %m\n");
++
++			if (mount_overlay_fs("/overlay/root", "/usr/local") == -1) {
++				ULOG_ERR("mount_overlay_fs failed: %m\n");
++				return -1;
++			}
++
++			return 0;
++		}
++		ULOG_INFO("switched to extroot\n");
++		return 0;
++	}
++
++	if (mount_overlay_fs("/overlay/root", "/usr/local") == -1) {
++		ULOG_ERR("mount_overlay_fs failed: %m\n");
++		return -1;
++	}
++#else
+ 	if (mount_move("/tmp", "", "/overlay") || fopivot("/overlay", "/rom")) {
+ 		ULOG_ERR("switching to %s failed - fallback to ramoverlay\n", fs_name);
+ 		return ramoverlay();
+ 	}
++#endif // FS_ROOTFS_READONLY
+ 
+ 	return -1;
+ }
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -65,6 +65,10 @@ IF(DEFINED CMAKE_OVL_MOUNT_FULL_ACCESS_T
+ 	ADD_DEFINITIONS(-DOVL_MOUNT_FULL_ACCESS_TIME)
+ ENDIF(DEFINED CMAKE_OVL_MOUNT_FULL_ACCESS_TIME)
+ 
++IF(DEFINED CMAKE_FS_ROOTFS_READONLY)
++	ADD_DEFINITIONS(-DFS_ROOTFS_READONLY)
++ENDIF(DEFINED CMAKE_FS_ROOTFS_READONLY)
++
+ ADD_EXECUTABLE(mount_root mount_root.c)
+ TARGET_LINK_LIBRARIES(mount_root fstools)
+ INSTALL(TARGETS mount_root RUNTIME DESTINATION sbin)
+--- a/block.c
++++ b/block.c
+@@ -287,7 +287,7 @@ static int mount_add(struct uci_section
+ 	m->overlay = m->extroot = 0;
+ 	if (m->target && !strcmp(m->target, "/"))
+ 		m->extroot = 1;
+-	if (m->target && !strcmp(m->target, "/overlay"))
++	if (m->target && !strcmp(m->target, "/ext"))
+ 		m->extroot = m->overlay = 1;
+ 
+ 	if (m->target && *m->target != '/' && m->enabled) {
+@@ -1561,9 +1561,13 @@ static int mount_extroot(char *cfg)
+ 		return -2;
+ 
+ 	/* See if there is extroot-specific mount config */
++#ifdef FS_ROOTFS_READONLY
++	m = find_block(NULL, NULL, NULL, "/ext");
++#else
+ 	m = find_block(NULL, NULL, NULL, "/");
+ 	if (!m)
+ 		m = find_block(NULL, NULL, NULL, "/overlay");
++#endif // FS_ROOTFS_READONLY
+ 
+ 	if (!m || !m->extroot)
+ 	{
+@@ -1600,6 +1604,10 @@ static int mount_extroot(char *cfg)
+ 			path = overlay;
+ 		mkdir_p(path, 0755);
+ 
++#ifdef FS_ROOTFS_READONLY
++		path = "/ext";
++#endif // FS_ROOTFS_READONLY
++
+ 		if (check_fs)
+ 			check_filesystem(pr);
+ 
+--- a/libfstools/extroot.c
++++ b/libfstools/extroot.c
+@@ -29,12 +29,15 @@
+  */
+ int mount_extroot(char const *extroot_prefix)
+ {
++#ifndef FS_ROOTFS_READONLY
+ 	char ldlib_path[32];
+-	char block_path[32];
+ 	char kmod_loader[64];
++#endif // FS_ROOTFS_READONLY
++	char block_path[32] = { "/sbin/block" };
+ 	struct stat s;
+ 	pid_t pid;
+ 
++#ifndef FS_ROOTFS_READONLY
+ 	/* try finding the library directory */
+ 	snprintf(ldlib_path, sizeof(ldlib_path), "%s/upper/lib", extroot_prefix);
+ 
+@@ -49,10 +52,11 @@ int mount_extroot(char const *extroot_pr
+ 
+ 	if (stat(block_path, &s) || !S_ISREG(s.st_mode))
+ 		snprintf(block_path, sizeof(block_path), "/sbin/block");
+-
++#endif // FS_ROOTFS_READONLY
+ 	if (stat(block_path, &s) || !S_ISREG(s.st_mode))
+ 		return -1;
+ 
++#ifndef FS_ROOTFS_READONLY
+ 	/* set LD_LIBRARY_PATH env var and load kmods from overlay if we found a lib directory there */
+ 	if (!stat(ldlib_path, &s) && S_ISDIR(s.st_mode)) {
+ 		ULOG_INFO("loading kmods from internal overlay\n");
+@@ -62,6 +66,8 @@ int mount_extroot(char const *extroot_pr
+ 		if (system(kmod_loader))
+ 			ULOG_ERR("failed to launch kmodloader from internal overlay\n");
+ 	}
++#endif // FS_ROOTFS_READONLY
++
+ 
+ 	pid = fork();
+ 	if (!pid) {
+@@ -73,6 +79,9 @@ int mount_extroot(char const *extroot_pr
+ 
+ 		waitpid(pid, &status, 0);
+ 		if (!WEXITSTATUS(status)) {
++#ifdef FS_ROOTFS_READONLY
++			return 0;
++#else
+ 			if (find_mount("/tmp/extroot/mnt")) {
+ 				mount("/dev/root", "/", NULL, MS_NOATIME | MS_REMOUNT | MS_RDONLY, 0);
+ 
+@@ -110,6 +119,7 @@ int mount_extroot(char const *extroot_pr
+ 					return 0;
+ 				}
+ 			}
++#endif // FS_ROOTFS_READONLY
+ 		}
+ 	}
+ 	return -1;

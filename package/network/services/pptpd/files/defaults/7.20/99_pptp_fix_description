@@ -1,0 +1,24 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+fix_description() {
+	local section="$1"
+	local config="$2"
+	local description _description proto
+	config_get "proto" "$section" "proto"
+	[ "$config" = "network" ] && [ "$proto" != "pptp" ] && return
+	config_get "description" "$section" "description"
+	config_get "_name" "$section" "_name"
+	[ -z "$description" ] && uci_set "$config" "$section" "description" "$section"
+	[ -n "$_name" ] && uci_remove "$config" "$section" "_name"
+}
+
+config_load "network"
+config_foreach "fix_description" "interface" "network"
+uci_commit "network"
+config_load "pptpd"
+config_foreach "fix_description" "service" "pptpd"
+uci_commit "pptpd"
+
+exit 0

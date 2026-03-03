@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+
+#include <asm/cache.h>
+#include <asm/system.h>
+#include <common.h>
+#include <asm/global_data.h>
+#include <cpu_func.h>
+
+DECLARE_GLOBAL_DATA_PTR;
+
+#define UBOOT_CACHE_SETUP		0x100e
+#define GEN_CACHE_SETUP			0x101e
+
+/*
+ * Flush range from all levels of d-cache/unified-cache.
+ * Affects the range,
+ *	if cache is algined,
+ *		from : start
+ *		to   : start + size - 1
+ *	if cache is not aligned,
+ *		from : start - cache aligne address
+ *		to   : start + size - 1 + cache aligne address
+ */
+void flush_cache(unsigned long start, unsigned long size)
+{
+	unsigned long stop = start + size;
+
+	if (start & (CONFIG_SYS_CACHELINE_SIZE - 1))
+		start = start & ~(CONFIG_SYS_CACHELINE_SIZE - 1);
+
+	if (stop & (CONFIG_SYS_CACHELINE_SIZE - 1))
+		stop = CONFIG_SYS_CACHELINE_SIZE +
+			(stop & ~(CONFIG_SYS_CACHELINE_SIZE - 1));
+
+	flush_dcache_range(start, stop);
+}
+
+int mach_cpu_init(void)
+{
+	gd->flags |= GD_FLG_SKIP_RELOC;
+
+	return 0;
+}
+#ifndef CONFIG_ARM64
+int arch_cpu_init(void)
+{
+	u32 val;
+	/* Read SCTLR */
+	asm volatile ("mrc p15, 0, %0, c1, c0, 0" : "=r" (val));
+	/* set the cp15 barrier enable bit */
+	val |= 0x20;
+	/* write back to SCTLR */
+	asm volatile ("mcr p15, 0, %0, c1, c0, 0" : : "r" (val));
+
+	return 0;
+}
+
+void dram_bank_mmu_setup(int bank)
+{
+	struct bd_info *bd = gd->bd;
+	int i;
+
+	/* bd->bi_dram is available only after relocation */
+	if ((gd->flags & GD_FLG_RELOC) == 0)
+		return;
+
+	debug("%s: bank: %d\n", __func__, bank);
+	for (i = bd->bi_dram[bank].start >> 20;
+		i < (bd->bi_dram[bank].start + bd->bi_dram[bank].size) >> 20;
+		i++) {
+		/* Set XN bit for all dram regions except uboot code region */
+		if (i >= (CONFIG_TEXT_BASE >> 20) &&
+				i < ((CONFIG_TEXT_BASE + 0x100000) >> 20))
+			set_section_dcache(i, UBOOT_CACHE_SETUP);
+		else
+			set_section_dcache(i, GEN_CACHE_SETUP);
+	}
+}
+#endif

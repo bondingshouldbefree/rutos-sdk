@@ -1,0 +1,351 @@
+Index: uhttpd-2021-03-21-15346de8/ubus_uhttpd.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/ubus_uhttpd.c
++++ uhttpd-2021-03-21-15346de8/ubus_uhttpd.c
+@@ -1,32 +1,276 @@
+ #include <libubus.h>
+ #include <libubox/blobmsg.h>
++#include <libubox/blobmsg_json.h>
+ #include <libubox/utils.h>
+ #include <unistd.h>
++#include <sys/types.h>
++#include <string.h>
++#include <errno.h>
+ #include <sys/random.h>
+-
++#include <lua.h>
++#include <lauxlib.h>
++#include <lualib.h>
+ #include "ubus_uhttpd.h"
++#include "uhttpd.h"
++#include <sys/wait.h>
++
++#define UH_LUA_CB "handle_request"
++#define MAX_NONCE_LEN 64
++#define MAX_PATH_INFO_LEN 512
+ 
+ static struct ubus_context *g_ubus_ctx;
+-char b64_nonce[64] = {0};
++char b64_nonce[MAX_NONCE_LEN] = {0};
+ 
+-enum u_method
+-{
+-	METHOD_NONCE = 0,
++enum {
++	METHOD_GET,
++	METHOD_PUT,
++	METHOD_POST,
++	METHOD_DELETE
++};
++
++static const struct blobmsg_policy api_policy[] = {
++	{ .name = "path", .type = BLOBMSG_TYPE_STRING },
++	{ .name = "body", .type = BLOBMSG_TYPE_TABLE }
++};
+ 
+-	METHOD_MAX
++static const struct blobmsg_policy post_api_policy[] = {
++	{ .name = "path", .type = BLOBMSG_TYPE_STRING },
++	{ .name = "body", .type = BLOBMSG_TYPE_TABLE },
++	{ .name = "upload", .type = BLOBMSG_TYPE_BOOL },
++	{ .name = "delete_source", .type = BLOBMSG_TYPE_BOOL }
+ };
+ 
++static int generate_response(struct ubus_context *ctx, struct ubus_object *obj,
++								 struct ubus_request_data *req, const char *lua_response)
++{
++	struct blob_buf b = {0};
++	blob_buf_init(&b, 0);
++
++	int ret = blobmsg_add_json_from_string(&b, lua_response);
++	if (ret < 0) {
++		fprintf(stderr, "Failed to parse JSON response: %s\n", lua_response);
++		blob_buf_free(&b);
++		return ret;
++	}
++
++	ret = ubus_send_reply(ctx, req, b.head);
++	if (ret < 0) {
++		fprintf(stderr, "Failed to send ubus reply: %s\n", strerror(-ret));
++		blob_buf_free(&b);
++		return ret;
++	}
++
++	blob_buf_free(&b);
++	return 0;
++}
++
++static int internal_lua_api_call(struct ubus_context *ctx, struct ubus_object *obj,
++																 struct ubus_request_data *req, const char *method,
++																 struct blob_attr *msg)
++{
++	struct lua_prefix *p = list_first_entry(&conf.lua_prefix, struct lua_prefix, list);
++	int ubus_status = UBUS_STATUS_UNKNOWN_ERROR;
++	char clean_path_info[MAX_PATH_INFO_LEN];
++	char *query_string = NULL;
++	int pipefd[2] = {-1, -1};
++	char *buffer = NULL;
++	pid_t pid = -1;
++
++	if (!p) {
++		fprintf(stderr, "No Lua prefix available\n");
++		return UBUS_STATUS_NOT_FOUND;
++	}
++
++	if (pipe(pipefd) == -1) {
++		perror("pipe");
++		goto cleanup;
++	}
++
++	pid = fork();
++	if (pid == -1) {
++		perror("fork");
++		goto cleanup;
++	}
++
++	if (pid == 0) {
++		// Child
++		close(pipefd[0]);
++		lua_State *L = p->ctx;
++
++		lua_getglobal(L, UH_LUA_CB);
++		lua_newtable(L);
++
++		const struct blobmsg_policy *policy = api_policy;
++		size_t policy_size = ARRAY_SIZE(api_policy);
++		if (strcmp(method, "POST") == 0) {
++			policy = post_api_policy;
++			policy_size = ARRAY_SIZE(post_api_policy);
++		}
++
++		struct blob_attr *tb[policy_size];
++		memset(tb, 0, sizeof(tb));
++		blobmsg_parse(policy, policy_size, tb, blob_data(msg), blob_len(msg));
++
++		#define LUA_SET_STRING_FIELD(k, v) do { lua_pushstring(L, k); lua_pushstring(L, v); lua_settable(L, -3); } while (0)
++		#define LUA_SET_BOOLEAN_FIELD(k, v) do { lua_pushstring(L, k); lua_pushboolean(L, v); lua_settable(L, -3); } while (0)
++
++		const char *path_info = tb[0] ? blobmsg_get_string(tb[0]) : "";
++		const char *query_start = strchr(path_info, '?');
++
++		if (query_start) {
++			size_t len = query_start - path_info;
++			if (len >= MAX_PATH_INFO_LEN)
++				len = MAX_PATH_INFO_LEN - 1;
++			memcpy(clean_path_info, path_info, len);
++			clean_path_info[len] = '\0';
++			query_string = strdup(query_start + 1);
++		} else {
++			strlcpy(clean_path_info, path_info, sizeof(clean_path_info));
++			query_string = strdup("");
++		}
++
++		if (!query_string)
++				query_string = strdup("");
++
++		LUA_SET_STRING_FIELD("PATH_INFO", clean_path_info);
++		LUA_SET_STRING_FIELD("QUERY_STRING", query_string);
++		LUA_SET_STRING_FIELD("SCRIPT_NAME", "/api");
++
++		const char *content_type = "application/json";
++		if (strcmp(method, "POST") == 0 && tb[2] && blobmsg_get_bool(tb[2]))
++			content_type = "multipart/form-data";
++		LUA_SET_STRING_FIELD("CONTENT_TYPE", content_type);
++
++		if (strcmp(method, "POST") == 0 && tb[3] && blobmsg_get_bool(tb[3]))
++			LUA_SET_BOOLEAN_FIELD("DELETE_SOURCE", true);
++		else
++			LUA_SET_BOOLEAN_FIELD("DELETE_SOURCE", false);
++
++		LUA_SET_STRING_FIELD("REQUEST_METHOD", method);
++		LUA_SET_STRING_FIELD("SERVER_ADDR", "127.0.0.1");
++		LUA_SET_STRING_FIELD("SERVER_PORT", "80");
++		LUA_SET_STRING_FIELD("REMOTE_ADDR", "192.168.1.100");
++		LUA_SET_STRING_FIELD("HTTPS", "off");
++
++		lua_pushstring(L, "headers");
++		lua_newtable(L);
++		LUA_SET_STRING_FIELD("host", "192.168.1.1");
++		lua_settable(L, -3);
++
++		if (tb[1]) {
++			char *parsed_data = blobmsg_format_json(tb[1], true);
++			if (parsed_data) {
++				LUA_SET_STRING_FIELD("BODY", parsed_data);
++				char len_buf[21];
++				snprintf(len_buf, sizeof(len_buf), "%zu", strlen(parsed_data));
++				LUA_SET_STRING_FIELD("CONTENT_LENGTH", len_buf);
++				free(parsed_data);
++			} else {
++				LUA_SET_STRING_FIELD("CONTENT_LENGTH", "0");
++			}
++		} else {
++			LUA_SET_STRING_FIELD("CONTENT_LENGTH", "0");
++		}
++
++		LUA_SET_BOOLEAN_FIELD("INTERNAL", 1);
++
++		if (lua_pcall(L, 1, 1, 0)) {
++			const char *err = lua_tostring(L, -1);
++			(void) write(pipefd[1], err, strlen(err));
++			lua_pop(L, 1);
++			close(pipefd[1]);
++			free(query_string);
++			_exit(1);
++		}
++
++		if (lua_isstring(L, -1)) {
++			const char *resp = lua_tostring(L, -1);
++			(void) write(pipefd[1], resp, strlen(resp));
++		} else {
++			const char *err = "Lua function did not return a valid response";
++			(void) write(pipefd[1], err, strlen(err));
++		}
++
++		lua_pop(L, 1);
++		close(pipefd[1]);
++		free(query_string);
++		_exit(0);
++	}
++
++	// Parent
++	close(pipefd[1]);
++
++	size_t buf_size = 1024;
++	size_t total_read = 0;
++	buffer = malloc(buf_size);
++	if (!buffer) {
++		perror("malloc");
++		goto cleanup;
++	}
++
++	ssize_t n;
++	while (1) {
++		n = read(pipefd[0], buffer + total_read, buf_size - total_read - 1);
++		if (n > 0) {
++			total_read += n;
++			if (buf_size - total_read - 1 < 512) {
++				size_t new_size = buf_size * 2;
++				char *tmp = realloc(buffer, new_size);
++				if (!tmp) {
++					perror("realloc");
++					goto cleanup;
++				}
++				buffer = tmp;
++				buf_size = new_size;
++			}
++		} else if (n == 0) {
++			break;
++		} else if (errno == EINTR) {
++			continue;
++		} else {
++			perror("read");
++			goto cleanup;
++		}
++	}
++
++	buffer[total_read] = '\0';
++	generate_response(ctx, obj, req, buffer);
++	ubus_status = UBUS_STATUS_OK;
++
++cleanup:
++	if (pipefd[0] != -1) close(pipefd[0]);
++	if (buffer) free(buffer);
++	int status;
++	waitpid(pid, &status, 0);
++	return ubus_status;
++}
++
++// Macro to define per-method wrappers
++#define DEFINE_UBUS_METHOD_WRAPPER(method_name, method_str)                   \
++		static int method_name(struct ubus_context *ctx, struct ubus_object *obj, \
++													 struct ubus_request_data *req, const char *method, \
++													 struct blob_attr *msg)                             \
++		{                                                                         \
++				return internal_lua_api_call(ctx, obj, req, method_str, msg);         \
++		}
++
++DEFINE_UBUS_METHOD_WRAPPER(call_get, "GET")
++DEFINE_UBUS_METHOD_WRAPPER(call_post, "POST")
++DEFINE_UBUS_METHOD_WRAPPER(call_put, "PUT")
++DEFINE_UBUS_METHOD_WRAPPER(call_delete, "DELETE")
+ 
+ static int show(struct ubus_context *ctx, struct ubus_object *obj,
+-		struct ubus_request_data *req, const char *method,
+-		struct blob_attr *msg)
++				struct ubus_request_data *req, const char *method,
++				struct blob_attr *msg)
+ {
+ 	struct blob_buf buffer = {0};
+ 	char binary_nonce[32] = {0};
++
+ 	if (getrandom(binary_nonce, sizeof(binary_nonce), 0) < 0) {
+ 		fprintf(stderr, "getrandom() error\n");
+ 		return UBUS_STATUS_UNKNOWN_ERROR;
+ 	}
++
+ 	b64_encode(binary_nonce, sizeof(binary_nonce), b64_nonce, sizeof(b64_nonce));
+ 
+ 	blob_buf_init(&buffer, 0);
+@@ -42,11 +286,9 @@ static void ubus_connection_lost(struct
+ {
+ 	if (ctx->sock.registered)
+ 		uloop_end();
+-
+ 	exit(1);
+ }
+ 
+-
+ // uloop_init() must be executed before this
+ int init_uhttpd_ubus()
+ {
+@@ -58,21 +300,40 @@ int init_uhttpd_ubus()
+ 
+ 	g_ubus_ctx->connection_lost = ubus_connection_lost;
+ 
+-	static const struct ubus_method methods[] = {
+-		[METHOD_NONCE] = UBUS_METHOD_NOARG("nonce", show)
++	static const struct ubus_method uhttpd_methods[] = {
++		UBUS_METHOD_NOARG("nonce", show),
++	};
++
++	static struct ubus_object_type uhttpd_type =
++		UBUS_OBJECT_TYPE("uhttpd_type", uhttpd_methods);
++
++	static struct ubus_object uhttpd_obj = {
++		.name = "uhttpd",
++		.type = &uhttpd_type,
++		.methods = uhttpd_methods,
++		.n_methods = ARRAY_SIZE(uhttpd_methods),
++	};
++
++	static const struct ubus_method api_methods[] = {
++		[METHOD_GET] = UBUS_METHOD("get", call_get, api_policy),
++		[METHOD_POST] = UBUS_METHOD("post", call_post, post_api_policy),
++		[METHOD_PUT] = UBUS_METHOD("put", call_put, api_policy),
++		[METHOD_DELETE] = UBUS_METHOD("delete", call_delete, api_policy)
+ 	};
+ 
+-	static struct ubus_object_type type = UBUS_OBJECT_TYPE("type", methods);
++	static struct ubus_object_type api_type =
++		UBUS_OBJECT_TYPE("api_type", api_methods);
+ 
+-	static struct ubus_object obj = {
+-		.name	   = "uhttpd",
+-		.type	   = &type,
+-		.methods   = methods,
+-		.n_methods = METHOD_MAX,
++	static struct ubus_object api_obj = {
++		.name = "api",
++		.type = &api_type,
++		.methods = api_methods,
++		.n_methods = ARRAY_SIZE(api_methods),
+ 	};
+ 
+ 	ubus_add_uloop(g_ubus_ctx);
+-	ubus_add_object(g_ubus_ctx, &obj);
++	ubus_add_object(g_ubus_ctx, &uhttpd_obj);
++	ubus_add_object(g_ubus_ctx, &api_obj);
+ 
+ 	return EXIT_SUCCESS;
+ }

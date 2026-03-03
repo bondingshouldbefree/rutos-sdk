@@ -1,0 +1,284 @@
+Index: hostapd-2.12-dev/src/ap/ieee802_11_auth.c
+===================================================================
+--- hostapd-2.12-dev.orig/src/ap/ieee802_11_auth.c
++++ hostapd-2.12-dev/src/ap/ieee802_11_auth.c
+@@ -110,6 +110,90 @@ static void hostapd_acl_query_free(struc
+ 	os_free(query);
+ }
+ 
++static int radius_msg_add_dpsk_params(struct hostapd_data *hapd,
++				struct radius_msg *msg,
++				struct hostapd_acl_query_data *query)
++{
++	u8 payload[512];
++	u8 *pos = payload;
++
++	if (hapd->conf->ssid.ssid_len > 0 &&
++		!radius_msg_add_teltonika(msg, TELTONIKA_SSID,
++								hapd->conf->ssid.ssid,
++								hapd->conf->ssid.ssid_len)) {
++		wpa_printf(MSG_DEBUG, "Could not add SSID attribute");
++	}
++
++	if (!radius_msg_add_teltonika(msg, TELTONIKA_BSSID,
++								hapd->own_addr, ETH_ALEN)) {
++		wpa_printf(MSG_DEBUG, "Could not add BSSID attribute");
++	}
++
++	if (query->akm) {
++		u32 akm_suite = wpa_akm_to_suite(query->akm);
++		*pos++ = DPSK_AKM_SUITE;
++		*pos++ = 6;
++		WPA_PUT_BE32(pos, akm_suite);
++		pos += sizeof(akm_suite);
++	}
++
++	*pos++ = DPSK_CIPHER;
++	*pos++ = 3;
++	*pos++ = 4;
++
++	if (query->anonce) {
++		*pos++ = DPSK_ANONCE;
++		*pos++ = WPA_NONCE_LEN + 2;
++		os_memcpy(pos, query->anonce, WPA_NONCE_LEN);
++		pos += WPA_NONCE_LEN;
++	}
++
++	if (query->eapol) {
++		*pos++ = DPSK_EAPOL;
++		*pos++ = query->eapol_len + 2;
++		os_memcpy(pos, query->eapol, query->eapol_len);
++		pos += query->eapol_len;
++	}
++
++	if (pos > payload &&
++		!radius_msg_add_teltonika(msg, DPSK_PARAMS, payload, pos - payload)) {
++		wpa_printf(MSG_DEBUG, "Could not add DPSK-Params attribute");
++		return -1;
++	}
++
++	return 0;
++}
++
++static int radius_msg_add_freeradius_params(struct radius_msg *msg,
++		struct hostapd_acl_query_data *query)
++{
++	if (query->akm &&
++			!radius_msg_add_attr_int32(msg, RADIUS_ATTR_WLAN_AKM_SUITE,
++				wpa_akm_to_suite(query->akm))) {
++		wpa_printf(MSG_DEBUG, "Could not add WLAN-AKM-Suite");
++		return -1;
++	}
++
++	if (query->anonce &&
++			!radius_msg_add_ext_vs(msg, RADIUS_ATTR_EXT_VENDOR_SPECIFIC_5,
++				RADIUS_VENDOR_ID_FREERADIUS,
++				RADIUS_VENDOR_ATTR_FREERADIUS_802_1X_ANONCE,
++				query->anonce, WPA_NONCE_LEN)) {
++		wpa_printf(MSG_DEBUG, "Could not add FreeRADIUS-802.1X-Anonce");
++		return -1;
++	}
++
++	if (query->eapol &&
++			!radius_msg_add_ext_vs(msg, RADIUS_ATTR_EXT_VENDOR_SPECIFIC_5,
++				RADIUS_VENDOR_ID_FREERADIUS,
++				RADIUS_VENDOR_ATTR_FREERADIUS_802_1X_EAPOL_KEY_MSG,
++				query->eapol, query->eapol_len)) {
++		wpa_printf(MSG_DEBUG, "Could not add FreeRADIUS-802.1X-EAPoL-Key-Msg");
++		return -1;
++	}
++
++	return 0;
++}
+ 
+ #ifndef CONFIG_NO_RADIUS
+ static int hostapd_radius_acl_query(struct hostapd_data *hapd, const u8 *addr,
+@@ -165,29 +249,16 @@ static int hostapd_radius_acl_query(stru
+ 		goto fail;
+ 	}
+ 
+-	if (query->akm &&
+-	    !radius_msg_add_attr_int32(msg, RADIUS_ATTR_WLAN_AKM_SUITE,
+-				       wpa_akm_to_suite(query->akm))) {
+-		wpa_printf(MSG_DEBUG, "Could not add WLAN-AKM-Suite");
+-		goto fail;
+-	}
+-
+-	if (query->anonce &&
+-	    !radius_msg_add_ext_vs(msg, RADIUS_ATTR_EXT_VENDOR_SPECIFIC_5,
+-				   RADIUS_VENDOR_ID_FREERADIUS,
+-				   RADIUS_VENDOR_ATTR_FREERADIUS_802_1X_ANONCE,
+-				   query->anonce, WPA_NONCE_LEN)) {
+-		wpa_printf(MSG_DEBUG, "Could not add FreeRADIUS-802.1X-Anonce");
+-		goto fail;
+-	}
++	switch (hapd->conf->radius_params_mode) {
++		case DPSK_RADIUS_TELTONIKA:
++			if (radius_msg_add_dpsk_params(hapd, msg, query) < 0)
++				goto fail;
++			break;
+ 
+-	if (query->eapol &&
+-	    !radius_msg_add_ext_vs(msg, RADIUS_ATTR_EXT_VENDOR_SPECIFIC_5,
+-				   RADIUS_VENDOR_ID_FREERADIUS,
+-				   RADIUS_VENDOR_ATTR_FREERADIUS_802_1X_EAPOL_KEY_MSG,
+-				   query->eapol, query->eapol_len)) {
+-		wpa_printf(MSG_DEBUG, "Could not add FreeRADIUS-802.1X-EAPoL-Key-Msg");
+-		goto fail;
++		default:
++			if (radius_msg_add_freeradius_params(msg, query) < 0)
++				goto fail;
++			break;
+ 	}
+ 
+ 	if (radius_client_send(hapd->radius, msg, RADIUS_AUTH, addr) < 0)
+@@ -471,6 +542,34 @@ free_pass:
+ 	}
+ }
+ 
++static void decode_mppe_recv_key(struct hostapd_data *hapd,
++                                 const u8 *shared_secret,
++                                 size_t shared_secret_len,
++                                 struct radius_msg *msg,
++                                 struct radius_msg *req,
++                                 struct hostapd_cached_radius_acl *cache)
++{
++	struct radius_ms_mppe_keys *keys;
++	keys = radius_msg_get_ms_keys(msg, req, shared_secret, shared_secret_len);
++
++	if (keys && keys->recv && keys->recv_len == PMK_LEN) {
++		struct hostapd_sta_wpa_psk_short *psk;
++
++		psk = os_zalloc(sizeof(*psk));
++		if (psk) {
++			os_memcpy(psk->psk, keys->recv, PMK_LEN);
++			psk->is_passphrase = 0;
++			psk->next = cache->info.psk;
++			cache->info.psk = psk;
++		}
++	}
++
++	if (keys) {
++		os_free(keys->send);
++		os_free(keys->recv);
++		os_free(keys);
++	}
++}
+ 
+ /**
+  * hostapd_acl_recv_radius - Process incoming RADIUS Authentication messages
+@@ -563,6 +662,9 @@ hostapd_acl_recv_radius(struct radius_ms
+ 		decode_tunnel_passwords(hapd, shared_secret, shared_secret_len,
+ 					msg, req, cache);
+ 
++		decode_mppe_recv_key(hapd, shared_secret, shared_secret_len,
++                     msg, req, cache);
++
+ 		if (radius_msg_get_attr_ptr(msg, RADIUS_ATTR_USER_NAME,
+ 					    &buf, &len, NULL) == 0) {
+ 			info->identity = os_zalloc(len + 1);
+Index: hostapd-2.12-dev/src/radius/radius.h
+===================================================================
+--- hostapd-2.12-dev.orig/src/radius/radius.h
++++ hostapd-2.12-dev/src/radius/radius.h
+@@ -15,6 +15,15 @@
+ #pragma pack(push, 1)
+ #endif /* _MSC_VER */
+ 
++#define TELTONIKA_VENDOR_ID 48690
++#define TELTONIKA_SSID 3
++#define TELTONIKA_BSSID 14
++#define DPSK_PARAMS 153
++#define DPSK_AKM_SUITE 1
++#define DPSK_CIPHER 2
++#define DPSK_ANONCE 3
++#define DPSK_EAPOL 4
++
+ struct radius_hdr {
+ 	u8 code;
+ 	u8 identifier;
+@@ -316,6 +325,8 @@ int radius_msg_add_mppe_keys(struct radi
+ 			     const u8 *recv_key, size_t recv_key_len);
+ int radius_msg_add_wfa(struct radius_msg *msg, u8 subtype, const u8 *data,
+ 		       size_t len);
++int radius_msg_add_teltonika(struct radius_msg *msg, u8 vendor_type,
++			const u8 *data, size_t len);
+ int radius_msg_add_ext_vs(struct radius_msg *msg, u16 type, u32 vendor_id,
+ 			  u8 vendor_type, const u8 *data, size_t len);
+ int radius_user_password_hide(struct radius_msg *msg,
+Index: hostapd-2.12-dev/src/radius/radius.c
+===================================================================
+--- hostapd-2.12-dev.orig/src/radius/radius.c
++++ hostapd-2.12-dev/src/radius/radius.c
+@@ -14,7 +14,6 @@
+ #include "crypto/crypto.h"
+ #include "radius.h"
+ 
+-
+ /**
+  * struct radius_msg - RADIUS message structure for new and parsed messages
+  */
+@@ -1532,6 +1531,28 @@ int radius_msg_add_ext_vs(struct radius_
+ 	return attr != NULL;
+ }
+ 
++int radius_msg_add_teltonika(struct radius_msg *msg, u8 vendor_type,
++			const u8 *data, size_t len)
++{
++	struct radius_attr_hdr *attr;
++	u8 *buf, *pos;
++	size_t alen = 4 + 2 + len;
++
++	buf = os_malloc(alen);
++	if (!buf)
++		return 0;
++
++	pos = buf;
++	WPA_PUT_BE32(pos, TELTONIKA_VENDOR_ID);
++	pos += 4;
++	*pos++ = vendor_type;
++	*pos++ = 2 + len;
++	os_memcpy(pos, data, len);
++
++	attr = radius_msg_add_attr(msg, RADIUS_ATTR_VENDOR_SPECIFIC, buf, alen);
++	os_free(buf);
++	return attr != NULL;
++}
+ 
+ int radius_user_password_hide(struct radius_msg *msg,
+ 			      const u8 *data, size_t data_len,
+Index: hostapd-2.12-dev/hostapd/config_file.c
+===================================================================
+--- hostapd-2.12-dev.orig/hostapd/config_file.c
++++ hostapd-2.12-dev/hostapd/config_file.c
+@@ -3010,6 +3010,15 @@ static int hostapd_config_fill(struct ho
+ 				   line, bss->wpa_psk_radius);
+ 			return 1;
+ 		}
++	} else if (os_strcmp(buf, "radius_params_mode") == 0) {
++		bss->radius_params_mode = atoi(pos);
++		if (bss->radius_params_mode != DPSK_RADIUS_FREERADIUS &&
++			bss->radius_params_mode != DPSK_RADIUS_TELTONIKA) {
++			wpa_printf(MSG_ERROR,
++					"Line %d: unknown radius_params_mode %d",
++					line, bss->radius_params_mode);
++			return 1;
++		}
+ 	} else if (os_strcmp(buf, "wpa_pairwise") == 0) {
+ 		bss->wpa_pairwise = hostapd_config_parse_cipher(line, pos);
+ 		if (bss->wpa_pairwise == -1 || bss->wpa_pairwise == 0)
+Index: hostapd-2.12-dev/src/ap/ap_config.h
+===================================================================
+--- hostapd-2.12-dev.orig/src/ap/ap_config.h
++++ hostapd-2.12-dev/src/ap/ap_config.h
+@@ -390,6 +390,10 @@ struct hostapd_bss_config {
+ 		PSK_RADIUS_REQUIRED = 2,
+ 		PSK_RADIUS_DURING_4WAY_HS = 3,
+ 	} wpa_psk_radius;
++	enum {
++		DPSK_RADIUS_FREERADIUS = 0,
++		DPSK_RADIUS_TELTONIKA = 1,
++	} radius_params_mode;
+ 	int wpa_pairwise;
+ 	int group_cipher; /* wpa_group value override from configuation */
+ 	int wpa_group;

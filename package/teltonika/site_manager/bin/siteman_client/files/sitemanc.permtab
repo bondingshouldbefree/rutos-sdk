@@ -1,0 +1,10 @@
+/etc/config/sitemanc sitemanc:sitemanc 660
+/etc/sitemanc sitemanc:sitemanc 770
+/etc/sitemanc/sitemanc sitemanc:sitemanc 660
+/etc/sitemanc/dhcp.sh sitemanc:sitemanc 770
+/etc/sitemanc/certs sitemanc:sitemanc 770
+/etc/sitemanc/certs/client.key sitemanc:sitemanc 660
+/etc/sitemanc/certs/client.crt sitemanc:sitemanc 660
+/etc/sitemanc/certs/client.csr sitemanc:sitemanc 660
+/etc/sitemanc/certs/ca.crt sitemanc:sitemanc 660
+/etc/sitemanc/certs/ca_prov.crt sitemanc:sitemanc 660

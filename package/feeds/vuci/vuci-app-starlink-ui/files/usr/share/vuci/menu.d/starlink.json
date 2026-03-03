@@ -1,0 +1,8 @@
+{
+  "status/starlink": {
+    "title": "Starlink",
+    "index": 60,
+    "acls": ["status/starlink"],
+    "view": "status/Starlink"
+  }
+}

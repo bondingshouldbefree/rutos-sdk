@@ -1,0 +1,11 @@
+#!/bin/sh
+
+. /lib/functions.sh
+PACKAGE_FILE="/etc/package_restore.txt"
+PKGPATH="/usr/local/lib/opkg/info/vuci-app-relayd-ui.control"
+
+[ -f "$PKGPATH" ] && grep -qsF "AppName: relay_configuration" "$PKGPATH" && exit 0
+grep -qsF 'relayd - ' "$PACKAGE_FILE" || exit 0
+sed -i "s/relayd - /relay_configuration - /" "$PACKAGE_FILE"
+
+exit 0

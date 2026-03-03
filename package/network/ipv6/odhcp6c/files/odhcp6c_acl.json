@@ -1,0 +1,11 @@
+{
+	"user": "odhcp6c",
+	"access": {
+		"network": {
+			"methods": [ "add_dynamic" ]
+		},
+		"network.interface": {
+			"methods": [ "notify_proto" ]
+		}
+	}
+}

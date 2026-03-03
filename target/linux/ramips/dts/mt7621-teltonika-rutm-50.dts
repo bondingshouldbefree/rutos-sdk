@@ -1,0 +1,61 @@
+#include "common-mt7621/rutm.dtsi"
+#include "common-mt7621/shiftreg.dtsi"
+#include "common-mt7621/input-output.dtsi"
+#include "common-mt7621/eth/4-lan-ports.dtsi"
+#include "common-mt7621/leds/wan.dtsi"
+#include "common-mt7621/leds/wifi.dtsi"
+#include "common-mt7621/modem/5g.dtsi"
+
+// PWR, RST |G0|G10|
+// IN, OUT  |G8|G12|
+// SR CTRL  |G5|G9|G11|G44|
+// WAN      |G41-G43|G45|
+// WIFI     |S10|S11|
+// ETH      |S0-S9|
+// 5G		|G13-G17|G46-G48|
+// ALT      |S3|S8|
+/ {
+	model = "Teltonika RUTM50";
+
+	leds {
+		led_wifi_24 {
+			gpios = <&shift_io 10 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wifi_50 {
+			gpios = <&shift_io 11 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y3@2 {
+			tlt-mnf,hwver = <202 9999>;
+			tlt-mnf,branch = "A";
+			label = "eth_y3";
+			gpios = <&shift_io 8 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_y3@1 {
+			tlt-mnf,branch = "A";
+			label = "eth_y3";
+			gpios = <&shift_io 8 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g3@2 {
+			tlt-mnf,hwver = <202 9999>;
+			tlt-mnf,branch = "A";
+			label = "eth_g3";
+			gpios = <&shift_io 3 GPIO_ACTIVE_LOW>;
+		};
+
+		led_eth_g3@1 {
+			tlt-mnf,branch = "A";
+			label = "eth_g3";
+			gpios = <&shift_io 3 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};
+
+&mnfinfo {
+	sim_cfg {
+		default = "1111020_1112020";
+	};
+};

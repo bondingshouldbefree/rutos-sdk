@@ -1,0 +1,75 @@
+#include "common-mt7621/rutm.dtsi"
+#include "common-mt7621/shiftreg.dtsi"
+#include "common-mt7621/input-output.dtsi"
+#include "common-mt7621/tpm-tis.dtsi"
+#include "common-mt7621/eth/4-lan-ports.dtsi"
+#include "common-mt7621/leds/wan.dtsi"
+#include "common-mt7621/modem/5g.dtsi"
+
+// PWR, RST |G0|G10|
+// IN, OUT  |G8|G12|
+// SR CTRL  |G5|G9|G11|G44|
+// WAN      |G41-G43|G45|
+// WIFI     |S10|S11|
+// ETH      |S0-S9|
+// 5G		|G7|G13|G15|G16|G46-G48|S12|S13|
+/ {
+	model = "Teltonika RUTM54";
+
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_sim_select {
+			gpio-export,name = "sim_sel";
+			gpio-export,output = <1>;
+			gpios = <&gpio 7 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	leds {
+		led_wifi_24 {
+			label = "wifi_gen_2";
+			gpios = <&shift_io 10 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wifi_50 {
+			label = "wifi_gen_5";
+			gpios = <&shift_io 11 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	tlt_gpios {
+		misc {
+			/delete-node/ GPIO_14; // default modem_reset
+			/delete-node/ GPIO_17; // default modem_power
+			GPIO_109 {
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_108 {
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+			GPIO_7 {
+				line_name = "GPIO_SIM_SELECT";
+				active_low;
+			};
+		};
+	};
+};
+
+&mnfinfo {
+	simpin3 {
+		default = "";
+		sec;
+	};
+
+	simpin4 {
+		default = "";
+		sec;
+	};
+
+	sim_cfg {
+		default = "1111020_1112020";
+		keep-sim-presence;
+	};
+};

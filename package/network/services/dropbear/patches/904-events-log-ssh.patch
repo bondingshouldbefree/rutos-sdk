@@ -1,0 +1,90 @@
+Index: dropbear-2025.88/src/circbuffer.c
+===================================================================
+--- dropbear-2025.88.orig/src/circbuffer.c
++++ dropbear-2025.88/src/circbuffer.c
+@@ -47,7 +47,7 @@ circbuffer * cbuf_new(unsigned int size)
+ 	return cbuf;
+ }
+ 
+-void cbuf_free(circbuffer * cbuf) {
++void dropbear_cbuf_free(circbuffer * cbuf) {
+ 
+ 	if (cbuf->data) {
+ 		m_burn(cbuf->data, cbuf->size);
+Index: dropbear-2025.88/src/circbuffer.h
+===================================================================
+--- dropbear-2025.88.orig/src/circbuffer.h
++++ dropbear-2025.88/src/circbuffer.h
+@@ -36,7 +36,7 @@ struct circbuf {
+ typedef struct circbuf circbuffer;
+ 
+ circbuffer * cbuf_new(unsigned int size);
+-void cbuf_free(circbuffer * cbuf);
++void dropbear_cbuf_free(circbuffer * cbuf);
+ 
+ unsigned int cbuf_getused(const circbuffer * cbuf); /* how much data stored */
+ unsigned int cbuf_getavail(const circbuffer * cbuf); /* how much we can write */
+Index: dropbear-2025.88/src/common-channel.c
+===================================================================
+--- dropbear-2025.88.orig/src/common-channel.c
++++ dropbear-2025.88/src/common-channel.c
+@@ -627,7 +627,7 @@ static void remove_channel(struct Channe
+ 	TRACE(("enter remove_channel"))
+ 	TRACE(("channel index is %d", channel->index))
+ 
+-	cbuf_free(channel->writebuf);
++	dropbear_cbuf_free(channel->writebuf);
+ 	channel->writebuf = NULL;
+ 
+ 	if (channel->extrabuf) {
+Index: dropbear-2025.88/Makefile.in
+===================================================================
+--- dropbear-2025.88.orig/Makefile.in
++++ dropbear-2025.88/Makefile.in
+@@ -122,7 +122,7 @@ STRIP=@STRIP@
+ INSTALL=@INSTALL@
+ CPPFLAGS+=@CPPFLAGS@ -I. -I$(srcdir)
+ CFLAGS+=@CFLAGS@
+-LIBS+=@LIBS@ -lubus -lubox
++LIBS+=@LIBS@ -lubus -lubox -ltlt_logger
+ LDFLAGS=@LDFLAGS@
+ 
+ EXEEXT=@EXEEXT@
+Index: dropbear-2025.88/src/svr-authpasswd.c
+===================================================================
+--- dropbear-2025.88.orig/src/svr-authpasswd.c
++++ dropbear-2025.88/src/svr-authpasswd.c
+@@ -31,6 +31,17 @@
+ #include "auth.h"
+ #include "runopts.h"
+ 
++#include <tlt_logger.h>
++
++void log_event(char *text, char *a, char *b) {
++	char cmd[1024];
++
++	cmd[0] = '\0';
++	sprintf(cmd, "%s for %s on SSH from %s", text, a, b);
++
++	log_db("SSH", LOG_CONNECTIONS, L_NOTICE, "%s", cmd);
++}
++
+ #if DROPBEAR_SVR_PASSWORD_AUTH
+ 
+ /* not constant time when strings are differing lengths. 
+@@ -121,6 +132,7 @@ void svr_auth_password(int valid_user) {
+ 					ses.authstate.pw_name,
+ 					svr_ses.addrstring);
+ 			send_msg_userauth_success();
++			log_event("Password auth succeeded", ses.authstate.pw_name, svr_ses.addrstring);
+ 		}
+ 	} else {
+ 		dropbear_log(LOG_WARNING,
+@@ -128,6 +140,7 @@ void svr_auth_password(int valid_user) {
+ 				ses.authstate.pw_name,
+ 				svr_ses.addrstring);
+ 		send_msg_userauth_failure(0, 1);
++		log_event("Bad password attempt", ses.authstate.pw_name, svr_ses.addrstring);
+ 	}
+ }
+ 

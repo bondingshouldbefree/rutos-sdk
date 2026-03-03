@@ -1,0 +1,86 @@
+--- a/config.c
++++ b/config.c
+@@ -1033,6 +1033,7 @@ config_init_all(void)
+ 	interface_start_pending();
+ 	wireless_start_pending(0);
+ 
++	apply_port_entries();
+ 	vlist_flush(&port_entries);
+ 
+ 	return ret;
+--- a/port_link.c
++++ b/port_link.c
+@@ -122,6 +122,7 @@ update_port_state(struct port_entry *por
+ 		port_new->dev.dev = NULL;
+ 		device_add_user(&port_new->dev, port_old->dev.dev);
+ 		device_remove_user(&port_old->dev);
++		port_new->applied = true;
+ 	}
+ 
+ 	if (port_old->enabled != port_new->enabled) {
+@@ -131,14 +132,14 @@ update_port_state(struct port_entry *por
+ 			goto end;
+ 		}
+ 
+-		set_dev_link(port_new->ifname, port_new->autoneg, port_new->duplex, port_new->speed, port_new->advert);
++		port_new->applied = false;
+ 		goto end;
+ 	}
+ 
+ 	if (port_old->autoneg != port_new->autoneg || port_old->duplex != port_new->duplex ||
+ 			port_old->speed != port_new->speed ||
+ 			memcmp(port_old->advert, port_new->advert, sizeof(port_old->advert))) {
+-		ret = set_dev_link(port_new->ifname, port_new->autoneg, port_new->duplex, port_new->speed, port_new->advert);
++		port_new->applied = false;
+ 	}
+ 
+ end:
+@@ -146,6 +147,23 @@ end:
+ 	return ret;
+ }
+ 
++void apply_port_entries()
++{
++	struct port_entry *port_entry;
++
++	vlist_for_each_element(&port_entries, port_entry, node) {
++		if (port_entry->applied) {
++			continue;
++		}
++		if (!port_entry->dev.dev) {
++			continue;
++		}
++
++		set_dev_link(port_entry->ifname, port_entry->autoneg, port_entry->duplex, port_entry->speed, port_entry->advert);
++		port_entry->applied = true;
++	}
++}
++
+ static void
+ port_entry_update(struct vlist_tree *tree, struct vlist_node *node_new,
+ 		struct vlist_node *node_old)
+@@ -176,7 +194,6 @@ port_entry_update(struct vlist_tree *tre
+ 		}
+ 
+ 		set_device_state(dev, port_new->enabled);
+-		set_dev_link(port_new->ifname, port_new->autoneg, port_new->duplex, port_new->speed, port_new->advert);
+ 	}
+ }
+ 
+--- a/port_link.h
++++ b/port_link.h
+@@ -23,6 +23,7 @@ struct port_entry {
+ 
+ 	char *ifname;
+ 	struct device_user dev;
++	bool applied;
+ 
+ 	struct vlist_node node;
+ };
+@@ -40,4 +41,6 @@ struct port_entry {
+ */
+ struct port_entry *ret_port_section(struct uci_section *s, struct uci_context *uci_ctx);
+ 
++void apply_port_entries();
++
+ #endif // __NETIFD_PORT_LINK_H

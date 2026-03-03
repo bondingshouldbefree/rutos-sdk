@@ -1,0 +1,75 @@
+Index: iptables-1.8.7/extensions/libxt_FLOWOFFLOAD.c
+===================================================================
+--- iptables-1.8.7.orig/extensions/libxt_FLOWOFFLOAD.c
++++ iptables-1.8.7/extensions/libxt_FLOWOFFLOAD.c
+@@ -4,6 +4,7 @@
+ 
+ enum {
+     O_HW,
++    O_XFRM,
+ };
+ 
+ static void offload_help(void)
+@@ -11,11 +12,13 @@ static void offload_help(void)
+ 	printf(
+ "FLOWOFFLOAD target options:\n"
+ " --hw				Enable hardware offload\n"
++" --xfrm			Enable offload for XFRM traffic"
+ 	);
+ }
+ 
+ static const struct xt_option_entry offload_opts[] = {
+ 	{.name = "hw", .id = O_HW, .type = XTTYPE_NONE},
++	{.name = "xfrm", .id = O_XFRM, .type = XTTYPE_NONE},
+ 	XTOPT_TABLEEND,
+ };
+ 
+@@ -28,6 +31,9 @@ static void offload_parse(struct xt_opti
+ 	case O_HW:
+ 		info->flags |= XT_FLOWOFFLOAD_HW;
+ 		break;
++	case O_XFRM:
++		info->flags |= XT_FLOWOFFLOAD_XFRM;
++		break;
+ 	}
+ }
+ 
+@@ -39,6 +45,8 @@ static void offload_print(const void *ip
+ 	printf(" FLOWOFFLOAD");
+ 	if (info->flags & XT_FLOWOFFLOAD_HW)
+ 		printf(" hw");
++	if (info->flags & XT_FLOWOFFLOAD_XFRM)
++		printf(" xfrm");
+ }
+ 
+ static void offload_save(const void *ip, const struct xt_entry_target *target)
+@@ -48,6 +56,8 @@ static void offload_save(const void *ip,
+ 
+ 	if (info->flags & XT_FLOWOFFLOAD_HW)
+ 		printf(" --hw");
++	if (info->flags & XT_FLOWOFFLOAD_XFRM)
++		printf(" --xfrm");
+ }
+ 
+ static struct xtables_target offload_tg_reg[] = {
+Index: iptables-1.8.7/include/linux/netfilter/xt_FLOWOFFLOAD.h
+===================================================================
+--- iptables-1.8.7.orig/include/linux/netfilter/xt_FLOWOFFLOAD.h
++++ iptables-1.8.7/include/linux/netfilter/xt_FLOWOFFLOAD.h
+@@ -5,9 +5,14 @@
+ #include <linux/types.h>
+ 
+ enum {
+-	XT_FLOWOFFLOAD_HW	= 1 << 0,
++	XT_FLOWOFFLOAD_HW_BIT   = 0,
++	XT_FLOWOFFLOAD_HW	= (1 << XT_FLOWOFFLOAD_HW_BIT),
+ 
+-	XT_FLOWOFFLOAD_MASK	= XT_FLOWOFFLOAD_HW
++	XT_FLOWOFFLOAD_XFRM_BIT = 1,
++	XT_FLOWOFFLOAD_XFRM	= (1 << XT_FLOWOFFLOAD_XFRM_BIT),
++
++	__XT_FLOWOFFLOAD_MAX_BIT = 2,
++	XT_FLOWOFFLOAD_MASK	= ((1 << __XT_FLOWOFFLOAD_MAX_BIT) - 1)
+ };
+ 
+ struct xt_flowoffload_target_info {

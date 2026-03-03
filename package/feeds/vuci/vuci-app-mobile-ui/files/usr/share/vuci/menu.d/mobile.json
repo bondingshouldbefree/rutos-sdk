@@ -1,0 +1,90 @@
+{
+  "network/mobile": {
+    "title": "Mobile",
+    "index": 10,
+    "depends": {
+      "board": {
+        "allOf": ["has_mobile"]
+      }
+    }
+  },
+  "network/mobile/general": {
+    "view": "network/MobileGeneral"
+  },
+  "network/mobile/general/:id": {
+    "view": "network/MobileGeneral"
+  },
+  "network/mobile/esim_profiles": {
+    "view": "network/MobileProfiles"
+  },
+  "network/mobile/esim_profiles/:id": {
+    "view": "network/MobileProfiles"
+  },
+  "network/mobile/connection": {
+    "view": "network/MobileConnection"
+  },
+  "network/mobile/connection/:id": {
+    "view": "network/MobileConnection"
+  },
+  "network/mobile/limits": {
+    "title": "Limits",
+    "index": 40
+  },
+  "network/mobile/limits/data": {
+    "title": "Data Limit",
+    "index": 10,
+    "view": "network/MobileLimits",
+    "acls": ["network/mobile/limits/data"]
+  },
+  "network/mobile/limits/sms": {
+    "title": "SMS Limit",
+    "index": 20,
+    "view": "network/MobileLimits",
+    "acls": ["network/mobile/limits/sms"]
+  },
+  "network/mobile/sim_switch": {
+    "view": "network/MobileSimSwitch"
+  },
+  "network/mobile/sim_switch/:id": {
+    "view": "network/MobileSimSwitch"
+  },
+  "network/mobile/sim_idle_protection": {
+    "title": "SIM Idle Protection"
+  },
+  "network/mobile/sim_idle_protection/:id": {
+    "title": "SIM Idle Protection"
+  },
+  "network/mobile/operators": {
+    "title": "Network Selection",
+    "index": 70
+  },
+  "network/mobile/operators/scan": {
+    "title": "Network Selection",
+    "index": 10,
+    "view": "network/MobileOperators",
+    "acls": ["network/mobile/operators/scan"]
+  },
+  "network/mobile/operators/list": {
+    "title": "Operator Lists",
+    "index": 20,
+    "view": "network/MobileOperatorsList",
+    "acls": ["network/mobile/operators/list"]
+  },
+  "network/mobile/utilities": {
+    "title": "Utilities",
+    "index": 80,
+    "view": "network/MobileUtilities",
+    "acls": ["network/mobile/utilities"]
+  },
+  "system/wizard/step_wan": {
+    "title": "Mobile",
+    "view": "system/StepWan",
+    "acls": ["system/wizard/step_wan"],
+    "index": 30,
+    "depends": {
+      "board": {
+        "allOf": ["has_mobile"]
+      }
+    }
+  }
+}

@@ -1,0 +1,505 @@
+Index: ubox-2020-10-25-9ef88681/log/logread.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/logread.c
++++ ubox-2020-10-25-9ef88681/log/logread.c
+@@ -155,7 +155,6 @@ static int find_action(char *buffer){
+ 	}
+ 	return action;
+ }
+-
+ static int log_notify(struct blob_attr *msg)
+ {
+ 	struct blob_attr *tb[__LOG_MAX];
+@@ -167,6 +166,7 @@ static int log_notify(struct blob_attr *
+ 	const char *msg_sender = NULL;
+ 	time_t t;
+ 	uint32_t t_ms = 0;
++	uint32_t id = 0;
+ 	char *c, *m;
+ 	int ret = 0;
+ 	int db_flag = 0;
+@@ -185,6 +185,8 @@ static int log_notify(struct blob_attr *
+ 	if (tb[LOG_DB])
+ 		db_flag = blobmsg_get_u32(tb[LOG_DB]);
+ 
++	id = blobmsg_get_u32(tb[LOG_ID]);
++
+ 	if ((log_type == LOG_FILE) && log_size && (!stat(log_file, &s)) && (s.st_size > log_size)) {
+ 		char *old = malloc(strlen(log_file) + 5);
+ 
+@@ -290,8 +292,8 @@ static int log_notify(struct blob_attr *
+ 				sqlite3_finalize(stmt);
+ 
+ 		} else if (msg_sender && log_db_init) {
+-			snprintf(buf, sizeof(buf), "%s %s%s.%s %s: %s\n",
+-				 c, log_timestamp ? buf_ts : "",
++			snprintf(buf, sizeof(buf), "%u %s %s%s.%s %s: %s\n",
++				 id, c, log_timestamp ? buf_ts : "",
+ 				 getcodetext(src, log_facility_names),
+ 				 getcodetext(LOG_PRI(p), prioritynames),
+ 				 msg_sender,
+@@ -299,8 +301,8 @@ static int log_notify(struct blob_attr *
+ 
+ 			ret = write(sender.fd, buf, strlen(buf));
+ 		} else {
+-			snprintf(buf, sizeof(buf), "%s %s%s.%s%s %s\n",
+-				 c, log_timestamp ? buf_ts : "",
++			snprintf(buf, sizeof(buf), "%u %s %s%s.%s%s %s\n",
++				 id, c, log_timestamp ? buf_ts : "",
+ 				 getcodetext(LOG_FAC(p) << 3, facilitynames),
+ 				 getcodetext(LOG_PRI(p), prioritynames),
+ 				 (blobmsg_get_u32(tb[LOG_SOURCE])) ? ("") : (" kernel:"), m);
+@@ -351,7 +353,6 @@ static void logread_fd_data_cb(struct us
+ 		cur_len = blob_len(a) + sizeof(*a);
+ 		if (len < cur_len)
+ 			break;
+-
+ 		log_notify(a);
+ 		ustream_consume(s, cur_len);
+ 	}
+@@ -367,7 +368,6 @@ static void logread_fd_state_cb(struct u
+ static void logread_fd_cb(struct ubus_request *req, int fd)
+ {
+ 	static struct ustream_fd test_fd;
+-
+ 	memset(&test_fd, 0, sizeof(test_fd));
+ 
+ 	test_fd.stream.notify_read = logread_fd_data_cb;
+Index: ubox-2020-10-25-9ef88681/CMakeLists.txt
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/CMakeLists.txt
++++ ubox-2020-10-25-9ef88681/CMakeLists.txt
+@@ -56,14 +56,19 @@ INSTALL(TARGETS validate_data
+ 	RUNTIME DESTINATION sbin
+ )
+ 
++FIND_PATH(uci_include_dir uci.h)
++INCLUDE_DIRECTORIES(${uci_include_dir})
++
++find_package(ZLIB REQUIRED)
++
+ ADD_EXECUTABLE(logd log/logd.c log/syslog.c log/logdb.c)
+-TARGET_LINK_LIBRARIES(logd ubox ubus sqlite3)
++TARGET_LINK_LIBRARIES(logd ubox ubus sqlite3 uci ZLIB::ZLIB)
+ INSTALL(TARGETS logd
+ 	RUNTIME DESTINATION sbin
+ )
+ 
+ ADD_EXECUTABLE(logread log/logread.c log/logdb.c)
+-TARGET_LINK_LIBRARIES(logread ubox ubus ${json} blobmsg_json sqlite3)
++TARGET_LINK_LIBRARIES(logread ubox ubus ${json} blobmsg_json sqlite3 ZLIB::ZLIB)
+ INSTALL(TARGETS logread
+ 	RUNTIME DESTINATION sbin
+ )
+Index: ubox-2020-10-25-9ef88681/log/syslog.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/syslog.c
++++ ubox-2020-10-25-9ef88681/log/syslog.c
+@@ -11,11 +11,13 @@
+  * GNU General Public License for more details.
+  */
+ 
++#define _GNU_SOURCE
+ #include <linux/un.h>
+ 
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <sys/stat.h>
++#include <sys/sysinfo.h>
+ 
+ #include <fcntl.h>
+ #include <regex.h>
+@@ -27,6 +29,10 @@
+ #include <syslog.h>
+ #include <errno.h>
+ #include <ctype.h>
++#include <uci.h>
++#include <glob.h>
++#include <zlib.h>
++#include <libgen.h>
+ 
+ #include <libubox/uloop.h>
+ #include <libubox/usock.h>
+@@ -46,9 +52,62 @@ static char *log_dev = LOG_DEFAULT_SOCKE
+ static int log_size = LOG_DEFAULT_SIZE;
+ static struct log_head *log, *log_end, *oldest, *newest;
+ static int current_id = 0;
++static bool inited = false;
+ static regex_t pat_prio;
+ static regex_t pat_tstamp;
+ 
++struct log_entry {
++	unsigned int id;
++	char *sender;
++	char *msg;
++	int source;
++	int priority;
++	uint64_t timestamp;
++};
++
++typedef struct {
++	const char* name;
++} CODE;
++
++CODE log_facility_names[] = {
++	{ "kern" },
++	{ "user" },
++	{ "mail" },
++	{ "daemon" },
++	{ "auth" },
++	{ "syslog" },
++	{ "lpr" },
++	{ "news" },
++	{ "uucp" },
++	{ "cron" },
++	{ "authpriv" },
++	{ "ftp" },
++	{ "ntp" },
++	{ "security" },
++	{ "console" },
++	{ "cron" },
++	{ "local0" },
++	{ "local1" },
++	{ "local2" },
++	{ "local3" },
++	{ "local4" },
++	{ "local5" },
++	{ "local6" },
++	{ "local7" },
++	{ NULL }
++};
++
++CODE severity_names[] = {
++	{ "emerg" },
++	{ "alert" },
++	{ "crit" },
++	{ "err" },
++	{ "warn" },
++	{ "notice" },
++	{ "info" },
++	{ "debug" },
++	{ NULL }
++};
+ static struct log_head*
+ log_next(struct log_head *h, int size)
+ {
+@@ -137,6 +196,58 @@ log_add(char *buf, int size, int source)
+ 	newest = next;
+ }
+ 
++static void log_add_entry(struct log_entry *entry) {
++	struct log_head *next;
++	char *c;
++	int size = strlen(entry->msg) + 1;
++
++	if (!log) {
++		fprintf(stderr, "%s", entry->msg);
++		return;
++	}
++
++	for (c = entry->msg; *c; c++) {
++		if (*c == '\n')
++			*c = ' ';
++	}
++
++	c = entry->msg + size - 2;
++	while (isspace(*c)) {
++		size--;
++		c--;
++	}
++
++	entry->msg[size - 1] = 0;
++
++
++	next = log_next(newest, size);
++	if (next > newest) {
++		while ((oldest > newest) && (oldest <= next) && (oldest != log))
++			oldest = log_next(oldest, oldest->size);
++	} else {
++		newest->size = 0;
++		next = log_next(log, size);
++		for (oldest = log; oldest <= next; oldest = log_next(oldest, oldest->size))
++			;
++		newest = log;
++	}
++
++	newest->size = size;
++	newest->id = entry->id;
++	current_id = entry->id + 1;
++	newest->priority = entry->priority;
++	newest->source = entry->source;
++	strcpy(newest->data, entry->msg);
++	newest->ts.tv_sec = entry->timestamp;
++
++	if (entry->sender) {
++		ubus_notify_log_extended(newest, entry->sender, 0);
++	} else {
++		ubus_notify_log(newest);
++	}
++	newest = next;
++}
++
+ int log_add_extended(char *buf, int size, const char *sender, int source, int prio, int db_flag)
+ {
+ 	struct log_head *next;
+@@ -295,6 +406,225 @@ log_list(int count, struct log_head *h)
+ 	return NULL;
+ }
+ 
++static int get_facility_code(const char* facility) {
++	for (int i = 0; log_facility_names[i].name != NULL; i++) {
++		if (strcmp(log_facility_names[i].name, facility) == 0) {
++			return i;
++		}
++	}
++	return -1;
++}
++
++static int get_severity_code(const char* severity) {
++	for (int i = 0; severity_names[i].name != NULL; i++) {
++		if (strcmp(severity_names[i].name, severity) == 0) {
++			return i;
++		}
++	}
++	return -1;
++}
++
++static void parse_log_line(const char *line, struct log_entry *entry) {
++	struct tm tm = {0};
++	char weekday_str[4], month_str[4], day_str[3], time_str[9], year_str[5];
++	char facility[256] = {0};
++	char severity[256] = {0};
++	entry->sender = calloc(256, sizeof(char));
++	entry->msg = calloc(LOG_LINE_SIZE, sizeof(char));
++
++	if (!entry->sender || !entry->msg) {
++		fprintf(stderr, "Memory allocation failed\n");
++		if (entry->sender) free(entry->sender);
++		if (entry->msg) free(entry->msg);
++		return;
++	}
++
++	int parsed = sscanf(line, "%u %3s %3s %2s %8s %4s %255[^.].%255s %255[^:]: %1023[^\n]",
++                        &entry->id, weekday_str, month_str, day_str, time_str, year_str, facility, severity, entry->sender, entry->msg);
++
++	if (parsed < 10) {
++		parsed = sscanf(line, "%u %3s %3s %2s %8s %4s %255[^.].%255s %*255[^ ] %1023[^\n]",
++                        &entry->id, weekday_str, month_str, day_str, time_str, year_str, facility, severity, entry->msg);
++
++		if (parsed < 8) {
++			fprintf(stderr, "Failed to parse log line: %s\n", line);
++			free(entry->sender);
++			free(entry->msg);
++			entry->sender = NULL;
++			entry->msg = NULL;
++			return;
++		}
++	}
++
++	char full_timestamp_str[64];
++	snprintf(full_timestamp_str, sizeof(full_timestamp_str), "%s %s %s %s", month_str, day_str, time_str, year_str);
++	if (strptime(full_timestamp_str, "%b %d %H:%M:%S %Y", &tm) != NULL) {
++		time_t t = mktime(&tm);
++		if (t != -1) {
++			entry->timestamp = (uint64_t)t;
++		}
++	}
++
++	entry->source = get_facility_code(facility);
++	int severity_code = get_severity_code(severity);
++	entry->priority = (entry->source * 8) + severity_code;
++}
++
++static char* load_log_path() {
++	struct uci_context *ctx = uci_alloc_context();
++	struct uci_ptr ptr;
++	char uci_path[] = "system.system.log_file";
++	char *log_file = NULL;
++
++	if (!ctx) {
++		fprintf(stderr, "Failed to allocate UCI context\n");
++		return NULL;
++	}
++
++	if (uci_lookup_ptr(ctx, &ptr, uci_path, true) == UCI_OK && ptr.o && ptr.o->type == UCI_TYPE_STRING) {
++		log_file = strdup(ptr.o->v.string);
++	}
++
++	uci_free_context(ctx);
++	return log_file;
++}
++
++static int compare_files(const void *a, const void *b) {
++	const char *file_a = *(const char **)a;
++	const char *file_b = *(const char **)b;
++
++	const char *dot_a = strrchr(file_a, '.');
++	const char *dot_b = strrchr(file_b, '.');
++
++	int is_base_a = (dot_a == NULL || !isdigit(*(dot_a + sizeof(char))));
++	int is_base_b = (dot_b == NULL || !isdigit(*(dot_b + sizeof(char))));
++
++	if (is_base_a && !is_base_b)
++		return -1;
++	if (!is_base_a && is_base_b)
++		return 1;
++
++	int num_a = 0, num_b = 0;
++
++	if (dot_a != NULL) {
++		num_a = strtol(dot_a + sizeof(char), NULL, 10);
++	}
++
++	if (dot_b != NULL) {
++		num_b = strtol(dot_b + sizeof(char), NULL, 10);
++	}
++
++	return num_b - num_a;
++}
++
++static void reverse_entries(struct log_entry *entries, size_t entry_count) {
++	for (size_t i = 0; i < entry_count / 2; i++) {
++		struct log_entry temp = entries[i];
++		entries[i] = entries[entry_count - 1 - i];
++		entries[entry_count - 1 - i] = temp;
++	}
++}
++
++static void process_and_push_entries(struct log_entry *entries, size_t entry_count) {
++	for (size_t i = 0; i < entry_count; i++) {
++		log_add_entry(&entries[i]);
++		free(entries[i].sender);
++		free(entries[i].msg);
++	}
++}
++
++static size_t get_available_memory() {
++	struct sysinfo info;
++	if (sysinfo(&info) != 0)
++		return 0;
++
++	return info.freeram;
++}
++
++static void load_entries_from_file(const char *file_path, struct log_entry **entries, size_t *entry_count, size_t *total_size) {
++	gzFile log_file = gzopen(file_path, "rb");
++	if (!log_file)
++		return;
++
++	char buffer[LOG_LINE_SIZE];
++	while (gzgets(log_file, buffer, sizeof(buffer)) != NULL) {
++		if (buffer[0] == '\0')
++			continue;
++
++		buffer[strcspn(buffer, "\n")] = '\0';
++		struct log_entry entry;
++		parse_log_line(buffer, &entry);
++
++		if (!entry.sender || !entry.msg)
++			continue;
++
++		size_t entry_size = sizeof(struct log_entry) + strlen(entry.msg) + strlen(entry.sender);
++		size_t available_memory = get_available_memory();
++
++		if (*total_size + entry_size > log_size || *total_size + entry_size > available_memory) {
++			free(entry.sender);
++			free(entry.msg);
++			break;
++		}
++
++		*entries = realloc(*entries, sizeof(struct log_entry) * (*entry_count + 1));
++		if (!*entries) {
++			gzclose(log_file);
++			return;
++		}
++
++		(*entries)[(*entry_count)++] = entry;
++		*total_size += entry_size;
++	}
++	reverse_entries(*entries, *entry_count);
++	gzclose(log_file);
++}
++
++static void load_logs_from_file(const char *filename) {
++	char pattern[LOG_LINE_SIZE + 2];
++	snprintf(pattern, sizeof(pattern), "%s*", filename);
++	glob_t globbuf;
++	if (glob(pattern, 0, NULL, &globbuf) != 0)
++		return;
++
++	qsort(globbuf.gl_pathv, globbuf.gl_pathc, sizeof(char*), compare_files);
++
++	struct log_entry *entries = NULL;
++	size_t entry_count = 0;
++	size_t total_size = 0;
++
++	for (size_t i = 0; i < globbuf.gl_pathc; i++) {
++		struct log_entry *file_log_entries = NULL;
++		size_t file_entry_count = 0;
++
++		const char *file_path = globbuf.gl_pathv[i];
++		load_entries_from_file(file_path, &file_log_entries, &file_entry_count, &total_size);
++
++		if (file_entry_count == 0) {
++			free(file_log_entries);
++			continue;
++		}
++		struct log_entry *new_entries = realloc(entries, sizeof(struct log_entry) * (entry_count + file_entry_count));
++		if (new_entries == NULL) {
++			free(file_log_entries);
++			break;
++		}
++
++		entries = new_entries;
++
++		memcpy(entries + entry_count, file_log_entries, sizeof(struct log_entry) * file_entry_count);
++		entry_count += file_entry_count;
++
++		free(file_log_entries);
++	}
++
++	reverse_entries(entries, entry_count);
++	process_and_push_entries(entries, entry_count);
++
++	free(entries);
++	globfree(&globbuf);
++}
++
+ int
+ log_buffer_init(int size)
+ {
+@@ -333,6 +663,8 @@ log_buffer_init(int size)
+ void
+ log_init(int _log_size)
+ {
++	char *log_file = load_log_path();
++
+ 	if (_log_size > 0)
+ 		log_size = _log_size;
+ 
+@@ -343,6 +675,12 @@ log_init(int _log_size)
+ 		fprintf(stderr, "Failed to allocate log memory\n");
+ 		exit(-1);
+ 	}
++	if (log_file && !inited) {
++		load_logs_from_file(log_file);
++		free(log_file);
++		inited = true;
++	}
++
+ 
+ 	syslog_open();
+ 	klog_open();
+Index: ubox-2020-10-25-9ef88681/log/logd.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/logd.c
++++ ubox-2020-10-25-9ef88681/log/logd.c
+@@ -116,6 +116,8 @@ static void client_notify_write(struct u
+ static void
+ log_fill_msg(struct blob_buf *b, struct log_head *l)
+ {
++	if (l->size == 0)
++		return;
+ 	blobmsg_add_string(b, "msg", l->data);
+ 	blobmsg_add_u32(b, "id", l->id);
+ 	blobmsg_add_u32(b, "priority", l->priority);

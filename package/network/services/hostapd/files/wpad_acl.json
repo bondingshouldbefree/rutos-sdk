@@ -1,0 +1,22 @@
+{
+	"user": "network",
+	"access": {
+		"log": {
+			"methods": [ "write_ext" ]
+		},
+		"service": {
+			"methods": [ "event" ]
+		},
+		"wpa_supplicant": {
+			"methods": [ "phy_set_state", "phy_set_macaddr_list", "phy_status" ]
+		},
+		"hostapd": {
+			"methods": [ "apsta_state" ]
+		},
+		"iwinfo": {
+			"methods": [ "info" ]
+		}
+	},
+	"publish": [ "hostapd", "hostapd.*", "wpa_supplicant", "wpa_supplicant.*" ],
+	"send": [ "bss.*", "wps_credentials" ]
+}

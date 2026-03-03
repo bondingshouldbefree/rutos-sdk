@@ -1,0 +1,8 @@
+{
+	"services/email_relay": {
+		"title": "Email Relay",
+		"index": 230,
+		"view": "services/EmailRelay",
+		"acls": [ "services/email_relay" ]
+	}
+}

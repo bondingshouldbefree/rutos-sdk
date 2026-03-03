@@ -1,0 +1,22 @@
+net: netfilter: xtables: FLOWOFFLOAD: don't forward input path with SA's
+
+Skip body of 'nf_dev_input_path' if flow has secpath entries. 
+
+Virtual interfaces are traversed before XFRM input transformation happens,
+so route flows should assume the decapsulated packets will be arriving in
+only in the upper-most virtual interface.
+
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -488,6 +488,11 @@ static int nf_dev_input_path(struct nf_f
+ 	int ret;
+ 	int i;
+ 
++	/* If we have SA's on input, don't forward input path,
++	   that will be (hopefully) handled by XFRM flows */
++	if (nf_flow_xfrm_tuple_has_secpath(&route->in.xfrm_tuple))
++		return 0;
++
+ 	ret = nf_dev_fill_input_path(skb, *indev, ha, &stack);
+ 	if (ret < 0)
+ 		return ret;

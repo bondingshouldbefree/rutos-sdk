@@ -1,0 +1,17 @@
+{
+	"network/ports": {
+		"title": "Ports",
+		"index": 100
+	},
+	"network/ports/ports_settings": {
+		"title": "Ports Settings",
+		"index": 10,
+		"acls": [ "network/ports/ports_settings" ],
+		"view": "network/PortSettings",
+		"depends": {
+			"board": {
+				"allOf": ["has_port_link"]
+			}
+		}
+	}
+}

@@ -1,0 +1,15 @@
+Index: libiwinfo-2025-02-06-9cec6b4d/iwinfo_lua.c
+===================================================================
+--- libiwinfo-2025-02-06-9cec6b4d.orig/iwinfo_lua.c
++++ libiwinfo-2025-02-06-9cec6b4d/iwinfo_lua.c
+@@ -511,6 +511,10 @@ static int iwinfo_L_freqlist(lua_State *
+ 			lua_pushboolean(L, e->restricted);
+ 			lua_setfield(L, -2, "restricted");
+ 
++			/* Flags (bit array), indoor_only */
++			lua_pushboolean(L, (e->flags & IWINFO_FREQ_INDOOR_ONLY) != 0);
++			lua_setfield(L, -2, "indoor_only");
++
+ 			lua_rawseti(L, -2, x);
+ 		}
+ 	}

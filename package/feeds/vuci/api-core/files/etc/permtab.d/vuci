@@ -1,0 +1,2 @@
+/etc/config/vuci         uhttpd:uhttpd         660         -
+/etc/api                 uhttpd:uhttpd         770         cd,r

@@ -1,0 +1,37 @@
+Index: dropbear-2025.88/src/dbutil.c
+===================================================================
+--- dropbear-2025.88.orig/src/dbutil.c
++++ dropbear-2025.88/src/dbutil.c
+@@ -61,6 +61,8 @@
+ #include <mach/mach.h>
+ #endif
+ 
++#include <tlt_logger.h>
++
+ #include "includes.h"
+ #include "dbutil.h"
+ #include "buffer.h"
+@@ -85,9 +87,7 @@ int debug_trace = 0;
+ 
+ #ifndef DISABLE_SYSLOG
+ void startsyslog(const char *ident) {
+-
+-	openlog(ident, LOG_PID, LOG_AUTHPRIV);
+-
++	logger_init_ext(L_SYSTEM, L_TYPE_SYSLOG | L_SYSLOG_LEVELS, ident, LOG_PID, LOG_AUTHPRIV);
+ }
+ #endif /* DISABLE_SYSLOG */
+ 
+Index: dropbear-2025.88/src/svr-session.c
+===================================================================
+--- dropbear-2025.88.orig/src/svr-session.c
++++ dropbear-2025.88/src/svr-session.c
+@@ -322,7 +322,7 @@ void svr_dropbear_log(int priority, cons
+ 
+ #ifndef DISABLE_SYSLOG
+ 	if (opts.usingsyslog) {
+-		syslog(priority, "%s", printbuf);
++		_log(priority, "%s", printbuf);
+ 	}
+ #endif
+ 

@@ -1,0 +1,37 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2024 Teltonika
+
+APP=/usr/sbin/aws_jobs
+START=99
+STOP=01
+USE_PROCD=1
+
+AWS_JOBS_START_SERVICE=0
+
+check_if_enabled() {
+	[ "$AWS_JOBS_START_SERVICE" -eq 1 ] && return
+
+	config_get enabled $1 enabled
+	[ "$enabled" == "1" ] && AWS_JOBS_START_SERVICE=1
+}
+
+start_service() {
+	config_load aws_jobs
+	config_foreach check_if_enabled "aws_jobs"
+
+	[ "$AWS_JOBS_START_SERVICE" -eq 0 ] && return
+
+	if [ ! -x "$APP" ]; then
+		APP="/usr/local$APP"
+	fi
+
+	procd_open_instance aws
+	procd_set_param command $APP
+	procd_set_param file /etc/config/aws_jobs
+	# procd_set_param user aws
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger aws_jobs
+}

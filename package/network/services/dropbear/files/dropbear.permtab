@@ -1,0 +1,3 @@
+/etc/config/dropbear             dropbear:dropbear       660       -
+/etc/dropbear                    dropbear:dropbear       660       r
+/etc/dropbear                    dropbear:dropbear       770       -

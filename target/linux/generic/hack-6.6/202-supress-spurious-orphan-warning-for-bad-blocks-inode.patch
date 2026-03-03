@@ -1,0 +1,15 @@
+--- a/fs/ext4/super.c
++++ b/fs/ext4/super.c
+@@ -1464,7 +1464,11 @@ static void ext4_free_in_core_inode(stru
+ 
+ static void ext4_destroy_inode(struct inode *inode)
+ {
+-	if (ext4_inode_orphan_tracked(inode)) {
++	/* Inode 1 (bad blocks) is a special reserved inode that may
++	 * spuriously appear in oprhan tracking during umount.
++	 * This is harmless and should not trigger warnings.
++	 */
++	if (ext4_inode_orphan_tracked(inode) && inode->i_ino != 1) {
+ 		ext4_msg(inode->i_sb, KERN_ERR,
+ 			 "Inode %lu (%p): inode tracked as orphan!",
+ 			 inode->i_ino, EXT4_I(inode));

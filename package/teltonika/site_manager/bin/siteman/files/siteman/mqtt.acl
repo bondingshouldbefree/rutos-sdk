@@ -1,0 +1,3 @@
+pattern read management/siteman/hello
+pattern readwrite management/siteman/%c/%u/+
+pattern readwrite management/siteman/%c/%u/+/resp

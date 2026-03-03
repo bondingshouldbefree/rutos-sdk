@@ -1,0 +1,7 @@
+#!/bin/sh
+
+source_port="$(uci -q get port_mirroring.config.mirror_source_port)"
+monitor_port="$(uci -q get port_mirroring.config.mirror_monitor_port)"
+[ -z "$source_port" ] || [ -z "$monitor_port" ] && exit 0
+
+[ "$DEVICENAME" = "$source_port" ] || [ "$DEVICENAME" = "$monitor_port" ] && /etc/init.d/port_mirroring reload

@@ -1,0 +1,71 @@
+#include "../mt7621-teltonika-common.dtsi"
+#include "../mt7621-teltonika-rutm-flash.dtsi"
+
+/ {
+	compatible = "teltonika,rutm", "mediatek,mt7621-soc";
+
+	chosen {
+		bootargs = "console=ttyS0,115200";
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		reset {
+			label = "reset";
+			gpios = <&gpio 10 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_power {
+			label = "power";
+			gpios = <&gpio 0 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+			retain-state-shutdown;
+		};
+	};
+
+	ioman: ioman {
+		layout@0 {
+			io@0 { // 4pin #3
+				label = "din1";
+				block_type = BLOCK_4PIN;
+				block_pin = "3";
+				gpio_in = "GPIO_IN_1";
+				io_param = "g0";
+			};
+			io@1 { // 4pin #4
+				label = "dout1";
+				block_type = BLOCK_4PIN;
+				block_pin = "4";
+				gpio_out = "GPIO_OUT_1";
+				io_param = "g1";
+			};
+		};
+	};
+
+	tlt_gpios {
+		gpiochip_info {
+			hw_0 {
+				hwver = <0>;
+				gpiochip_count = <4>;
+
+				gpiochip_0 = <32>; // Built-in
+				gpiochip_1 = <32>; // Built-in
+				gpiochip_2 = <32>; // Built-in
+				gpiochip_3 = <16>; // Shift Register
+			};
+		};
+	};
+};
+
+&state_default {
+	gpio {
+		groups = "wdt", "jtag", "sdhci", "uart2", "uart3";
+		function = "gpio";
+	};
+};

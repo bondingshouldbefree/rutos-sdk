@@ -1,0 +1,41 @@
+{
+  "network/routes": {
+    "title": "Routing",
+    "index": 80
+  },
+  "network/routes/dynamic_routes": {
+    "title": "Dynamic Routes",
+    "index": 30
+  },
+  "network/routes/dynamic_routes/proto_nhrp": {
+    "title": "NHRP",
+    "index": 50,
+    "view": "network/ProtoNhrp",
+    "acls": ["network/routes/dynamic_routes/proto_nhrp"],
+    "main_page": true,
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-nhrp", "frr5-nhrp"]
+      }
+    }
+  },
+  "status/routes": {
+    "title": "Routes",
+    "index": 35
+  },
+  "status/routes/dynamic": {
+    "title": "Dynamic",
+    "index": 20
+  },
+  "status/routes/dynamic/nhrp": {
+    "title": "NHRP",
+    "index": 50,
+    "view": "status/ProtoNhrp",
+    "acls": ["status/routes/dynamic/nhrp"],
+    "depends": {
+      "packages": {
+        "anyOf": ["frr-nhrp", "frr5-nhrp"]
+      }
+    }
+  }
+}

@@ -1,0 +1,78 @@
+diff --git a/time/tzset.c b/time/tzset.c
+index 78c18f8147..c1486c88e0 100644
+--- a/time/tzset.c
++++ b/time/tzset.c
+@@ -16,12 +16,15 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #include <ctype.h>
++#include <fcntl.h>
+ #include <libc-lock.h>
+ #include <stdbool.h>
+ #include <stddef.h>
++#include <unistd.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <sys/mman.h>
+ #include <time.h>
+ 
+ #include <timezone/tzfile.h>
+@@ -61,6 +64,8 @@ typedef struct
+ /* tz_rules[0] is standard, tz_rules[1] is daylight.  */
+ static tz_rule tz_rules[2];
+ 
++static const char *tzfile;
++static size_t tzfile_size;
+ 
+ static void compute_change (tz_rule *rule, int year) __THROW;
+ static void tzset_internal (int always);
+@@ -362,6 +367,33 @@ __tzset_parse_tz (const char *tz)
+   update_vars ();
+ }
+ 
++static char*
++tzset_read_tzfile()
++{
++  int fd;
++  struct stat st;
++
++  if (tzfile)
++    __munmap (tzfile, tzfile_size);
++
++  tzfile = NULL;
++
++  fd = __open ("/etc/TZ", O_RDONLY | O_CLOEXEC);
++
++  if (fd == -1)
++    return NULL;
++
++  if (!__fstat (fd, &st))
++    {
++      tzfile = __mmap (NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
++      tzfile_size = st.st_size;
++    }
++
++  (void) __close (fd);
++
++  return tzfile == MAP_FAILED ? NULL : tzfile;
++}
++
+ /* Interpret the TZ envariable.  */
+ static void
+ tzset_internal (int always)
+@@ -375,6 +407,11 @@ tzset_internal (int always)
+ 
+   /* Examine the TZ environment variable.  */
+   tz = getenv ("TZ");
++
++  /* if TZ is empty try to read it from /etc/TZ */
++  if (!tz || !*tz)
++    tz = tzset_read_tzfile ();
++
+   if (tz && *tz == '\0')
+     /* User specified the empty string; use UTC explicitly.  */
+     tz = "Universal";
+-- 
+2.43.0
+

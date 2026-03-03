@@ -1,0 +1,11 @@
+--- a/src/drivers/nl80211_copy.h
++++ b/src/drivers/nl80211_copy.h
+@@ -1596,6 +1596,8 @@ enum nl80211_commands {
+ 	NL80211_CMD_ASSOC_MLO_RECONF,
+ 	NL80211_CMD_EPCS_CFG,
+ 
++	NL80211_CMD_UNREGISTER_FRAME,
++
+ 	/* add new commands above here */
+ 
+ 	/* used to define NL80211_CMD_MAX below */

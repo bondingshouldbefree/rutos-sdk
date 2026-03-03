@@ -1,0 +1,12 @@
+menu "Configuration"
+	depends on PACKAGE_api-core
+
+	config VUCI_COMPILE_LUA
+		bool "Compile lua files"
+		depends on PACKAGE_api-core
+
+	config VUCI_MINIFY_LUA
+		bool "Minify lua files"
+		depends on PACKAGE_api-core
+		default y
+endmenu

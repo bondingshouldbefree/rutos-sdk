@@ -1,0 +1,35 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+config_load system
+config_load log
+
+for opt in log_size_limit log_file log_compress; do
+	val="$(uci_get system system $opt 2>/dev/null)"
+	if [ -n "$val" ]; then
+		uci_set log global "$opt" "$val"
+		uci_remove "system" "system" "$opt"
+	fi
+done
+
+for i in default logger_1 logger_2; do
+	if uci show system."$i" >/dev/null 2>&1; then
+		if [ -z "$(uci show log."$i" 2>/dev/null)" ]; then
+			sec=$(uci add log remote_logger)
+			uci rename log.$sec="$i"
+		fi 
+
+		for opt in log_proto log_port log_hostname log_ip; do
+			val="$(uci_get system "$i" "$opt" 2>/dev/null)"
+			[ -n "$val" ] && uci_set log "$i" "$opt" "$val"
+		done
+
+		uci_remove "system" "$i"
+	fi
+done
+
+uci_commit log
+uci_commit system
+
+exit 0

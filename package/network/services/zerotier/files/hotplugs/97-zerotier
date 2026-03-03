@@ -1,0 +1,29 @@
+#!/bin/sh
+. /lib/functions.sh
+
+check_valid_device() {
+	local hp_dev="$1"
+	local match=0
+
+	check_section() {
+		local section="$1"
+		local config_device_name
+		config_get config_device_name "$section" device_name
+		[ "$hp_dev" = "$config_device_name" ] && match=1
+	}
+
+	config_load zerotier
+	config_foreach check_section
+	[ "$match" -eq 1 ]
+}
+
+add_tc() {
+	local device_name="$1"
+	check_valid_device "$device_name" || return
+	tc qdisc add dev "$device_name" clsact
+	tc filter add dev "$device_name" egress protocol arp flower action police pkts_rate 10 pkts_burst 5 drop
+}
+
+[ "$ACTION" = "add" ] && case "$DEVICENAME" in
+	zt*) add_tc "$DEVICENAME" ;;
+esac

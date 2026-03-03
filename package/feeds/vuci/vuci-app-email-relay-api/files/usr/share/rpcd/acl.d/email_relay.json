@@ -1,0 +1,1 @@
+{"services/email_relay":{"description":"email relay configuration","read":{"api":{"/email_relay/*":["*"]}},"write":{"api":["/email_relay/*"]},"source":["/email_relay/*"]}}

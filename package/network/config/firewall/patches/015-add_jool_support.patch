@@ -1,0 +1,434 @@
+Index: firewall-2022-02-17-4cd7d4f3/jools.c
+===================================================================
+--- /dev/null
++++ firewall-2022-02-17-4cd7d4f3/jools.c
+@@ -0,0 +1,247 @@
++#include "jools.h"
++
++const struct fw3_option fw3_jool_opts[] = {
++	FW3_OPT("enabled",             bool,      jool,     enabled),
++	FW3_OPT("name",                string,    jool,     name),
++	FW3_OPT("family",              family,    jool,     family),
++	FW3_OPT("src",                 device,    jool,     src),
++	FW3_LIST("proto",              protocol,  jool,     proto),
++	FW3_LIST("src_ip",             network,   jool,     ip_src),
++	FW3_LIST("src_port",           port,      jool,     port_src),
++	FW3_LIST("dest_ip",            network,   jool,     ip_dest),
++	FW3_LIST("dest_port",	       port,	  jool,	    port_dest),
++	FW3_OPT("extra",               string,    jool,     extra),
++	FW3_OPT("instance",	       string,	  jool,	    instance),
++	FW3_OPT("target",              target,    jool,     target),
++	{ }
++};
++
++static struct fw3_jool *
++fw3_alloc_jool(struct fw3_state *state)
++{
++	struct fw3_jool *jool;
++
++	jool = calloc(1, sizeof(*jool));
++	if (jool) {
++		INIT_LIST_HEAD(&jool->proto);
++		INIT_LIST_HEAD(&jool->ip_src);
++		INIT_LIST_HEAD(&jool->port_src);
++		INIT_LIST_HEAD(&jool->ip_dest);
++		INIT_LIST_HEAD(&jool->port_dest);
++
++		list_add_tail(&jool->list, &state->jools);
++		jool->enabled = true;
++	}
++
++	return jool;
++}
++
++static bool
++check_jool(struct fw3_state *state, struct fw3_jool *jool, struct uci_element *e)
++{
++	if (!jool->enabled)
++		return false;
++
++	if (!jool->instance)
++	{
++		warn_section("jool", jool, e, "no instance is specified");
++		return false;
++	}
++
++	if (jool->src.invert)
++	{
++		warn_section("jool", jool, e, "must not have inverted 'src' option");
++		return false;
++	}
++	else if (jool->src.set && !jool->src.any &&
++		 !(jool->_src = fw3_lookup_zone(state, jool->src.name)))
++	{
++		warn_section("jool", jool, e, "refers to not existing zone '%s'",
++				jool->src.name);
++		return false;
++	}
++
++	if (list_empty(&jool->proto))
++	{
++		warn_section("jool", jool, e, "does not specify a protocol, assuming all");
++		fw3_parse_protocol(&jool->proto, "all", true);
++	}
++
++	if (jool->target != FW3_FLAG_JOOL)
++	{
++		warn_section("jool", jool, e, "has no target specified, defaulting to JOOL");
++		jool->target = FW3_FLAG_JOOL;
++	}
++
++	return true;
++}
++
++void
++fw3_load_jools(struct fw3_state *state, struct uci_package *p, struct blob_attr *a)
++{
++	struct uci_section *s;
++	struct uci_element *e;
++	struct fw3_jool *jool;
++	struct blob_attr *entry;
++	unsigned rem;
++
++	INIT_LIST_HEAD(&state->jools);
++
++	blob_for_each_attr(entry, a, rem) {
++		const char *type = NULL;
++		const char *name = "ubus rule";
++
++		if (!fw3_attr_parse_name_type(entry, &name, &type))
++			continue;
++
++		if (strcmp(type, "jool"))
++			continue;
++
++		if (!(fw3_alloc_jool(state)))
++			continue;
++
++		if (!fw3_parse_blob_options(jool, fw3_jool_opts, entry, name))
++		{
++			warn_section("jool", jool, NULL, "skipped due to invalid options");
++			fw3_free_jool(jool);
++			continue;
++		}
++
++		if (!check_jool(state, jool, NULL))
++			fw3_free_jool(jool);
++	}
++
++	uci_foreach_element(&p->sections, e)
++	{
++		s = uci_to_section(e);
++
++		if (strcmp(s->type, "jool"))
++			continue;
++
++		if (!(jool = fw3_alloc_jool(state)))
++			continue;
++
++		if (!fw3_parse_options(jool, fw3_jool_opts, s))
++		{
++			warn_elem(e, "skipped due to invalid options");
++			fw3_free_jool(jool);
++			continue;
++		}
++
++		if (!check_jool(state, jool, e))
++			fw3_free_jool(jool);
++	}
++}
++
++static void
++set_comment(struct fw3_ipt_rule *r, const char *name, int num)
++{
++	if (name)
++		fw3_ipt_rule_comment(r, name);
++	else
++		fw3_ipt_rule_comment(r, "@mangle[%u]", num);
++}
++
++static void
++print_jool(struct fw3_ipt_handle *handle, struct fw3_state *state,
++		struct fw3_jool *jool, int num, struct fw3_protocol *proto,
++		struct fw3_address *sip, struct fw3_address *dip,
++		struct fw3_port *sport, struct fw3_port *dport)
++{
++	struct fw3_ipt_rule *r;
++	struct fw3_device *idev;
++	struct list_head empty, *idevices;
++	INIT_LIST_HEAD(&empty);
++	idevices = &empty;
++
++	if (handle->table != FW3_TABLE_MANGLE)
++		return;
++
++	if (!fw3_is_family(sip, handle->family) ||
++	    !fw3_is_family(dip, handle->family))
++	{
++		if ((sip && !sip->resolved) || (dip && !dip->resolved))
++			info("     ! Skipping due to different family of ip address");
++
++		return;
++	}
++
++	if (proto->protocol == 58 && handle->family == FW3_FAMILY_V4)
++	{
++		info("     ! Skipping due to different family of protocol");
++		return;
++	}
++
++	if (jool->_src)
++		idevices = &jool->_src->devices;
++
++	fw3_foreach(idev, idevices)
++	{
++		r = fw3_ipt_rule_create(handle, proto, idev, NULL, sip, dip);
++		fw3_ipt_rule_sport_dport(r, sport, dport);
++		set_comment(r, jool->name, num);
++		fw3_ipt_rule_target(r, "JOOL");
++		fw3_ipt_rule_addarg(r, false, "--instance", jool->instance);
++		fw3_ipt_rule_append(r, "PREROUTING");
++	}
++}
++
++static void
++expand_jool(struct fw3_ipt_handle *handle, struct fw3_state *state,
++                struct fw3_jool *jool, int num)
++{
++	struct fw3_protocol *proto;
++	struct fw3_address *sip;
++	struct fw3_address *dip;
++	struct fw3_port *sport;
++	struct fw3_port *dport;
++
++	struct list_head *sports = NULL;
++	struct list_head *dports = NULL;
++
++	struct list_head empty;
++	INIT_LIST_HEAD(&empty);
++
++	if (!fw3_is_family(jool, handle->family))
++		return;
++
++	if (handle->table != FW3_TABLE_MANGLE)
++		return;
++
++	if (!fw3_is_family(jool->_src, handle->family))
++	{
++		info("     ! Skipping due to different family of zone");
++		return;
++	}
++
++	list_for_each_entry(proto, &jool->proto, list)
++	{
++		if (proto->protocol == 1 || proto->protocol == 58)
++		{
++			sports = &empty;
++			dports = &empty;
++		}
++		else
++		{
++			sports = &jool->port_src;
++			dports = &jool->port_dest;
++		}
++
++		fw3_foreach(sip, &jool->ip_src)
++		fw3_foreach(dip, &jool->ip_dest)
++		fw3_foreach(sport, sports)
++		fw3_foreach(dport, dports)
++			print_jool(handle, state, jool, num, proto, sip, dip, sport, dport);
++
++	}
++}
++
++void
++fw3_print_jools(struct fw3_ipt_handle *handle, struct fw3_state *state)
++{
++	int num = 0;
++	struct fw3_jool *jool;
++
++	list_for_each_entry(jool, &state->jools, list)
++		expand_jool(handle, state, jool, num++);
++}
+Index: firewall-2022-02-17-4cd7d4f3/jools.h
+===================================================================
+--- /dev/null
++++ firewall-2022-02-17-4cd7d4f3/jools.h
+@@ -0,0 +1,20 @@
++#ifndef __FW3_JOOL_H
++#define __FW3_JOOL_H
++
++#include "options.h"
++#include "zones.h"
++#include "utils.h"
++#include "iptables.h"
++
++extern const struct fw3_option fw3_jool_opts[];
++
++void fw3_load_jools(struct fw3_state *state, struct uci_package *p, struct blob_attr *a);
++void fw3_print_jools(struct fw3_ipt_handle *handle, struct fw3_state *state);
++
++static inline void fw3_free_jool(struct fw3_jool *jool)
++{
++	list_del(&jool->list);
++	fw3_free_object(jool, fw3_jool_opts);
++}
++
++#endif
+Index: firewall-2022-02-17-4cd7d4f3/CMakeLists.txt
+===================================================================
+--- firewall-2022-02-17-4cd7d4f3.orig/CMakeLists.txt
++++ firewall-2022-02-17-4cd7d4f3/CMakeLists.txt
+@@ -26,7 +26,7 @@ ENDIF()
+ FIND_PATH(uci_include_dir uci.h)
+ INCLUDE_DIRECTORIES(${uci_include_dir})
+ 
+-ADD_EXECUTABLE(firewall3 main.c options.c defaults.c zones.c forwards.c rules.c redirects.c snats.c utils.c ubus.c ipsets.c includes.c iptables.c helpers.c)
++ADD_EXECUTABLE(firewall3 main.c options.c defaults.c zones.c forwards.c rules.c redirects.c snats.c utils.c ubus.c ipsets.c includes.c iptables.c helpers.c jools.c)
+ TARGET_LINK_LIBRARIES(firewall3 uci ubox ubus xtables m dl ${iptc_libs} ${ext_libs})
+ 
+ SET(CMAKE_INSTALL_PREFIX /usr)
+Index: firewall-2022-02-17-4cd7d4f3/main.c
+===================================================================
+--- firewall-2022-02-17-4cd7d4f3.orig/main.c
++++ firewall-2022-02-17-4cd7d4f3/main.c
+@@ -31,6 +31,7 @@
+ #include "ubus.h"
+ #include "iptables.h"
+ #include "helpers.h"
++#include "jools.h"
+ #include <libmnl/libmnl.h>
+ #include <libnetfilter_conntrack/libnetfilter_conntrack.h>
+ 
+@@ -282,6 +283,7 @@ static bool build_state(bool runtime)
+ 	fw3_load_snats(state, p, b.head);
+ 	fw3_load_forwards(state, p, b.head);
+ 	fw3_load_includes(state, p, b.head);
++	fw3_load_jools(state, p, b.head);
+ 
+ 	return true;
+ }
+@@ -392,6 +394,7 @@ static void build_old_state()
+ 	fw3_load_snats(state, p, b.head);
+ 	fw3_load_forwards(state, p, b.head);
+ 	fw3_load_includes(state, p, b.head);
++	fw3_load_jools(state, p, b.head);
+ 
+ end:
+ 
+@@ -418,6 +421,8 @@ static void free_state(struct fw3_state
+ 
+ 	list_for_each_safe(cur, tmp, &state->cthelpers) fw3_free_cthelper((struct fw3_cthelper *)cur);
+ 
++	list_for_each_safe(cur, tmp, &state->jools) fw3_free_jool((struct fw3_jool *)cur);
++
+ 	uci_free_context(state->uci);
+ 
+ 	free(state);
+@@ -538,6 +543,7 @@ static int start(void)
+ 			fw3_print_redirects(handle, cfg_state);
+ 			fw3_print_snats(handle, cfg_state);
+ 			fw3_print_forwards(handle, cfg_state);
++			fw3_print_jools(handle, cfg_state);
+ 			fw3_print_zone_rules(handle, cfg_state, false);
+ 			fw3_print_default_tail_rules(handle, cfg_state, false);
+ 
+@@ -751,6 +757,7 @@ start:
+ 			fw3_print_redirects(handle, cfg_state);
+ 			fw3_print_snats(handle, cfg_state);
+ 			fw3_print_forwards(handle, cfg_state);
++			fw3_print_jools(handle, cfg_state);
+ 			fw3_print_zone_rules(handle, cfg_state, true);
+ 			fw3_print_default_tail_rules(handle, cfg_state, true);
+ 
+Index: firewall-2022-02-17-4cd7d4f3/options.c
+===================================================================
+--- firewall-2022-02-17-4cd7d4f3.orig/options.c
++++ firewall-2022-02-17-4cd7d4f3/options.c
+@@ -82,6 +82,7 @@ const char *fw3_flag_names[__FW3_FLAG_MA
+ 	"DNAT",
+ 	"SNAT",
+ 	"MASQUERADE",
++	"JOOL",
+ 
+ 	"ACCEPT",
+ 	"REJECT",
+@@ -206,7 +207,7 @@ bool
+ fw3_parse_target(void *ptr, const char *val, bool is_list)
+ {
+ 	return parse_enum(ptr, val, &fw3_flag_names[FW3_FLAG_ACCEPT],
+-	                  FW3_FLAG_ACCEPT, FW3_FLAG_MASQUERADE);
++	                  FW3_FLAG_ACCEPT, FW3_FLAG_JOOL);
+ }
+ 
+ bool
+Index: firewall-2022-02-17-4cd7d4f3/options.h
+===================================================================
+--- firewall-2022-02-17-4cd7d4f3.orig/options.h
++++ firewall-2022-02-17-4cd7d4f3/options.h
+@@ -78,14 +78,15 @@ enum fw3_flag
+ 	FW3_FLAG_DNAT          = 14,
+ 	FW3_FLAG_SNAT          = 15,
+ 	FW3_FLAG_MASQUERADE    = 16,
+-	FW3_FLAG_SRC_ACCEPT    = 17,
+-	FW3_FLAG_SRC_REJECT    = 18,
+-	FW3_FLAG_SRC_DROP      = 19,
+-	FW3_FLAG_CUSTOM_CHAINS = 20,
+-	FW3_FLAG_SYN_FLOOD     = 21,
+-	FW3_FLAG_MTU_FIX       = 22,
+-	FW3_FLAG_DROP_INVALID  = 23,
+-	FW3_FLAG_HOTPLUG       = 24,
++	FW3_FLAG_JOOL	       = 17,
++	FW3_FLAG_SRC_ACCEPT    = 18,
++	FW3_FLAG_SRC_REJECT    = 19,
++	FW3_FLAG_SRC_DROP      = 20,
++	FW3_FLAG_CUSTOM_CHAINS = 21,
++	FW3_FLAG_SYN_FLOOD     = 22,
++	FW3_FLAG_MTU_FIX       = 23,
++	FW3_FLAG_DROP_INVALID  = 24,
++	FW3_FLAG_HOTPLUG       = 25,
+ 
+ 	__FW3_FLAG_MAX
+ };
+@@ -541,6 +542,33 @@ struct fw3_ipset
+ 	uint32_t flags[2];
+ };
+ 
++struct fw3_jool
++{
++	struct list_head list;
++
++	bool enabled;
++	const char *name;
++	const char *instance;
++
++	enum fw3_family family;
++
++	struct fw3_zone *_src;
++
++	struct fw3_device src;
++
++	struct list_head proto;
++
++	struct list_head ip_src;
++	struct list_head port_src;
++
++	struct list_head ip_dest;
++	struct list_head port_dest;
++
++	enum fw3_flag target;
++
++	const char *extra;
++};
++
+ struct fw3_include
+ {
+ 	struct list_head list;
+@@ -586,6 +614,7 @@ struct fw3_state
+ 	struct list_head ipsets;
+ 	struct list_head includes;
+ 	struct list_head cthelpers;
++	struct list_head jools;
+ 
+ 	bool disable_ipsets;
+ 	bool statefile;

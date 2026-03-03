@@ -1,0 +1,22 @@
+Index: xl2tpd6-1.3.17/xl2tpd-control.c
+===================================================================
+--- xl2tpd6-1.3.17.orig/xl2tpd-control.c
++++ xl2tpd6-1.3.17/xl2tpd-control.c
+@@ -32,6 +32,7 @@
+ #include <sys/types.h>
+ #include <fcntl.h>
+ #include <errno.h>
++#include <pwd.h>
+ 
+ #include "l2tp.h"
+ 
+@@ -188,6 +189,9 @@ int main (int argc, char *argv[])
+     snprintf (result_filename, 128, RESULT_FILENAME_FORMAT, getpid());
+     unlink (result_filename);
+     mkfifo (result_filename, 0600);
++    struct passwd *pw = getpwnam("xl2tpd");
++    if (pw)
++        chown(result_filename, pw->pw_uid, pw->pw_gid);
+     atexit(cleanup);
+ 
+     result_fd = open (result_filename, O_RDONLY | O_NONBLOCK, 0600);

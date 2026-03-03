@@ -1,0 +1,25 @@
+From b7aead4caf1970bdefaa3089bd0075bccd62f6e3 Mon Sep 17 00:00:00 2001
+From: "@joris.vaisvila" <joris.vaisvila@teltonika.lt>
+Date: Fri, 12 Dec 2025 19:42:19 +0200
+Subject: [PATCH 1/1] wpa_supplicant: hide scary pkcs11 warning
+
+---
+ src/crypto/tls_openssl.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/crypto/tls_openssl.c b/src/crypto/tls_openssl.c
+index f172241b4..e20e31f72 100644
+--- a/src/crypto/tls_openssl.c
++++ b/src/crypto/tls_openssl.c
+@@ -374,7 +374,7 @@ static void openssl_load_pkcs11_provider(void)
+ 
+ 	openssl_pkcs11_provider = OSSL_PROVIDER_try_load(NULL, "pkcs11", 1);
+ 	if (!openssl_pkcs11_provider)
+-		wpa_printf(MSG_WARNING, "PKCS11 provider not present");
++		wpa_printf(MSG_DEBUG, "PKCS11 provider not present");
+ #endif /* OpenSSL version >= 3.0 */
+ }
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,37 @@
+{
+        "user": "dfota",
+        "access": {
+                "gsm.modem*": {
+                        "methods": [
+                                "get_firmware",
+                                "info",
+                                "get_qabfota_state",
+                                "delete_file",
+                                "get_storage_space",
+                                "upload_file",
+                                "get_file_list",
+                                "set_qabfota_package",
+                                "dfota_upgrade",
+                                "get_attached_pdp_ctx_list"
+                        ]
+                },
+                "gsm": {
+                        "methods": [
+                                "info"
+                        ]
+                },
+                "rut_fota": {
+                        "methods": [ "get_info", "notify_server", "fw_info", "reset_info" ]
+                },
+                "network.interface": {
+                        "methods": [ "dump" ]
+                },
+		"service": {
+			"methods": [ "set", "list", "delete", "signal" ]
+                },
+		"log": {
+			"methods": [ "write_ext" ]
+		}
+        },
+        "send": [ "vuci.*" ]
+}

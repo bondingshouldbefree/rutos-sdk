@@ -1,0 +1,20 @@
+Index: mwan3-2.10.12/files/usr/sbin/mwan3track
+===================================================================
+--- mwan3-2.10.12.orig/files/usr/sbin/mwan3track
++++ mwan3-2.10.12/files/usr/sbin/mwan3track
+@@ -220,6 +220,7 @@ main() {
+ 	mwan3_init
+ 
+ 	mkdir -p $MWAN3TRACK_STATUS_DIR/$INTERFACE
++	echo "${sect_id}" > "$MWAN3TRACK_STATUS_DIR/$INTERFACE/CONDITION_ID"
+ 
+ 	trap clean_up TERM
+ 	trap if_down USR1
+@@ -403,7 +404,6 @@ main() {
+ 		echo "${lost}" > $MWAN3TRACK_STATUS_DIR/$INTERFACE/LOST
+ 		echo "${score}" > $MWAN3TRACK_STATUS_DIR/$INTERFACE/SCORE
+ 		echo "${turn}" > $MWAN3TRACK_STATUS_DIR/$INTERFACE/TURN
+-		echo "${sect_id}" > "$MWAN3TRACK_STATUS_DIR/$INTERFACE/CONDITION_ID"
+ 		get_uptime > $MWAN3TRACK_STATUS_DIR/$INTERFACE/TIME
+ 
+ 		host_up_count=0

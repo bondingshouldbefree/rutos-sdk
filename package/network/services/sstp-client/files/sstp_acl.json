@@ -1,0 +1,8 @@
+{
+  "user": "sstpc",
+  "access": {
+    "network.interface": {
+      "methods": ["notify_proto"]
+    }
+  }
+}

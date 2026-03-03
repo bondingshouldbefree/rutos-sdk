@@ -1,0 +1,18 @@
+--- a/loginutils/login.c
++++ b/loginutils/login.c
+@@ -332,6 +332,7 @@ static void alarm_handler(int sig UNUSED
+ 	/* unix API is brain damaged regarding O_NONBLOCK,
+ 	 * we should undo it, or else we can affect other processes */
+ 	ndelay_off(STDOUT_FILENO);
++	sleep(1);
+ 	_exit(EXIT_SUCCESS);
+ }
+ 
+@@ -604,6 +605,7 @@ int login_main(int argc UNUSED_PARAM, ch
+ #ifdef CONFIG_FEATURE_IP_BLOCKD
+ 			destroy_lock();
+ #endif // CONFIG_FEATURE_IP_BLOCKD
++			sleep(1);
+ 			return EXIT_FAILURE;
+ 		}
+ 		username[0] = '\0';

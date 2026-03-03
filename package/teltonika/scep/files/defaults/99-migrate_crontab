@@ -1,0 +1,5 @@
+# change cert-enroll.sh path for existing cronjobs
+
+sed -i -e 's,/usr/sbin/cert-enroll.sh,cert-enroll.sh,g' /etc/crontabs/root
+
+exit 0

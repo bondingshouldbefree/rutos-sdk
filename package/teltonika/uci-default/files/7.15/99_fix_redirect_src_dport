@@ -1,0 +1,30 @@
+#!/bin/sh
+. /lib/functions.sh
+
+fix_src_dport() {
+	local section="$1"
+	local name
+	local src_dport
+
+	name="$(uci_get firewall "$section" "name")"
+
+	[ "$name" != "dmz_http" ] && [ "$name" != "dmz_https" ] && return
+
+	src_dport="$(uci_get firewall "$section" "src_dport")"
+
+	[ -z "$src_dport" ] && return
+
+	for port in $src_dport; do
+		src_dport=$port
+		break
+	done
+
+	[ "$src_dport" != "${src_dport%%:*}" ] && src_dport="${src_dport##*:}"
+
+	uci_set "firewall" "$section" "src_dport" "$src_dport"
+}
+
+config_load firewall
+config_foreach fix_src_dport redirect
+uci commit firewall
+exit 0

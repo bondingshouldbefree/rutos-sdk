@@ -1,0 +1,15 @@
+#!/bin/sh
+# Copyright (C) 2025 Teltonika-Networks
+
+setup_homedir() {
+	echo "- preparing user home directories -"
+
+	while IFS=: read -r _ _ uid gid _ home _; do
+		[ -e "$home" ] || {
+			echo " creating $home with $uid:$gid..."
+			mkdir -p -m 0775 "$home" && chown "$uid:$gid" "$home"
+		}
+	done < /etc/passwd
+}
+
+boot_hook_add preinit_main setup_homedir

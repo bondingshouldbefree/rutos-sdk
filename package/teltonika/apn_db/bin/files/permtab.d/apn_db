@@ -1,0 +1,3 @@
+# Setup database permisions
+/tmp/apn.db		gsm:gsm		660		-
+/usr/share/mobifd/apn.db.gz		gsm:gsm		660		-

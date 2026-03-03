@@ -1,0 +1,202 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Wed Oct 30 10:50:39 2024 +0200
+Subject: crypto: mtk-eip93: rollback CDR descriptors when ring is full
+
+Previous implementation did a delay loop to wait for the ring to clear up. That wasn't
+great for CPU usage and could result in deadlocks before mtk_send_req was moved to a
+workqueue, where it could be running with BH disabled. New implementation rolls back 
+submitted descriptors and returns -EBUSY on full ring condition, which tells the request
+worker it should go to sleep until the ring is cleared up.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ drivers/crypto/mtk-eip93/eip93-common.c |  107 ++++++++++++++++++++++++++++----
+ 1 file changed, 94 insertions(+), 13 deletions(-)
+
+--- a/drivers/crypto/mtk-eip93/eip93-common.c
++++ b/drivers/crypto/mtk-eip93/eip93-common.c
+@@ -36,6 +36,20 @@ inline void *mtk_ring_next_wptr(struct m
+ 	return ptr;
+ }
+ 
++inline void *mtk_ring_pop_wptr(struct mtk_device *mtk,
++						struct mtk_desc_ring *ring)
++{
++	if (ring->write == ring->read)
++		return ERR_PTR(-ENOENT);
++
++	if (ring->write == ring->base)
++		ring->write = ring->base_end;
++	else
++		ring->write -= ring->offset;
++
++	return ring->write;
++}
++
+ inline void *mtk_ring_next_rptr(struct mtk_device *mtk,
+ 						struct mtk_desc_ring *ring)
+ {
+@@ -84,6 +98,36 @@ inline int mtk_put_descriptor(struct mtk
+ 	return 0;
+ }
+ 
++inline void mtk_rollback_descriptor(struct mtk_device *mtk)
++{
++	struct eip93_descriptor_s *cdesc;
++	struct eip93_descriptor_s *rdesc;
++	unsigned long irqflags;
++
++	spin_lock_irqsave(&mtk->ring->write_lock, irqflags);
++
++	rdesc = mtk_ring_pop_wptr(mtk, &mtk->ring->rdr);
++
++	if (IS_ERR(rdesc)) {
++		spin_unlock_irqrestore(&mtk->ring->write_lock, irqflags);
++		WARN_ON(1);
++		return;
++	}
++
++	cdesc = mtk_ring_pop_wptr(mtk, &mtk->ring->cdr);
++
++	if (IS_ERR(cdesc)) {
++		spin_unlock_irqrestore(&mtk->ring->write_lock, irqflags);
++		WARN_ON(1);
++		return;
++	}
++
++	memset(cdesc, 0, sizeof(struct eip93_descriptor_s));
++
++	atomic_inc(&mtk->ring->free);
++	spin_unlock_irqrestore(&mtk->ring->write_lock, irqflags);
++}
++
+ inline void *mtk_get_descriptor(struct mtk_device *mtk)
+ {
+ 	struct eip93_descriptor_s *cdesc;
+@@ -422,6 +466,16 @@ static inline int mtk_scatter_combine(st
+ 	}
+ 
+ 	do {
++		// We can only decrement EIP93_REG_PE_CD_COUNT by 255 at a time, so we
++		// make sure we can't possibly exceed that with an absurd amount of fragments.
++		// Alternatively (in case MTK_RING_SIZE is set lower), make sure we don't deadlock
++		// by trying to submit more descs than the ring can hold.
++		if (unlikely(ndesc_cdr >= 0xff ||
++			     ndesc_cdr >= (MTK_RING_SIZE - 1))) {
++			err = -EINVAL;
++			goto rollback_cdescs;
++		}
++
+ 		if (nextin) {
+ 			sgsrc = sg_next(sgsrc);
+ 			remainin = sg_dma_len(sgsrc);
+@@ -504,22 +558,25 @@ static inline int mtk_scatter_combine(st
+ 		if (n == 0)
+ 			cdesc->userId |= MTK_DESC_LAST;
+ 
+-		/* Loop - Delay - No need to rollback
+-		 * Maybe refine by slowing down at MTK_RING_BUSY
+-		 */
+-again:
+ 		err = mtk_put_descriptor(mtk, cdesc);
+ 		if (err) {
+-			udelay(500);
+-			goto again;
++			err = -EBUSY;
++			goto rollback_cdescs;
+ 		}
+-		/* Writing new descriptor count starts DMA action */
+-		writel(1, mtk->base + EIP93_REG_PE_CD_COUNT);
+ 
+ 		ndesc_cdr++;
+ 	} while (n);
+ 
++	/* Writing new descriptor count starts DMA action */
++	writel(ndesc_cdr, mtk->base + EIP93_REG_PE_CD_COUNT);
++
+ 	return 0;
++
++rollback_cdescs:
++	for (; ndesc_cdr > 0; ndesc_cdr--)
++		mtk_rollback_descriptor(mtk);
++
++	return err;
+ }
+ 
+ int mtk_send_req(struct crypto_async_request *async,
+@@ -617,9 +674,19 @@ skip_iv:
+ 		dma_map_sg(mtk->dev, src, rctx->src_nents, DMA_TO_DEVICE);
+ 
+ 	err = mtk_scatter_combine(mtk, rctx, datalen, split, offsetin);
++	if (err)
++		goto unmap_dma;
+ 
+ 	return err;
+ 
++unmap_dma:
++	dma_unmap_sg(mtk->dev, dst, rctx->dst_nents, DMA_BIDIRECTIONAL);
++	if (src != dst)
++		dma_unmap_sg(mtk->dev, src, rctx->src_nents, DMA_TO_DEVICE);
++
++	if (IS_DMA_IV(flags))
++		dma_unmap_single(mtk->dev, rctx->saState_base, rctx->ivsize,
++				 DMA_TO_DEVICE);
+ free_state:
+ 	if (rctx->saState)
+ 		mtk_rollback_saState(mtk);
+@@ -637,7 +704,7 @@ static int mtk_send_skcipher_req(struct
+ 	int err;
+ 
+ 	err = mtk_send_req(async, req->iv, rctx);
+-	if (err)
++	if (err && err != -EBUSY)
+ 		mtk_req_free_sg_copies(rctx, req->src, req->dst);
+ 	return err;
+ }
+@@ -649,7 +716,7 @@ static int mtk_send_aead_req(struct cryp
+ 	int err;
+ 
+ 	err = mtk_send_req(async, req->iv, rctx);
+-	if (err)
++	if (err && err != -EBUSY)
+ 		mtk_req_free_sg_copies(rctx, req->src, req->dst);
+ 	return err;
+ }
+@@ -680,6 +747,14 @@ mtk_dequeue_request(struct mtk_device *m
+ 	return req;
+ }
+ 
++static void mtk_requeue_req(struct mtk_device *mtk,
++			    struct crypto_async_request *req, struct crypto_async_request *backlog)
++{
++	spin_lock_bh(&mtk->request_lock);
++	crypto_enqueue_request_head(&mtk->request_queue, req);
++	spin_unlock_bh(&mtk->request_lock);
++}
++
+ void mtk_request_work(struct work_struct *work)
+ {
+ 	struct mtk_device *mtk = container_of(work, struct mtk_device, request_work);
+@@ -695,13 +770,19 @@ void mtk_request_work(struct work_struct
+ 		if (!req)
+ 			break;
+ 
++		if (backlog)
++			crypto_request_complete(backlog, -EINPROGRESS);
++
+ 		ret = mtk_send_async_req(req);
++		if (ret == -EBUSY) {
++			// HW queue is full, put request back to the front of queue
++			// and wait for HW to catch up.
++			mtk_requeue_req(mtk, req, backlog);
++			break;
++		}
+ 		if (ret)
+ 			crypto_request_complete(req, ret);
+ 
+-		if (backlog)
+-			crypto_request_complete(backlog, -EINPROGRESS);
+-
+ 		done++;
+ 		if (done == MTK_BURST_SIZE) {
+ 			local_bh_enable();

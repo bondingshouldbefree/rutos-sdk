@@ -1,0 +1,54 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+add_ebgp() {
+	local section="$1"
+	local ebgp_requires_policy
+	local enabled
+	config_get enabled "$section" enabled "0"
+	[ "$enabled" = "1" ] && {
+		config_get ebgp_requires_policy "$section" ebgp_requires_policy "0"
+		uci_set "bgp" "$section" "ebgp_requires_policy" "$ebgp_requires_policy"
+	}
+}
+
+fix_bgp_maps() {
+	local metric
+	local sequence
+	local section="$1"
+	config_get metric "$section" metric
+	config_get sequence "$section" sequence
+	[ -n "$metric" ] && [ -z "$sequence" ] && uci_rename "frr" "$section" "metric" "sequence"
+}
+
+[ -f "/etc/config/bgp" ] && {
+	config_load bgp
+	config_foreach add_ebgp bgp_instance
+	config_foreach fix_bgp_maps bgp_route_maps
+	uci_commit bgp
+}
+
+get_ospf_area() {
+	local section="$1"
+	local network_area="$2"
+	local network_name="$3"
+	local area_area
+
+	config_get area_area "$section" area
+	[ "$area_area" = "$network_area" ] && uci_set "ospf" "$network_name" "area" "$section"
+}
+
+fix_ospf_area() {
+	local network_area network_name
+	local section="$1"
+
+	config_get network_area "$section" area
+	config_foreach get_ospf_area ospf_area "$network_area" "$section"
+}
+
+[ -f "/etc/config/ospf" ] && {
+	config_load ospf
+	config_foreach fix_ospf_area ospf_network
+	uci_commit ospf
+}

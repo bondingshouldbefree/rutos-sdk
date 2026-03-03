@@ -1,0 +1,74 @@
+#!/bin/sh
+
+# this is an rpcd plugin to expose
+# the functionality of pinging previously used in mobifd
+# as an ubus object.
+
+. /usr/share/libubox/jshn.sh
+
+ping_ip() {
+        local output
+	local received_packets
+	local timeout
+	local ip_type="$1"
+        read input
+	json_load "$input"
+	json_get_var iface iface
+	json_get_var dest_ip dest_ip
+	json_get_var count count
+	json_get_var timeout timeout
+
+	[ -z "$iface" ] || [ -z "$dest_ip"  ] && {
+                json_init
+                json_add_string "status" "22"
+                json_add_string "error" "no argument provided"
+		json_dump
+
+		exit 1
+	}
+
+        count=${count:-5}
+        timeout=${timeout:-5}
+
+        output=$(ping -"$ip_type" -c "$count" -W "$timeout" -I "$iface" "$dest_ip")
+
+        received_packets=$(echo "$output" | grep "packets received" | awk '{print $4}')
+        received_packets=${received_packets:-0} #default value of 0
+
+        json_init
+        json_add_int "received" "$received_packets"
+        json_dump
+}
+
+main() {
+	case "$1" in
+	list)
+	        json_init
+		json_add_object "pingv4"
+		json_add_string "iface"
+		json_add_string "dest_ip"
+		json_add_int "count"
+		json_add_int "timeout"
+		json_close_object
+		json_add_object "pingv6"
+		json_add_string "iface"
+		json_add_string "dest_ip"
+		json_add_int "count"
+		json_add_int "timeout"
+		json_close_object
+		json_dump
+		;;
+	call)
+		case "$2" in
+		pingv4)
+			ping_ip "4"
+			;;
+		pingv6)
+			ping_ip "6"
+			;;
+		esac
+		;;
+	esac
+}
+
+main "$@"

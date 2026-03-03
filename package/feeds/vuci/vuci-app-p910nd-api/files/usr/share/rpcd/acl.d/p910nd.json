@@ -1,0 +1,1 @@
+{"services/sd_usb_tools/p910nd":{"description":"printer service configuration","read":{"api":["/usb_tools/p910nd/*"]},"write":{"api":["/usb_tools/p910nd/*"]}}}

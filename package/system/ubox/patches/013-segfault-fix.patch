@@ -1,0 +1,95 @@
+Index: ubox-2020-10-25-9ef88681/log/syslog.c
+===================================================================
+--- ubox-2020-10-25-9ef88681.orig/log/syslog.c
++++ ubox-2020-10-25-9ef88681/log/syslog.c
+@@ -111,11 +111,31 @@ CODE severity_names[] = {
+ static struct log_head*
+ log_next(struct log_head *h, int size)
+ {
+-	struct log_head *n = (struct log_head *) &h->data[PAD(size)];
++	if (size == 0)
++		return log;
+ 
++	struct log_head *n = (struct log_head *) &h->data[PAD(size)];
+ 	return (n >= log_end) ? (log) : (n);
+ }
+ 
++static struct log_head*
++log_wrap(int size)
++{
++	struct log_head *next = log_next(newest, size);
++	if (next > newest) {
++		while ((oldest > newest) && (oldest <= next) && (oldest != log))
++			oldest = log_next(oldest, oldest->size);
++	} else {
++		//fprintf(stderr, "Log wrap\n");
++		newest->size = 0;
++		next = log_next(log, size);
++		for (oldest = log; oldest <= next; oldest = log_next(oldest, oldest->size))
++			;
++		newest = log;
++	}
++	return next;
++}
++
+ void
+ log_add(char *buf, int size, int source)
+ {
+@@ -170,18 +190,7 @@ log_add(char *buf, int size, int source)
+ 	//fprintf(stderr, "-> %d - %s\n", priority, buf);
+ 
+ 	/* find new oldest entry */
+-	next = log_next(newest, size);
+-	if (next > newest) {
+-		while ((oldest > newest) && (oldest <= next) && (oldest != log))
+-			oldest = log_next(oldest, oldest->size);
+-	} else {
+-		//fprintf(stderr, "Log wrap\n");
+-		newest->size = 0;
+-		next = log_next(log, size);
+-		for (oldest = log; oldest <= next; oldest = log_next(oldest, oldest->size))
+-			;
+-		newest = log;
+-	}
++	next = log_wrap(size);
+ 
+ 	/* add the log message */
+ 	newest->size = size;
+@@ -220,17 +229,7 @@ static void log_add_entry(struct log_ent
+ 	entry->msg[size - 1] = 0;
+ 
+ 
+-	next = log_next(newest, size);
+-	if (next > newest) {
+-		while ((oldest > newest) && (oldest <= next) && (oldest != log))
+-			oldest = log_next(oldest, oldest->size);
+-	} else {
+-		newest->size = 0;
+-		next = log_next(log, size);
+-		for (oldest = log; oldest <= next; oldest = log_next(oldest, oldest->size))
+-			;
+-		newest = log;
+-	}
++	next = log_wrap(size);
+ 
+ 	newest->size = size;
+ 	newest->id = entry->id;
+@@ -273,17 +272,7 @@ int log_add_extended(char *buf, int size
+ 	buf[size - 1] = 0;
+ 
+ 	/* find new oldest entry */
+-	next = log_next(newest, size);
+-	if (next > newest) {
+-		while ((oldest > newest) && (oldest <= next) && (oldest != log))
+-			oldest = log_next(oldest, oldest->size);
+-	} else {
+-		newest->size = 0;
+-		next = log_next(log, size);
+-		for (oldest = log; oldest <= next; oldest = log_next(oldest, oldest->size))
+-			;
+-		newest = log;
+-	}
++	next = log_wrap(size);
+ 
+ 	/* add the log message */
+ 	newest->size = size;

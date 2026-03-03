@@ -1,0 +1,13 @@
+--- a/net/mac80211/tx.c
++++ b/net/mac80211/tx.c
+@@ -5040,7 +5040,9 @@ static u8 __ieee80211_beacon_update_cntd
+ 	beacon->cntdwn_current_counter--;
+ 
+ 	/* the counter should never reach 0 */
+-	WARN_ON_ONCE(!beacon->cntdwn_current_counter);
++	if (!beacon->cntdwn_current_counter) {
++		pr_info("mac80211: counter cntdwn_current_counter reached 0\n");
++	}
+ 
+ 	return beacon->cntdwn_current_counter;
+ }

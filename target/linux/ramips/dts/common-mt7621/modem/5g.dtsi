@@ -1,0 +1,66 @@
+/ {
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_modem_reset {
+			gpio-export,name = "modem_reset";
+			gpio-export,output = <0>;
+			gpios = <&gpio 14 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_power {
+			gpio-export,name = "modem_power";
+			gpio-export,output = <1>;
+			gpios = <&gpio 17 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+    leds {
+		compatible = "gpio-leds";
+
+        led_gen_3 {
+			label = "mob_gen_3";
+			gpios = <&gpio 16 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_4 {
+			label = "mob_gen_4";
+			gpios = <&gpio 15 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_5 {
+			label = "mob_gen_5";
+			gpios = <&gpio 13 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_ssid_1 {
+			label = "mob_ssid_1";
+			gpios = <&gpio 47 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_3 {
+			label = "mob_ssid_3";
+			gpios = <&gpio 48 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_5 {
+			label = "mob_ssid_5";
+			gpios = <&gpio 46 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+    };
+
+	tlt_gpios {
+		misc {
+			GPIO_14 {
+				line_name = "GPIO_MODEM_RESET_1";
+			};
+			GPIO_17 {
+				line_name = "GPIO_MODEM_POWER_1";
+			};
+		};
+	};
+};
