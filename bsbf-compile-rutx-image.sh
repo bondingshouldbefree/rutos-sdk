@@ -125,6 +125,9 @@ chmod +x files/usr/sbin/bsbf-tcp-in-udp
 # PACKAGE_bsbf-rate-limiting, PACKAGE_bsbf-route, PACKAGE_bsbf-tcp-in-udp, and
 # PACKAGE_bsbf-tlt-sw-link to provide the necessary components for bonding.
 #
+# Enable PACKAGE_vuci-app-bsbf-api and PACKAGE_vuci-app-bsbf-ui to provide a web
+# UI for monitoring and managing bonding.
+#
 # Enable PACKAGE_htop to monitor the usage of system resources.
 #
 # Enable PACKAGE_iptables-mod-extra, PACKAGE_iptables-mod-tproxy, and
@@ -155,6 +158,8 @@ CONFIG_PACKAGE_bsbf-rate-limiting=y
 CONFIG_PACKAGE_bsbf-route=y
 CONFIG_PACKAGE_bsbf-tcp-in-udp=y
 CONFIG_PACKAGE_bsbf-tlt-sw-link=y
+CONFIG_PACKAGE_vuci-app-bsbf-api=y
+CONFIG_PACKAGE_vuci-app-bsbf-ui=y
 CONFIG_PACKAGE_htop=y
 CONFIG_PACKAGE_iptables-mod-extra=y
 CONFIG_PACKAGE_iptables-mod-tproxy=y
