@@ -1,0 +1,8 @@
+{
+  "services/bsbf": {
+    "title": "BondingShouldBeFree",
+    "index": 500,
+    "view": "services/BondingShouldBeFree",
+    "acls": ["services/bsbf"]
+  }
+}
