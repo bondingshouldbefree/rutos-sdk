@@ -151,6 +151,7 @@ CONFIG_PACKAGE_kmod-usb-net-ipheth=y
 CONFIG_PACKAGE_usbmuxd=y
 CONFIG_PACKAGE_kmod-usb-net-rtl8152=y
 CONFIG_PACKAGE_kmod-usb-net-rndis=y
+CONFIG_PACKAGE_bsbf-client-web=y
 CONFIG_PACKAGE_bsbf-mptcp=y
 CONFIG_PACKAGE_bsbf-netspeed=y
 CONFIG_PACKAGE_bsbf-plpmtu=y
